@@ -103,11 +103,11 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Original Route Number Finding Logic (Scans rows above FG row, checking ignore lists and valid numeric values)
+                    # 3. Route Number Finding Logic (Scans ALL rows above FG row up to fg_row)
                     route_num = "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
                     
-                    for r in range(min(fg_row, 5)):
+                    for r in range(fg_row):
                         for c in range(min(total_col, 30)):
                             cell_val = str(df_input.iloc[r, c]).strip()
                             upper_val = cell_val.upper()
