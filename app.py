@@ -120,7 +120,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             is_product_code = any(upper_val.startswith(p) for p in ["PC", "MS", "M", "GM", "DP", "SKU", "FG"])
                             if is_product_code:
                                 continue
-                            
+                                
                             if cell_val != "" and 1 <= len(cell_val) <= 5:
                                 if any(char.isdigit() for char in cell_val):
                                     route_num = cell_val
@@ -161,7 +161,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if agency_col == -1 and fg_col > 0:
                         agency_col = fg_col - 1
 
-                    # 4.1 Strict DR Code Column Detection (Starting right below FG Row, format: DR + Numbers)
+                    # 4.1 Strict DR Code Column Detection
                     dr_code_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         sample_val = str(df_input.iloc[fg_row + 1, cSearch] if fg_row + 1 < df_input.shape[0] else "").strip().upper()
@@ -206,86 +206,93 @@ if st.button("🚀 Process Batch Orders", type="primary"):
 
                     for r in range(fg_row + 1, df_input.shape[0]):
                         agency = df_input.iloc[r, agency_col] if agency_col >= 0 else None
-                        if pd.notna(agency) and str(agency).strip() != "":
-                            agency_str = str(agency).replace('.0','').strip()
-                            if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
-                                agency_val = int(agency_str)
-                                
-                                # Check if DR Code exists for this row
-                                has_dr_code = False
-                                clean_dr = ""
-                                if dr_code_col >= 0:
-                                    raw_dr = df_input.iloc[r, dr_code_col]
-                                    if pd.notna(raw_dr) and str(raw_dr).strip() != "":
-                                        clean_dr = str(raw_dr).replace('.0', '').strip()
-                                        if clean_dr.upper() != "NAN" and clean_dr != "":
-                                            has_dr_code = True
+                        
+                        # --- UPDATED VALIDATION CHECK ---
+                        # Agar agency cell khali hai ya usme text (jaise GM, SM, Total) hai jo digit nahi hai, toh row skip kar do
+                        if pd.isna(agency) or str(agency).strip() == "":
+                            continue
+                            
+                        agency_str = str(agency).replace('.0','').strip()
+                        if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
+                            continue # Ye row valid agency row nahi hai (jaise GM/SM ki description row)
+                        
+                        agency_val = int(agency_str)
+                        
+                        # Check if DR Code exists for this row
+                        has_dr_code = False
+                        clean_dr = ""
+                        if dr_code_col >= 0:
+                            raw_dr = df_input.iloc[r, dr_code_col]
+                            if pd.notna(raw_dr) and str(raw_dr).strip() != "":
+                                clean_dr = str(raw_dr).replace('.0', '').strip()
+                                if clean_dr.upper() != "NAN" and clean_dr != "":
+                                    has_dr_code = True
 
-                                # Route based on DR Code presence
-                                if has_dr_code:
-                                    agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
-                                    current_seq = agency_counts_valid[agency_val]
-                                    ref_number = f"RT-{route_num}-{agency_val}-{today_date}" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-{current_seq}"
-                                    
-                                    target_ws = ws_valid
-                                    current_r = valid_row
-                                    order_num = valid_order_num
-                                    dr_to_use = clean_dr
-                                else:
-                                    # Missing DR Code (New Customer Case)
-                                    agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
-                                    current_seq = agency_counts_missing[agency_val]
-                                    ref_number = f"RT-{route_num}-{agency_val}-{today_date}-NEW" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-NEW-{current_seq}"
-                                    
-                                    target_ws = ws_missing
-                                    current_r = missing_row
-                                    order_num = missing_order_num
-                                    dr_to_use = f"NEW_CUST_{agency_val}"
+                        # Route based on DR Code presence
+                        if has_dr_code:
+                            agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
+                            current_seq = agency_counts_valid[agency_val]
+                            ref_number = f"RT-{route_num}-{agency_val}-{today_date}" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-{current_seq}"
+                            
+                            target_ws = ws_valid
+                            current_r = valid_row
+                            order_num = valid_order_num
+                            dr_to_use = clean_dr
+                        else:
+                            # Missing DR Code (New Customer Case)
+                            agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
+                            current_seq = agency_counts_missing[agency_val]
+                            ref_number = f"RT-{route_num}-{agency_val}-{today_date}-NEW" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-NEW-{current_seq}"
+                            
+                            target_ws = ws_missing
+                            current_r = missing_row
+                            order_num = missing_order_num
+                            dr_to_use = f"NEW_CUST_{agency_val}"
 
-                                item_id = 10
-                                row_has_items = False
-                                
-                                for c, fg_code in valid_cols:
-                                    sku_qty = df_input.iloc[r, c]
-                                    if pd.notna(sku_qty) and str(sku_qty).strip() != "":
-                                        try:
-                                            qty_val = float(sku_qty)
-                                            if qty_val > 0:
-                                                row_has_items = True
-                                                current_fg = fg_code if (fg_code != "" and fg_code.lower() != "nan" and fg_code.upper().startswith("FG")) else "FG500014"
-                                                
-                                                target_ws.cell(row=current_r, column=2, value=order_num)
-                                                target_ws.cell(row=current_r, column=3, value="OR")
-                                                target_ws.cell(row=current_r, column=4, value="SO20")
-                                                target_ws.cell(row=current_r, column=5, value=10)
-                                                target_ws.cell(row=current_r, column=6, value=20)
-                                                target_ws.cell(row=current_r, column=7, value=dr_to_use)
-                                                target_ws.cell(row=current_r, column=8, value=dr_to_use)
-                                                target_ws.cell(row=current_r, column=9, value=ref_number)
-                                                target_ws.cell(row=current_r, column=10, value=today_date)
-                                                target_ws.cell(row=current_r, column=11, value=today_date)
-                                                target_ws.cell(row=current_r, column=15, value=item_id)
-                                                target_ws.cell(row=current_r, column=16, value=current_fg)
-                                                target_ws.cell(row=current_r, column=19, value=qty_val)
-                                                target_ws.cell(row=current_r, column=20, value="Bag")
-                                                target_ws.cell(row=current_r, column=22, value=2100)
-                                                target_ws.cell(row=current_r, column=26, value=str(route_num))
-                                                target_ws.cell(row=current_r, column=27, value=agency_val)
-                                                
-                                                item_id += 10
-                                                current_r += 1
-                                        except ValueError:
-                                            pass
-                                
-                                if row_has_items:
-                                    if has_dr_code:
-                                        valid_row = current_r
-                                        valid_order_num += 1
-                                        valid_items_created += 1
-                                    else:
-                                        missing_row = current_r
-                                        missing_order_num += 1
-                                        missing_items_created += 1
+                        item_id = 10
+                        row_has_items = False
+                        
+                        for c, fg_code in valid_cols:
+                            sku_qty = df_input.iloc[r, c]
+                            if pd.notna(sku_qty) and str(sku_qty).strip() != "":
+                                try:
+                                    qty_val = float(sku_qty)
+                                    if qty_val > 0:
+                                        row_has_items = True
+                                        current_fg = fg_code if (fg_code != "" and fg_code.lower() != "nan" and fg_code.upper().startswith("FG")) else "FG500014"
+                                        
+                                        target_ws.cell(row=current_r, column=2, value=order_num)
+                                        target_ws.cell(row=current_r, column=3, value="OR")
+                                        target_ws.cell(row=current_r, column=4, value="SO20")
+                                        target_ws.cell(row=current_r, column=5, value=10)
+                                        target_ws.cell(row=current_r, column=6, value=20)
+                                        target_ws.cell(row=current_r, column=7, value=dr_to_use)
+                                        target_ws.cell(row=current_r, column=8, value=dr_to_use)
+                                        target_ws.cell(row=current_r, column=9, value=ref_number)
+                                        target_ws.cell(row=current_r, column=10, value=today_date)
+                                        target_ws.cell(row=current_r, column=11, value=today_date)
+                                        target_ws.cell(row=current_r, column=15, value=item_id)
+                                        target_ws.cell(row=current_r, column=16, value=current_fg)
+                                        target_ws.cell(row=current_r, column=19, value=qty_val)
+                                        target_ws.cell(row=current_r, column=20, value="Bag")
+                                        target_ws.cell(row=current_r, column=22, value=2100)
+                                        target_ws.cell(row=current_r, column=26, value=str(route_num))
+                                        target_ws.cell(row=current_r, column=27, value=agency_val)
+                                        
+                                        item_id += 10
+                                        current_r += 1
+                                except ValueError:
+                                    pass
+                        
+                        if row_has_items:
+                            if has_dr_code:
+                                valid_row = current_r
+                                valid_order_num += 1
+                                valid_items_created += 1
+                            else:
+                                missing_row = current_r
+                                missing_order_num += 1
+                                missing_items_created += 1
 
                     if valid_items_created > 0:
                         buf_valid = io.BytesIO()
@@ -320,14 +327,14 @@ if st.button("🚀 Process Batch Orders", type="primary"):
 
 if st.session_state.processed_files:
     st.markdown("---")
-    for item in st.session_state.processed_files:
+    for idx, item in enumerate(st.session_state.processed_files):
         st.success("✅ Processed: " + item['name'] + " -> Orders created: " + str(item['orders']))
         if st.download_button(
             label="📥 Download " + item['name'],
             data=item['data'],
             file_name=item['filename'],
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=item['filename']
+            key=f"download_btn_{idx}_{item['filename']}"
         ):
             st.toast(f"🎉 '{item['filename']}' successfully download ho gaya hai!", icon="📥")
     
