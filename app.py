@@ -35,9 +35,11 @@ st.title("📊 Sales Order Automation Hub")
 st.markdown("Upload multiple **Inbound Demand Files** to process orders in batch (Template is loaded locally).")
 st.markdown("---")
 
+# Session State for persistent download buttons
 if 'processed_files' not in st.session_state:
     st.session_state.processed_files = []
 
+# File Upload Section
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -47,12 +49,16 @@ if st.button("🚀 Process Batch Orders", type="primary"):
         st.session_state.processed_files = []
         with st.spinner("⚡ Reading template and processing files... Please wait."):
             try:
+                # Private repository ke liye local file read karne ka tareeqa
                 try:
                     with open("Output.xlsx", "rb") as f:
                         template_bytes = f.read()
                 except FileNotFoundError:
                     st.error("❌ 'Output.xlsx' template file repository mein nahi mili. Kripya template file ko GitHub repo ke main folder mein upload karein.")
                     st.stop()
+                
+                total_processed = 0
+                total_orders_created = 0
                 
                 today_date = datetime.date.today().strftime("%Y-%m-%d")
                 timestamp = datetime.datetime.now().strftime("%H%M%S")
@@ -62,19 +68,42 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if short_filename.lower() == "output.xlsx":
                         continue
 
+                    # Read input file via pandas
                     file_bytes = uploaded_file.getvalue()
                     df_input = pd.read_excel(io.BytesIO(file_bytes), header=None)
 
-                    # 1. Find FG Row & Col
+                    # 1. Find FG Row & Col (Searching for 'FG' or 'MATERIAL CODE')
                     fg_row, fg_col = -1, -1
                     for r in range(df_input.shape[0]):
                         for c in range(df_input.shape[1]):
                             val = str(df_input.iloc[r, c]).strip().upper()
-                            if val.startswith("FG"):
-                                fg_row, fg_col = r, c
-                                break
+                            if val.startswith("FG") or val == "MATERIAL CODE":
+                                # Agar 'MATERIAL CODE' mila hai, toh check karein ki kya uske agle cells mein FG codes hain
+                                if val == "MATERIAL CODE":
+                                    has_fg_ahead = any(str(df_input.iloc[r, c+i]).strip().upper().startswith("FG") for i in range(1, 5) if c+i < df_input.shape[1])
+                                    if has_fg_ahead:
+                                        fg_row = r
+                                        # Pehla FG column dhoondhein
+                                        for col_idx in range(c+1, df_input.shape[1]):
+                                            if str(df_input.iloc[r, col_idx]).strip().upper().startswith("FG"):
+                                                fg_col = col_idx
+                                                break
+                                        break
+                                else:
+                                    fg_row, fg_col = r, c
+                                    break
                         if fg_row != -1:
                             break
+
+                    if fg_row == -1 or fg_col == -1:
+                        # Fallback: Agar upar wale tarike se na mile toh standard search
+                        for r in range(df_input.shape[0]):
+                            for c in range(df_input.shape[1]):
+                                if str(df_input.iloc[r, c]).strip().upper().startswith("FG"):
+                                    fg_row, fg_col = r, c
+                                    break
+                            if fg_row != -1:
+                                break
 
                     if fg_row == -1:
                         continue
@@ -102,7 +131,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     route_num = "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
                     
-                    for r in range(min(fg_row, 5)):
+                    for r in range(min(fg_row, 10)):
                         for c in range(min(total_col, 30)):
                             cell_val = str(df_input.iloc[r, c]).strip()
                             upper_val = cell_val.upper()
@@ -123,12 +152,12 @@ if st.button("🚀 Process Batch Orders", type="primary"):
 
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
-                    # 4. Smart Agency Detection
+                    # 4. Smart Agency Detection (Fixed for inserted rows)
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         valid_agency_count = 0
                         header_val = str(df_input.iloc[fg_row, cSearch] if fg_row >= 0 else "").strip().upper()
-                        if any(s in header_val for s in ["S.NO", "SR", "NO.", "INDEX", "SEQ"]):
+                        if any(s in header_val for s in ["S.NO", "SR", "NO.", "INDEX", "SEQ", "MATERIAL"]):
                             continue 
 
                         extracted_numbers = []
@@ -150,19 +179,14 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             agency_col = cSearch
                             break
 
-                    if agency_col == -1 and fg_col > 0:
-                        agency_col = fg_col - 1
+                    if agency_col == -1:
+                        agency_col = 1 # Default to column 1 (AG NO) if not found
 
                     # 4.1 Strict DR Code Column Detection
                     dr_code_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
-                        sample_val = str(df_input.iloc[fg_row + 1, cSearch] if fg_row + 1 < df_input.shape[0] else "").strip().upper()
-                        if re.match(r'^DR\d+', sample_val):
-                            dr_code_col = cSearch
-                            break
-                        
                         matched_count = 0
-                        for offset in range(1, min(4, df_input.shape[0] - fg_row)):
+                        for offset in range(1, min(10, df_input.shape[0] - fg_row)):
                             v = str(df_input.iloc[fg_row + offset, cSearch]).strip().upper()
                             if re.match(r'^DR\d+', v):
                                 matched_count += 1
@@ -175,9 +199,10 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
-                        valid_cols.append((c, fg_code))
+                        if fg_code.upper().startswith("FG"):
+                            valid_cols.append((c, fg_code))
 
-                    # 6. Load Template
+                    # 6. Load Template for Valid & Missing DR Orders separately
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
                     ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
 
@@ -207,6 +232,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                         
                         agency_val = int(agency_str)
                         
+                        # Check if DR Code exists for this row
                         has_dr_code = False
                         clean_dr = ""
                         if dr_code_col >= 0:
@@ -216,6 +242,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                 if clean_dr.upper() != "NAN" and clean_dr != "":
                                     has_dr_code = True
 
+                        # Route based on DR Code presence
                         if has_dr_code:
                             agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
                             current_seq = agency_counts_valid[agency_val]
@@ -226,11 +253,12 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             order_num = valid_order_num
                             dr_to_use = clean_dr
                         else:
+                            # Missing DR Code (New Customer Case)
                             agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
                             current_seq = agency_counts_missing[agency_val]
                             ref_number = f"RT-{route_num}-{agency_val}-{today_date}-NEW" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-NEW-{current_seq}"
                             
-                            target_ws = wb_missing["Order Data"] if "Order Data" in wb_missing.sheetnames else wb_missing.active
+                            target_ws = ws_missing
                             current_r = missing_row
                             order_num = missing_order_num
                             dr_to_use = f"NEW_CUST_{agency_val}"
