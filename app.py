@@ -86,20 +86,19 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if fg_row == -1:
                         continue
 
-                    # 2. Strict Total/Sum Column Detection
+                    # 2. Robust Multi-Row Total/Sum Column Detection (Scans rows around header area)
                     total_col = df_input.shape[1]
                     for cSearch in range(fg_col, df_input.shape[1]):
-                        h_val = str(df_input.iloc[fg_row, cSearch] if fg_row >= 0 else "").strip().upper()
-                        h_prev = str(df_input.iloc[fg_row - 1, cSearch] if fg_row > 0 else "").strip().upper()
-                        
-                        is_total = any(kw in h_val or kw in h_prev for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"])
-                        
-                        if not is_total:
-                            for check_r in range(fg_row + 1, min(fg_row + 4, df_input.shape[0])):
-                                cell_txt = str(df_input.iloc[check_r, cSearch]).upper()
-                                if "SUM" in cell_txt or "=" in cell_txt:
-                                    is_total = True
-                                    break
+                        is_total = False
+                        # Scan rows from top up to fg_row + 2 to find any TOTAL/SUM label or formula
+                        for scan_r in range(max(0, fg_row - 5), min(fg_row + 3, df_input.shape[0])):
+                            cell_val = str(df_input.iloc[scan_r, cSearch]).strip().upper()
+                            if any(kw in cell_val for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
+                                is_total = True
+                                break
+                            if scan_r >= fg_row + 1 and ("SUM" in cell_val or "=" in cell_val):
+                                is_total = True
+                                break
                         
                         if is_total:
                             total_col = cSearch
@@ -178,17 +177,16 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Pure Valid FG Columns Collection (Strictly before total_col, no blind fallback here)
+                    # 5. Pure Valid FG Columns Collection (Strictly before total_col)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
                         upper_fg = fg_code.upper()
                         
-                        # Sakht check: Total/Sum column ko bilkul shamil nahi karna
+                        # Extra safeguard against total/sum keywords in header
                         if any(kw in upper_fg for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
-                            continue
+                            break
                         
-                        # Store column index and its header text (even if blank, we will check quantity dynamically later)
                         valid_cols.append((c, fg_code))
 
                     # 6. Load Template for Valid & Missing DR Orders separately
@@ -250,7 +248,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                 row_has_items = False
                                 
                                 for c, fg_code in valid_cols:
-                                    # Ensure we never process the actual total_col index by accident
                                     if c >= total_col:
                                         continue
                                         
@@ -258,13 +255,11 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     if pd.notna(sku_qty) and str(sku_qty).strip() != "":
                                         try:
                                             qty_val = float(sku_qty)
-                                            # Condition: Qty > 0 honi chahiye
                                             if qty_val > 0:
                                                 row_has_items = True
                                                 
-                                                # Smart FG Code Resolution based on your requested logic:
-                                                # Agar header mein valid FG code hai toh wo use karo, 
-                                                # warna agar header blank/invalid hai lekin qty > 0 hai aur total_col se pehle hai, toh "FG500014" assign karo.
+                                                # Exact logic as requested: 
+                                                # Agar header mein valid FG code hai toh wo use karo, warna FG500014 lo
                                                 upper_fg = str(fg_code).strip().upper()
                                                 if upper_fg.startswith("FG"):
                                                     current_fg = fg_code.strip()
