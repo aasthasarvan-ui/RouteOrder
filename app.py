@@ -86,19 +86,16 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if fg_row == -1:
                         continue
 
-                    # 2. Advanced & Bulletproof Total/Sum Column Detection
+                    # 2. Strict Total/Sum Column Detection
                     total_col = df_input.shape[1]
                     for cSearch in range(fg_col, df_input.shape[1]):
                         h_val = str(df_input.iloc[fg_row, cSearch] if fg_row >= 0 else "").strip().upper()
                         h_prev = str(df_input.iloc[fg_row - 1, cSearch] if fg_row > 0 else "").strip().upper()
-                        h_next = str(df_input.iloc[fg_row, cSearch + 1] if cSearch + 1 < df_input.shape[1] else "").strip().upper()
                         
-                        # Check text keywords
-                        is_total = any(kw in h_val or kw in h_prev or kw in h_next for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"])
+                        is_total = any(kw in h_val or kw in h_prev for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"])
                         
-                        # Check cell contents below or around for formulas / sum indicators
                         if not is_total:
-                            for check_r in range(fg_row, min(fg_row + 3, df_input.shape[0])):
+                            for check_r in range(fg_row + 1, min(fg_row + 4, df_input.shape[0])):
                                 cell_txt = str(df_input.iloc[check_r, cSearch]).upper()
                                 if "SUM" in cell_txt or "=" in cell_txt:
                                     is_total = True
@@ -137,7 +134,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         valid_agency_count = 0
-                        
                         header_val = str(df_input.iloc[fg_row, cSearch] if fg_row >= 0 else "").strip().upper()
                         if any(s in header_val for s in ["S.NO", "SR", "NO.", "INDEX", "SEQ"]):
                             continue 
@@ -168,7 +164,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     dr_code_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         sample_val = str(df_input.iloc[fg_row + 1, cSearch] if fg_row + 1 < df_input.shape[0] else "").strip().upper()
-                        
                         if re.match(r'^DR\d+', sample_val):
                             dr_code_col = cSearch
                             break
@@ -183,22 +178,18 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Strict Valid FG Columns (Ignores Total/Sum column absolutely)
+                    # 5. Pure Valid FG Columns Collection (Strictly before total_col, no blind fallback here)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
                         upper_fg = fg_code.upper()
                         
-                        # Extra protection: Agar column ke header ya kisi bhi cell mein TOTAL/SUM hai, skip karo
-                        if any(kw in upper_fg for kw in ["TOTAL", "SUM", "TOTA", "TOT", "NET"]):
+                        # Sakht check: Total/Sum column ko bilkul shamil nahi karna
+                        if any(kw in upper_fg for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
                             continue
-                            
-                        if fg_code != "" and fg_code.lower() != "nan" and upper_fg.startswith("FG"):
-                            valid_cols.append((c, fg_code))
-                        else:
-                            # Fallback sirf tabhi jab column strictly product range ke andar ho aur total keyword na ho
-                            if c < total_col and not any(kw in upper_fg for kw in ["TOTAL", "SUM", "TOTA", "TOT"]):
-                                valid_cols.append((c, "FG500014"))
+                        
+                        # Store column index and its header text (even if blank, we will check quantity dynamically later)
+                        valid_cols.append((c, fg_code))
 
                     # 6. Load Template for Valid & Missing DR Orders separately
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
@@ -259,13 +250,26 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                 row_has_items = False
                                 
                                 for c, fg_code in valid_cols:
+                                    # Ensure we never process the actual total_col index by accident
+                                    if c >= total_col:
+                                        continue
+                                        
                                     sku_qty = df_input.iloc[r, c]
                                     if pd.notna(sku_qty) and str(sku_qty).strip() != "":
                                         try:
                                             qty_val = float(sku_qty)
+                                            # Condition: Qty > 0 honi chahiye
                                             if qty_val > 0:
                                                 row_has_items = True
-                                                current_fg = fg_code if (fg_code != "" and fg_code.lower() != "nan" and fg_code.upper().startswith("FG")) else "FG500014"
+                                                
+                                                # Smart FG Code Resolution based on your requested logic:
+                                                # Agar header mein valid FG code hai toh wo use karo, 
+                                                # warna agar header blank/invalid hai lekin qty > 0 hai aur total_col se pehle hai, toh "FG500014" assign karo.
+                                                upper_fg = str(fg_code).strip().upper()
+                                                if upper_fg.startswith("FG"):
+                                                    current_fg = fg_code.strip()
+                                                else:
+                                                    current_fg = "FG500014"
                                                 
                                                 target_ws.cell(row=current_r, column=2, value=order_num)
                                                 target_ws.cell(row=current_r, column=3, value="OR")
