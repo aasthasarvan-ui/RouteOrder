@@ -86,21 +86,23 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if fg_row == -1:
                         continue
 
-                    # 2. Strict Total/Sum Column Detection
+                    # 2. Advanced & Bulletproof Total/Sum Column Detection
                     total_col = df_input.shape[1]
                     for cSearch in range(fg_col, df_input.shape[1]):
                         h_val = str(df_input.iloc[fg_row, cSearch] if fg_row >= 0 else "").strip().upper()
                         h_prev = str(df_input.iloc[fg_row - 1, cSearch] if fg_row > 0 else "").strip().upper()
                         h_next = str(df_input.iloc[fg_row, cSearch + 1] if cSearch + 1 < df_input.shape[1] else "").strip().upper()
                         
-                        is_total = any(kw in h_val or kw in h_prev or kw in h_next for kw in ["TOTAL", "SUM", "TOTA", "TOT"])
+                        # Check text keywords
+                        is_total = any(kw in h_val or kw in h_prev or kw in h_next for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"])
+                        
+                        # Check cell contents below or around for formulas / sum indicators
                         if not is_total:
-                            try:
-                                cell_formula = str(df_input.iloc[fg_row + 1, cSearch]).upper()
-                                if "SUM" in cell_formula or "+" in cell_formula:
+                            for check_r in range(fg_row, min(fg_row + 3, df_input.shape[0])):
+                                cell_txt = str(df_input.iloc[check_r, cSearch]).upper()
+                                if "SUM" in cell_txt or "=" in cell_txt:
                                     is_total = True
-                            except:
-                                pass
+                                    break
                         
                         if is_total:
                             total_col = cSearch
@@ -181,23 +183,21 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Bulletproof Valid FG Columns (Strict checks to never allow Total/Sum or empty cells to become FG500014)
+                    # 5. Strict Valid FG Columns (Ignores Total/Sum column absolutely)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
                         upper_fg = fg_code.upper()
                         
-                        # Agar column header mein Total ya Sum hai toh yahin loop rok dein
-                        if "TOTAL" in upper_fg or "SUM" in upper_fg or "TOTA" in upper_fg:
-                            break
+                        # Extra protection: Agar column ke header ya kisi bhi cell mein TOTAL/SUM hai, skip karo
+                        if any(kw in upper_fg for kw in ["TOTAL", "SUM", "TOTA", "TOT", "NET"]):
+                            continue
                             
-                        # Agar header mein valid FG code hai tabhi add karein
                         if fg_code != "" and fg_code.lower() != "nan" and upper_fg.startswith("FG"):
                             valid_cols.append((c, fg_code))
                         else:
-                            # Agar header khali hai lekin cell product column ke andar hai, tabhi safe fallback dein, 
-                            # lekin ensure karein ki yeh total column na ho aur upper row/adjacent mein total keyword na ho
-                            if c < total_col and not any(kw in upper_fg for kw in ["TOTAL", "SUM", "TOTA"]):
+                            # Fallback sirf tabhi jab column strictly product range ke andar ho aur total keyword na ho
+                            if c < total_col and not any(kw in upper_fg for kw in ["TOTAL", "SUM", "TOTA", "TOT"]):
                                 valid_cols.append((c, "FG500014"))
 
                     # 6. Load Template for Valid & Missing DR Orders separately
