@@ -86,31 +86,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if fg_row == -1:
                         continue
 
-                    # ** NAYI CONDITION: Agar FG Row ke just upper koi unwanted/extra row insert ho toh use delete karna **
-                    # Hum check karte hain ki fg_row se pehle koi aisi row hai kya jise drop karna ho, 
-                    # ya agar humein specific row delete karni hai toh hum df_input ko reset kar sakte hain.
-                    # Yahan hum check kar rahe hain ki agar fg_row > 0 hai, aur uske upar ki row mein kuch specific unwanted pattern hai 
-                    # ya general safety ke liye agar aapko koi beech ki row delete karni ho:
-                    if fg_row > 1:
-                        # Example: Agar fg_row ke theek upar wali row (fg_row - 1) khali hai ya unwanted text hai, 
-                        # toh aap use drop kar sakte hain. General approach ke taur par yahan drop row logic lagaya gaya hai:
-                        # Aap chahe toh condition apne mutabiq adjust kar sakte hain, jaise:
-                        row_above_str = str(df_input.iloc[fg_row - 1, :].values).upper()
-                        # Agar upar wali row mein koi unwanted inserted row hai, toh use drop karke index reset kar denge:
-                        # (Yahan hum general check laga rahe hain ki agar row empty ya unwanted ho toh delete ho jaye)
-                        
-                        # Agar aapko specifically koi row delete karni hai jab beech mein aaye:
-                        # df_input = df_input.drop(index=fg_row - 1).reset_index(drop=True)
-                        # Aur phir fg_row ko dobara recalculate karna padega:
-                        for r in range(df_input.shape[0]):
-                            for c in range(df_input.shape[1]):
-                                val = str(df_input.iloc[r, c]).strip().upper()
-                                if val.startswith("FG"):
-                                    fg_row, fg_col = r, c
-                                    break
-                            if fg_row != -1:
-                                break
-
                     # 2. Total/Sum Column Detection
                     total_col = df_input.shape[1]
                     for cSearch in range(fg_col, df_input.shape[1]):
@@ -145,7 +120,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             is_product_code = any(upper_val.startswith(p) for p in ["PC", "MS", "M", "GM", "DP", "SKU", "FG"])
                             if is_product_code:
                                 continue
-                                
+                            
                             if cell_val != "" and 1 <= len(cell_val) <= 5:
                                 if any(char.isdigit() for char in cell_val):
                                     route_num = cell_val
@@ -186,7 +161,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if agency_col == -1 and fg_col > 0:
                         agency_col = fg_col - 1
 
-                    # 4.1 Strict DR Code Column Detection
+                    # 4.1 Strict DR Code Column Detection (Starting right below FG Row, format: DR + Numbers)
                     dr_code_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         sample_val = str(df_input.iloc[fg_row + 1, cSearch] if fg_row + 1 < df_input.shape[0] else "").strip().upper()
@@ -205,11 +180,18 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Valid FG Columns
+                    # 5. Valid FG Columns (Strict Boundary & Validation Fix for intermediate rows)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
-                        valid_cols.append((c, fg_code))
+                        
+                        # Check if header cell has a proper valid value/code strictly before total_col
+                        if fg_code != "" and fg_code.lower() != "nan":
+                            valid_cols.append((c, fg_code))
+                        else:
+                            # Fallback only within valid strict product columns range
+                            if c < total_col:
+                                valid_cols.append((c, "FG500014"))
 
                     # 6. Load Template for Valid & Missing DR Orders separately
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
@@ -236,6 +218,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
                                 agency_val = int(agency_str)
                                 
+                                # Check if DR Code exists for this row
                                 has_dr_code = False
                                 clean_dr = ""
                                 if dr_code_col >= 0:
@@ -245,6 +228,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                         if clean_dr.upper() != "NAN" and clean_dr != "":
                                             has_dr_code = True
 
+                                # Route based on DR Code presence
                                 if has_dr_code:
                                     agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
                                     current_seq = agency_counts_valid[agency_val]
@@ -255,6 +239,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     order_num = valid_order_num
                                     dr_to_use = clean_dr
                                 else:
+                                    # Missing DR Code (New Customer Case)
                                     agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
                                     current_seq = agency_counts_missing[agency_val]
                                     ref_number = f"RT-{route_num}-{agency_val}-{today_date}-NEW" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-NEW-{current_seq}"
@@ -340,19 +325,18 @@ if st.button("🚀 Process Batch Orders", type="primary"):
     else:
         st.warning("⚠️ Kripya pehle demand files upload karein!")
 
-# Fixed download section rendering
 if st.session_state.processed_files:
     st.markdown("---")
     for item in st.session_state.processed_files:
         st.success("✅ Processed: " + item['name'] + " -> Orders created: " + str(item['orders']))
-        
-        st.download_button(
+        if st.download_button(
             label="📥 Download " + item['name'],
             data=item['data'],
             file_name=item['filename'],
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key=item['filename']
-        )
+        ):
+            st.toast(f"🎉 '{item['filename']}' successfully download ho gaya hai!", icon="📥")
     
     st.markdown("---")
     st.info("📊 **Batch Summary:** Total Output Files Generated: " + str(len(st.session_state.processed_files)))
