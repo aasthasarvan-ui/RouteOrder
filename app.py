@@ -103,7 +103,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Route Number Finding Logic
+                    # 3. Original Route Number Finding Logic (Scans rows above FG row, checking ignore lists and valid numeric values)
                     route_num = "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
                     
@@ -176,7 +176,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Pure Valid FG Columns Collection (Strictly stopping before total_col)
+                    # 5. Pure Valid FG Columns Collection (Strictly before total_col)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
@@ -246,7 +246,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                 row_has_items = False
                                 
                                 for c, fg_code in valid_cols:
-                                    # Sakht check: Column index kabhi bhi total_col ya uske baad ka nahi hona chahiye
                                     if c >= total_col:
                                         continue
                                         
@@ -254,12 +253,9 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     if pd.notna(sku_qty) and str(sku_qty).strip() != "":
                                         try:
                                             qty_val = float(sku_qty)
-                                            # Condition: Qty > 0 honi chahiye
                                             if qty_val > 0:
                                                 row_has_items = True
                                                 
-                                                # Exact Logic: Agar header mein valid FG code hai to wo lo,
-                                                # warna agar column strictly total_col se pehle hai aur qty > 0 hai, to FG500014 lo.
                                                 upper_fg = str(fg_code).strip().upper()
                                                 if upper_fg.startswith("FG"):
                                                     current_fg = fg_code.strip()
