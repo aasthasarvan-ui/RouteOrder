@@ -57,9 +57,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     st.error("❌ 'Output.xlsx' template file repository mein nahi mili. Kripya template file ko GitHub repo ke main folder mein upload karein.")
                     st.stop()
                 
-                total_processed = 0
-                total_orders_created = 0
-                
                 today_date = datetime.date.today().strftime("%Y-%m-%d")
                 timestamp = datetime.datetime.now().strftime("%H%M%S")
 
@@ -72,7 +69,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     file_bytes = uploaded_file.getvalue()
                     df_input = pd.read_excel(io.BytesIO(file_bytes), header=None)
 
-                    # 1. Find FG Row & Col (Searching for 'FG' or 'MATERIAL CODE')
+                    # 1. Find FG Row & Col
                     fg_row, fg_col = -1, -1
                     for r in range(df_input.shape[0]):
                         for c in range(df_input.shape[1]):
@@ -192,11 +189,28 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Valid FG Columns
+                    # 5. Valid FG Columns (Strict check to ignore Total/Sum columns & formulas)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
-                        valid_cols.append((c, fg_code))
+                        upper_fg = fg_code.upper()
+                        
+                        if upper_fg == "" or upper_fg == "NAN" or "TOTAL" in upper_fg or "SUM" in upper_fg:
+                            continue
+                            
+                        is_formula_sum = False
+                        try:
+                            cell_val_check = str(df_input.iloc[fg_row + 1, c]).upper()
+                            if "SUM" in cell_val_check:
+                                is_formula_sum = True
+                        except:
+                            pass
+                            
+                        if is_formula_sum:
+                            continue
+                            
+                        if upper_fg.startswith("FG"):
+                            valid_cols.append((c, fg_code))
 
                     # 6. Load Template for Valid & Missing DR Orders separately
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
@@ -266,7 +280,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     qty_val = float(sku_qty)
                                     if qty_val > 0:
                                         row_has_items = True
-                                        # Fallback to FG500014 if fg_code is empty or invalid
                                         current_fg = fg_code if (fg_code != "" and fg_code.lower() != "nan" and fg_code.upper().startswith("FG")) else "FG500014"
                                         
                                         target_ws.cell(row=current_r, column=2, value=order_num)
