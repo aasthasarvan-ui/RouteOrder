@@ -86,11 +86,10 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if fg_row == -1:
                         continue
 
-                    # 2. Robust Multi-Row Total/Sum Column Detection (Scans rows around header area)
+                    # 2. Strict Total/Sum Column Detection
                     total_col = df_input.shape[1]
                     for cSearch in range(fg_col, df_input.shape[1]):
                         is_total = False
-                        # Scan rows from top up to fg_row + 2 to find any TOTAL/SUM label or formula
                         for scan_r in range(max(0, fg_row - 5), min(fg_row + 3, df_input.shape[0])):
                             cell_val = str(df_input.iloc[scan_r, cSearch]).strip().upper()
                             if any(kw in cell_val for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
@@ -177,13 +176,12 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Pure Valid FG Columns Collection (Strictly before total_col)
+                    # 5. Pure Valid FG Columns Collection (Strictly stopping before total_col)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
                         upper_fg = fg_code.upper()
                         
-                        # Extra safeguard against total/sum keywords in header
                         if any(kw in upper_fg for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
                             break
                         
@@ -248,6 +246,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                 row_has_items = False
                                 
                                 for c, fg_code in valid_cols:
+                                    # Sakht check: Column index kabhi bhi total_col ya uske baad ka nahi hona chahiye
                                     if c >= total_col:
                                         continue
                                         
@@ -255,11 +254,12 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     if pd.notna(sku_qty) and str(sku_qty).strip() != "":
                                         try:
                                             qty_val = float(sku_qty)
+                                            # Condition: Qty > 0 honi chahiye
                                             if qty_val > 0:
                                                 row_has_items = True
                                                 
-                                                # Exact logic as requested: 
-                                                # Agar header mein valid FG code hai toh wo use karo, warna FG500014 lo
+                                                # Exact Logic: Agar header mein valid FG code hai to wo lo,
+                                                # warna agar column strictly total_col se pehle hai aur qty > 0 hai, to FG500014 lo.
                                                 upper_fg = str(fg_code).strip().upper()
                                                 if upper_fg.startswith("FG"):
                                                     current_fg = fg_code.strip()
