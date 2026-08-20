@@ -57,6 +57,9 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     st.error("❌ 'Output.xlsx' template file repository mein nahi mili. Kripya template file ko GitHub repo ke main folder mein upload karein.")
                     st.stop()
                 
+                total_processed = 0
+                total_orders_created = 0
+                
                 today_date = datetime.date.today().strftime("%Y-%m-%d")
                 timestamp = datetime.datetime.now().strftime("%H%M%S")
 
@@ -189,7 +192,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Valid FG Columns (Strict check to ignore Total/Sum columns & formulas)
+                    # 5. Valid FG Columns (Strictly excluding Total/Sum columns & formulas)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
