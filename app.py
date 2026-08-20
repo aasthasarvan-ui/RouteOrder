@@ -207,14 +207,13 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     for r in range(fg_row + 1, df_input.shape[0]):
                         agency = df_input.iloc[r, agency_col] if agency_col >= 0 else None
                         
-                        # --- UPDATED VALIDATION CHECK ---
-                        # Agar agency cell khali hai ya usme text (jaise GM, SM, Total) hai jo digit nahi hai, toh row skip kar do
+                        # Validation check to skip non-agency rows safely
                         if pd.isna(agency) or str(agency).strip() == "":
                             continue
                             
                         agency_str = str(agency).replace('.0','').strip()
                         if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
-                            continue # Ye row valid agency row nahi hai (jaise GM/SM ki description row)
+                            continue 
                         
                         agency_val = int(agency_str)
                         
@@ -250,7 +249,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_to_use = f"NEW_CUST_{agency_val}"
 
                         item_id = 10
-                        row_has_items = False
+                        row_has_items = false_flag = False
                         
                         for c, fg_code in valid_cols:
                             sku_qty = df_input.iloc[r, c]
