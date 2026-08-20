@@ -192,7 +192,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Valid FG Columns (Strictly excluding Total/Sum columns & formulas)
+                    # 5. Valid FG Columns (Strictly ignoring Total/Sum columns & formulas, but keeping valid products)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
@@ -212,8 +212,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                         if is_formula_sum:
                             continue
                             
-                        if upper_fg.startswith("FG"):
-                            valid_cols.append((c, fg_code))
+                        valid_cols.append((c, fg_code))
 
                     # 6. Load Template for Valid & Missing DR Orders separately
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
@@ -283,6 +282,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     qty_val = float(sku_qty)
                                     if qty_val > 0:
                                         row_has_items = True
+                                        # Fallback to FG500014 if fg_code is empty or invalid
                                         current_fg = fg_code if (fg_code != "" and fg_code.lower() != "nan" and fg_code.upper().startswith("FG")) else "FG500014"
                                         
                                         target_ws.cell(row=current_r, column=2, value=order_num)
