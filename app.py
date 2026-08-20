@@ -86,24 +86,17 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if fg_row == -1:
                         continue
 
-                    # 2. Total/Sum Column Detection
+                    # 2. Robust Total/Sum Column Detection (Scans multiple rows above/at FG row)
                     total_col = df_input.shape[1]
-                    for cSearch in range(fg_col, df_input.shape[1]):
-                        h_val = str(df_input.iloc[fg_row, cSearch] if fg_row >= 0 else "").strip().upper()
-                        h_prev = str(df_input.iloc[fg_row - 1, cSearch] if fg_row > 0 else "").strip().upper()
-                        
-                        is_total = "TOTAL" in h_val or "SUM" in h_val or "TOTAL" in h_prev or "SUM" in h_prev
-                        if not is_total:
-                            try:
-                                cell_formula = str(df_input.iloc[fg_row + 1, cSearch]).upper()
-                                if "SUM" in cell_formula:
-                                    is_total = True
-                            except:
-                                pass
-                        
-                        if is_total:
-                            total_col = cSearch
-                            break
+                    for r_search in [fg_row, fg_row - 1, fg_row - 2]:
+                        if r_search >= 0:
+                            for cSearch in range(fg_col, df_input.shape[1]):
+                                h_val = str(df_input.iloc[r_search, cSearch]).strip().upper()
+                                if "TOTAL" in h_val or "SUM" in h_val:
+                                    total_col = cSearch
+                                    break
+                            if total_col != df_input.shape[1]:
+                                break
 
                     # 3. Route Number Finding Logic
                     route_num = "22"
@@ -180,11 +173,12 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Valid FG Columns
+                    # 5. Valid FG Columns (Strictly before total_col and valid FG code)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
-                        valid_cols.append((c, fg_code))
+                        if fg_code != "" and fg_code.lower() != "nan" and fg_code.upper().startswith("FG"):
+                            valid_cols.append((c, fg_code))
 
                     # 6. Load Template for Valid & Missing DR Orders separately
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
@@ -249,16 +243,15 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_to_use = f"NEW_CUST_{agency_val}"
 
                         item_id = 10
-                        row_has_items = false_flag = False
+                        row_has_items = False
                         
-                        for c, fg_code in valid_cols:
+                        for c, current_fg in valid_cols:
                             sku_qty = df_input.iloc[r, c]
                             if pd.notna(sku_qty) and str(sku_qty).strip() != "":
                                 try:
                                     qty_val = float(sku_qty)
                                     if qty_val > 0:
                                         row_has_items = True
-                                        current_fg = fg_code if (fg_code != "" and fg_code.lower() != "nan" and fg_code.upper().startswith("FG")) else "FG500014"
                                         
                                         target_ws.cell(row=current_r, column=2, value=order_num)
                                         target_ws.cell(row=current_r, column=3, value="OR")
