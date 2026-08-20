@@ -86,17 +86,18 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if fg_row == -1:
                         continue
 
-                    # 2. Total/Sum Column Detection
+                    # 2. Strict Total/Sum Column Detection
                     total_col = df_input.shape[1]
                     for cSearch in range(fg_col, df_input.shape[1]):
                         h_val = str(df_input.iloc[fg_row, cSearch] if fg_row >= 0 else "").strip().upper()
                         h_prev = str(df_input.iloc[fg_row - 1, cSearch] if fg_row > 0 else "").strip().upper()
+                        h_next = str(df_input.iloc[fg_row, cSearch + 1] if cSearch + 1 < df_input.shape[1] else "").strip().upper()
                         
-                        is_total = "TOTAL" in h_val or "SUM" in h_val or "TOTAL" in h_prev or "SUM" in h_prev
+                        is_total = any(kw in h_val or kw in h_prev or kw in h_next for kw in ["TOTAL", "SUM", "TOTA", "TOT"])
                         if not is_total:
                             try:
                                 cell_formula = str(df_input.iloc[fg_row + 1, cSearch]).upper()
-                                if "SUM" in cell_formula:
+                                if "SUM" in cell_formula or "+" in cell_formula:
                                     is_total = True
                             except:
                                 pass
@@ -130,7 +131,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
 
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
-                    # 4. Smart Agency Detection (With Serial/Sequence Number Filtering)
+                    # 4. Smart Agency Detection
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         valid_agency_count = 0
@@ -161,7 +162,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if agency_col == -1 and fg_col > 0:
                         agency_col = fg_col - 1
 
-                    # 4.1 Strict DR Code Column Detection (Starting right below FG Row, format: DR + Numbers)
+                    # 4.1 Strict DR Code Column Detection
                     dr_code_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         sample_val = str(df_input.iloc[fg_row + 1, cSearch] if fg_row + 1 < df_input.shape[0] else "").strip().upper()
@@ -180,17 +181,23 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Valid FG Columns (Strict Boundary & Validation Fix for intermediate rows)
+                    # 5. Bulletproof Valid FG Columns (Strict checks to never allow Total/Sum or empty cells to become FG500014)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
+                        upper_fg = fg_code.upper()
                         
-                        # Check if header cell has a proper valid value/code strictly before total_col
-                        if fg_code != "" and fg_code.lower() != "nan":
+                        # Agar column header mein Total ya Sum hai toh yahin loop rok dein
+                        if "TOTAL" in upper_fg or "SUM" in upper_fg or "TOTA" in upper_fg:
+                            break
+                            
+                        # Agar header mein valid FG code hai tabhi add karein
+                        if fg_code != "" and fg_code.lower() != "nan" and upper_fg.startswith("FG"):
                             valid_cols.append((c, fg_code))
                         else:
-                            # Fallback only within valid strict product columns range
-                            if c < total_col:
+                            # Agar header khali hai lekin cell product column ke andar hai, tabhi safe fallback dein, 
+                            # lekin ensure karein ki yeh total column na ho aur upper row/adjacent mein total keyword na ho
+                            if c < total_col and not any(kw in upper_fg for kw in ["TOTAL", "SUM", "TOTA"]):
                                 valid_cols.append((c, "FG500014"))
 
                     # 6. Load Template for Valid & Missing DR Orders separately
@@ -239,7 +246,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     order_num = valid_order_num
                                     dr_to_use = clean_dr
                                 else:
-                                    # Missing DR Code (New Customer Case)
                                     agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
                                     current_seq = agency_counts_missing[agency_val]
                                     ref_number = f"RT-{route_num}-{agency_val}-{today_date}-NEW" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-NEW-{current_seq}"
