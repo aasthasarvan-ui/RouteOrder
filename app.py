@@ -125,7 +125,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
 
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
-                    # 4. Accurate Agency Detection (Scans columns before FG to find numbers 1 to 9999)
+                    # 4. Accurate Agency Detection
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         valid_count = 0
@@ -135,12 +135,12 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                 s_val = str(v).replace('.0', '').strip()
                                 if s_val.isdigit() and 1 <= len(s_val) <= 4:
                                     valid_count += 1
-                        if valid_count >= 3:  # Agar kam se kam 3 rows mein agency numbers mil gaye
+                        if valid_count >= 3:
                             agency_col = cSearch
                             break
 
                     if agency_col == -1:
-                        agency_col = 1  # Fallback for standard layout
+                        agency_col = 1
 
                     # 5. Pure Valid FG Columns Collection
                     valid_cols = []
@@ -151,8 +151,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                         if any(kw in upper_fg for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
                             break
                         
-                        if "FG" in upper_fg:
-                            valid_cols.append((c, fg_code))
+                        valid_cols.append((c, fg_code))
 
                     # 6. Load Template for Valid & Missing DR Orders separately
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
@@ -179,7 +178,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
                                 agency_val = int(agency_str)
                                 
-                                # --- FOOLPROOF DR CODE & ZERO HANDLER ---
+                                # --- DR CODE & ZERO HANDLER ---
                                 has_dr_code = False
                                 clean_dr = ""
                                 
@@ -235,7 +234,12 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                 item_id = 10
                                 for c, fg_code, qty_val in valid_row_quantities:
                                     upper_fg = str(fg_code).strip().upper()
-                                    current_fg = fg_code.strip() if upper_fg.startswith("FG") else "FG500014"
+                                    
+                                    # --- RESTORED FG500014 FALLBACK LOGIC ---
+                                    if upper_fg.startswith("FG"):
+                                        current_fg = fg_code.strip()
+                                    else:
+                                        current_fg = "FG500014"
                                     
                                     target_ws.cell(row=current_r, column=2, value=order_num)
                                     target_ws.cell(row=current_r, column=3, value="OR")
