@@ -49,7 +49,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
         st.session_state.processed_files = []
         with st.spinner("⚡ Reading template and processing files... Please wait."):
             try:
-                # Template load check
+                # Private repository ke liye local file read karne ka tareeqa
                 try:
                     with open("Output.xlsx", "rb") as f:
                         template_bytes = f.read()
@@ -100,7 +100,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Route Number Finding Logic
+                    # 3. Route Number Finding Logic (Scans ALL rows above FG row up to fg_row)
                     route_num = "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
                     
@@ -125,7 +125,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
 
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
-                    # 4. Accurate Agency Detection
+                    # 4. Smart Agency Detection
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         valid_count = 0
@@ -133,16 +133,34 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             v = df_input.iloc[rCheck, cSearch]
                             if pd.notna(v):
                                 s_val = str(v).replace('.0', '').strip()
-                                if s_val.isdigit() and 1 <= len(s_val) <= 4:
+                                if s_val.isdigit() and 1 <= len(s_val) <= 5:
                                     valid_count += 1
                         if valid_count >= 3:
                             agency_col = cSearch
                             break
 
-                    if agency_col == -1:
-                        agency_col = 1
+                    if agency_col == -1 and fg_col > 0:
+                        agency_col = fg_col - 1
 
-                    # 5. Pure Valid FG Columns Collection
+                    # 4.1 Strict DR Code Column Detection
+                    dr_code_col = -1
+                    for cSearch in range(fg_col - 1, -1, -1):
+                        sample_val = str(df_input.iloc[fg_row + 1, cSearch] if fg_row + 1 < df_input.shape[0] else "").strip().upper()
+                        if re.match(r'^DR\d+', sample_val):
+                            dr_code_col = cSearch
+                            break
+                        
+                        matched_count = 0
+                        for offset in range(1, min(4, df_input.shape[0] - fg_row)):
+                            v = str(df_input.iloc[fg_row + offset, cSearch]).strip().upper()
+                            if re.match(r'^DR\d+', v):
+                                matched_count += 1
+                        
+                        if matched_count > 0:
+                            dr_code_col = cSearch
+                            break
+
+                    # 5. Pure Valid FG Columns Collection (Strictly before total_col)
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
@@ -178,38 +196,31 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
                                 agency_val = int(agency_str)
                                 
-                                # --- DR CODE & ZERO HANDLER ---
+                                # --- ROBUST DR CODE & ZERO HANDLER (Maintains all old logic + handles 0) ---
                                 has_dr_code = False
                                 clean_dr = ""
                                 
-                                for c_scan in range(fg_col):
-                                    cell_val = df_input.iloc[r, c_scan]
-                                    if pd.notna(cell_val):
-                                        val_str = str(cell_val).replace('.0', '').strip()
+                                # First check via detected dr_code_col
+                                if dr_code_col >= 0 and dr_code_col < df_input.shape[1]:
+                                    raw_dr = df_input.iloc[r, dr_code_col]
+                                    if pd.notna(raw_dr):
+                                        val_str = str(raw_dr).replace('.0', '').strip()
                                         upper_str = val_str.upper()
                                         if "DR" in upper_str and any(char.isdigit() for char in upper_str) and upper_str != "0":
                                             has_dr_code = True
                                             clean_dr = val_str
-                                            break
 
-                                # Check item quantities for this row
-                                row_has_items = False
-                                valid_row_quantities = []
-                                for c, fg_code in valid_cols:
-                                    if c >= total_col:
-                                        continue
-                                    sku_qty = df_input.iloc[r, c]
-                                    if pd.notna(sku_qty) and str(sku_qty).strip() != "":
-                                        try:
-                                            qty_val = float(sku_qty)
-                                            if qty_val > 0:
-                                                row_has_items = True
-                                                valid_row_quantities.append((c, fg_code, qty_val))
-                                        except ValueError:
-                                            pass
-
-                                if not row_has_items:
-                                    continue
+                                # Fallback scan across columns before FG if column index missed
+                                if not has_dr_code:
+                                    for c_scan in range(fg_col):
+                                        cell_val = df_input.iloc[r, c_scan]
+                                        if pd.notna(cell_val):
+                                            val_str = str(cell_val).replace('.0', '').strip()
+                                            upper_str = val_str.upper()
+                                            if "DR" in upper_str and any(char.isdigit() for char in upper_str) and upper_str != "0":
+                                                has_dr_code = True
+                                                clean_dr = val_str
+                                                break
 
                                 # Route based on DR Code presence
                                 if has_dr_code:
@@ -232,44 +243,57 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     dr_to_use = f"NEW_CUST_{agency_val}"
 
                                 item_id = 10
-                                for c, fg_code, qty_val in valid_row_quantities:
-                                    upper_fg = str(fg_code).strip().upper()
-                                    
-                                    # --- RESTORED FG500014 FALLBACK LOGIC ---
-                                    if upper_fg.startswith("FG"):
-                                        current_fg = fg_code.strip()
+                                row_has_items = False
+                                
+                                for c, fg_code in valid_cols:
+                                    if c >= total_col:
+                                        continue
+                                        
+                                    sku_qty = df_input.iloc[r, c]
+                                    if pd.notna(sku_qty) and str(sku_qty).strip() != "":
+                                        try:
+                                            qty_val = float(sku_qty)
+                                            if qty_val > 0:
+                                                row_has_items = True
+                                                
+                                                upper_fg = str(fg_code).strip().upper()
+                                                if upper_fg.startswith("FG"):
+                                                    current_fg = fg_code.strip()
+                                                else:
+                                                    current_fg = "FG500014"
+                                                
+                                                target_ws.cell(row=current_r, column=2, value=order_num)
+                                                target_ws.cell(row=current_r, column=3, value="OR")
+                                                target_ws.cell(row=current_r, column=4, value="SO20")
+                                                target_ws.cell(row=current_r, column=5, value=10)
+                                                target_ws.cell(row=current_r, column=6, value=20)
+                                                target_ws.cell(row=current_r, column=7, value=dr_to_use)
+                                                target_ws.cell(row=current_r, column=8, value=dr_to_use)
+                                                target_ws.cell(row=current_r, column=9, value=ref_number)
+                                                target_ws.cell(row=current_r, column=10, value=today_date)
+                                                target_ws.cell(row=current_r, column=11, value=today_date)
+                                                target_ws.cell(row=current_r, column=15, value=item_id)
+                                                target_ws.cell(row=current_r, column=16, value=current_fg)
+                                                target_ws.cell(row=current_r, column=19, value=qty_val)
+                                                target_ws.cell(row=current_r, column=20, value="Bag")
+                                                target_ws.cell(row=current_r, column=22, value=2100)
+                                                target_ws.cell(row=current_r, column=26, value=str(route_num))
+                                                target_ws.cell(row=current_r, column=27, value=agency_val)
+                                                
+                                                item_id += 10
+                                                current_r += 1
+                                        except ValueError:
+                                            pass
+                                
+                                if row_has_items:
+                                    if has_dr_code:
+                                        valid_row = current_r
+                                        valid_order_num += 1
+                                        valid_items_created += 1
                                     else:
-                                        current_fg = "FG500014"
-                                    
-                                    target_ws.cell(row=current_r, column=2, value=order_num)
-                                    target_ws.cell(row=current_r, column=3, value="OR")
-                                    target_ws.cell(row=current_r, column=4, value="SO20")
-                                    target_ws.cell(row=current_r, column=5, value=10)
-                                    target_ws.cell(row=current_r, column=6, value=20)
-                                    target_ws.cell(row=current_r, column=7, value=dr_to_use)
-                                    target_ws.cell(row=current_r, column=8, value=dr_to_use)
-                                    target_ws.cell(row=current_r, column=9, value=ref_number)
-                                    target_ws.cell(row=current_r, column=10, value=today_date)
-                                    target_ws.cell(row=current_r, column=11, value=today_date)
-                                    target_ws.cell(row=current_r, column=15, value=item_id)
-                                    target_ws.cell(row=current_r, column=16, value=current_fg)
-                                    target_ws.cell(row=current_r, column=19, value=qty_val)
-                                    target_ws.cell(row=current_r, column=20, value="Bag")
-                                    target_ws.cell(row=current_r, column=22, value=2100)
-                                    target_ws.cell(row=current_r, column=26, value=str(route_num))
-                                    target_ws.cell(row=current_r, column=27, value=agency_val)
-                                    
-                                    item_id += 10
-                                    current_r += 1
-
-                                if has_dr_code:
-                                    valid_row = current_r
-                                    valid_order_num += 1
-                                    valid_items_created += 1
-                                else:
-                                    missing_row = current_r
-                                    missing_order_num += 1
-                                    missing_items_created += 1
+                                        missing_row = current_r
+                                        missing_order_num += 1
+                                        missing_items_created += 1
 
                     if valid_items_created > 0:
                         buf_valid = io.BytesIO()
@@ -296,6 +320,8 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             "filename": safe_route_num + "_" + today_date + "_" + timestamp + "_Missing_DR.xlsx",
                             "orders": missing_items_created
                         })
+
+                    total_processed += 1
 
                 st.success("✅ Batch Processing Complete!")
 
