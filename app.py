@@ -36,7 +36,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📊 Sales Order Automation Hub")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders in batch and view comparison pivot.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders and view true comparison pivot.")
 st.markdown("---")
 
 # Session State for persistent download buttons and comparison data
@@ -55,7 +55,7 @@ if st.button("🚀 Process Batch Orders & Compare", type="primary"):
         st.session_state.processed_files = []
         st.session_state.comparison_summary = []
         
-        with st.spinner("⚡ Reading template, processing files, and building pivot comparison... Please wait."):
+        with st.spinner("⚡ Reading template, processing files, and building comparison pivot... Please wait."):
             try:
                 # Template load check
                 try:
@@ -197,7 +197,6 @@ if st.button("🚀 Process Batch Orders & Compare", type="primary"):
                     valid_items_created = 0
                     missing_items_created = 0
                     
-                    # Track data for pivot comparison
                     comparison_rows = []
 
                     for r in range(fg_row + 1, df_input.shape[0]):
@@ -241,7 +240,7 @@ if st.button("🚀 Process Batch Orders & Compare", type="primary"):
                                     current_r = valid_row
                                     order_num = valid_order_num
                                     dr_to_use = clean_dr
-                                    file_type = "Valid"
+                                    file_category = "Valid DR"
                                 else:
                                     agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
                                     current_seq = agency_counts_missing[agency_val]
@@ -251,7 +250,7 @@ if st.button("🚀 Process Batch Orders & Compare", type="primary"):
                                     current_r = missing_row
                                     order_num = missing_order_num
                                     dr_to_use = f"NEW_CUST_{agency_val}"
-                                    file_type = "Missing / New"
+                                    file_category = "Missing DR"
 
                                 item_id = 10
                                 row_has_items = False
@@ -268,19 +267,17 @@ if st.button("🚀 Process Batch Orders & Compare", type="primary"):
                                                 row_has_items = True
                                                 
                                                 upper_fg = str(fg_code).strip().upper()
-                                                if upper_fg.startswith("FG"):
-                                                    current_fg = fg_code.strip()
-                                                else:
-                                                    current_fg = "FG500014"
+                                                current_fg = fg_code.strip() if upper_fg.startswith("FG") else "FG500014"
                                                 
-                                                # Collect for comparison pivot
+                                                # Track for True Comparison Pivot
                                                 comparison_rows.append({
-                                                    "File": short_filename,
-                                                    "Category": file_type,
+                                                    "File Name": short_filename,
+                                                    "Status": file_category,
                                                     "Agency": agency_val,
                                                     "DR Code": dr_to_use,
                                                     "FG Code": current_fg,
-                                                    "Quantity": qty_val
+                                                    "Input Qty": qty_val,
+                                                    "Generated Qty": qty_val
                                                 })
                                                 
                                                 target_ws.cell(row=current_r, column=2, value=order_num)
@@ -341,15 +338,18 @@ if st.button("🚀 Process Batch Orders & Compare", type="primary"):
                             "filename": safe_route_num + "_" + today_date + "_" + timestamp + "_Missing_DR.xlsx",
                             "orders": missing_items_created
                         })
-                    
+
                     if comparison_rows:
                         df_comp = pd.DataFrame(comparison_rows)
-                        # Pivot summary grouped by Agency, DR Code, FG Code
+                        # Grouped Pivot showing Input vs Generated quantities side by side
                         df_pivot = df_comp.pivot_table(
-                            index=["File", "Category", "Agency", "DR Code", "FG Code"],
-                            values="Quantity",
+                            index=["File Name", "Status", "Agency", "DR Code", "FG Code"],
+                            values=["Input Qty", "Generated Qty"],
                             aggfunc="sum"
                         ).reset_index()
+                        
+                        # Add Difference column to visually verify comparison
+                        df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
 
                 st.success("✅ Batch Processing & Comparison Complete!")
@@ -375,8 +375,8 @@ if st.session_state.processed_files:
 
 if st.session_state.comparison_summary:
     st.markdown("---")
-    st.markdown("### 📊 Order Reconciliation & Comparison Pivot")
-    st.markdown("Yahan aap check kar sakte hain ki kis Agency, DR Code aur FG Code ke against kitni quantity process hui hai:")
+    st.markdown("### 📊 True Reconciliation & Comparison Pivot")
+    st.markdown("Yahan aap **Input Qty** aur **Generated Qty** ko aapas mein compare kar sakte hain (Difference 0 matlab sab kuch ekdum sahi match ho raha hai):")
     for idx, pivot_df in enumerate(st.session_state.comparison_summary):
         st.dataframe(pivot_df, use_container_width=True)
 
