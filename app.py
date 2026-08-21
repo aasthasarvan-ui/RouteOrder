@@ -373,4 +373,12 @@ if st.session_state.processed_files:
         ):
             st.toast(f"🎉 '{item['filename']}' successfully download ho gaya hai!", icon="📥")
 
-if st.session_state.comparis
+if st.session_state.comparison_summary:
+    st.markdown("---")
+    st.markdown("### 📊 Order Reconciliation & Comparison Pivot")
+    st.markdown("Yahan aap check kar sakte hain ki kis Agency, DR Code aur FG Code ke against kitni quantity process hui hai:")
+    for idx, pivot_df in enumerate(st.session_state.comparison_summary):
+        st.dataframe(pivot_df, use_container_width=True)
+
+    st.markdown("---")
+    st.info("📊 **Batch Summary:** Total Output Files Generated: " + str(len(st.session_state.processed_files)))
