@@ -192,25 +192,36 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     wb_missing = openpyxl.load_workbook(io.BytesIO(template_bytes))
                     ws_missing = wb_missing["Order Data"] if "Order Data" in wb_missing.sheetnames else wb_missing.active
 
-                    # --- HEADER SAFEGUARD: Ensure Row 4 and Row 5 are strictly maintained ---
+                    # --- HEADER SAFEGUARD (Template Exact Match) ---
                     header_map_row4 = {
                         2: "HEADER.SALESORDER", 3: "HEADER.SALESORDERTYPE", 4: "HEADER.SALESORGANIZATION",
                         5: "HEADER.DISTRIBUTIONCHANNEL", 6: "HEADER.ORGANIZATIONDIVISION", 7: "HEADER.SOLDTOPARTY",
                         8: "HEADER.SHIPTOPARTY", 9: "HEADER.PURCHASEORDERBYCUSTOMER", 10: "HEADER.CUSTOMERPURCHASEORDERDATE",
-                        15: "ITEM.SALESORDERITEM", 16: "ITEM.MATERIAL", 19: "ITEM.REQUESTEDQUANTITY",
-                        20: "ITEM.REQUESTEDQUANTITYUNIT", 22: "ITEM.PLANT", 26: "SCHEDULELINE.SCHEDULELINE",
-                        27: "SCHEDULELINE.REQUESTEDQUANTITY"
+                        11: "HEADER.SALESORDERDATE", 12: "HEADER.REQUESTEDDELIVERYDATE", 13: "HEADER.PRICINGDATE",
+                        14: "HEADER.SHIPPINGCONDITION", 15: "ITEM.SALESORDERITEM", 16: "ITEM.MATERIAL",
+                        17: "ITEM.MATERIALBYCUSTOMER", 18: "ITEM.PRODUCTSTANDARDID", 19: "ITEM.REQUESTEDQUANTITY",
+                        20: "ITEM.REQUESTEDQUANTITYUNIT", 21: "ITEM.SALESORDERITEMCATEGORY", 22: "ITEM.PLANT",
+                        23: "ITEM.SHIPTOPARTY", 24: "HEADER.YY1_DEPOSITAMOUNT_SDH", 25: "HEADER.YY1_PAYMENTREMARKS_SDH",
+                        26: "HEADER.YY1_ROUTE_SALES_SDH", 27: "HEADER.YY1_AGENCY_SALES_SDH"
                     }
 
                     header_map_row5 = {
                         2: "*Sales Order (Temporary ID)", 3: "*Sales Order Type", 4: "*Sales Organization",
                         5: "*Distribution Channel", 6: "*Division", 7: "*Sold-to Party",
                         8: "Ship-to Party", 9: "Customer Reference", 10: "Customer Refernce Date",
-                        15: "*Item (Temporary ID)", 16: "*Product", 19: "*Requested Quantity",
-                        20: "Requested Quantity Unit", 22: "Plant", 26: "Schedule Line",
-                        27: "Requested Quantity"
+                        11: "Document Date", 12: "Requested Delivery Date", 13: "Pricing Date",
+                        14: "Shipping Conditions", 15: "*Item (Temporary ID)", 16: "*Product",
+                        17: "Customer Material", 18: "GTIN (EAN/UPC)", 19: "*Requested Quantity",
+                        20: "Requested Qty Unit", 21: "Item Category", 22: "Plant*",
+                        23: "POS NUMBER", 24: "Deposit Amount", 25: "Payment Remarks",
+                        26: "Route", 27: "Agency"
                     }
 
+                    for ws_target in [ws_valid, ws_missing]:
+                        for col_idx, val in header_map_row4.items():
+                            ws_target.cell(row=4, column=col_idx, value=val)
+                        for col_idx, val in header_map_row5.items():
+                            ws_target.cell(row=5, column=col_idx, value=val)
                     for ws_target in [ws_valid, ws_missing]:
                         for col_idx, val in header_map_row4.items():
                             ws_target.cell(row=4, column=col_idx, value=val)
