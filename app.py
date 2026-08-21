@@ -14,7 +14,11 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-        #GithubIcon { visibility: hidden; }
+        /* GitHub Icon aur Header Tools ko hide karne ke liye */
+        #GithubIcon { visibility: hidden !important; display: none !important; }
+        .stAppHeader { background-color: transparent !important; }
+        header[data-testid="stHeader"] { display: none !important; }
+        
         .stButton>button {
             width: 100%;
             background-color: #10b981 !important;
@@ -32,24 +36,28 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📊 Sales Order Automation Hub")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders in batch (Template is loaded locally).")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders in batch and view comparison pivot.")
 st.markdown("---")
 
-# Session State for persistent download buttons
+# Session State for persistent download buttons and comparison data
 if 'processed_files' not in st.session_state:
     st.session_state.processed_files = []
+if 'comparison_summary' not in st.session_state:
+    st.session_state.comparison_summary = []
 
 # File Upload Section
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if st.button("🚀 Process Batch Orders", type="primary"):
+if st.button("🚀 Process Batch Orders & Compare", type="primary"):
     if uploaded_inputs:
         st.session_state.processed_files = []
-        with st.spinner("⚡ Reading template and processing files... Please wait."):
+        st.session_state.comparison_summary = []
+        
+        with st.spinner("⚡ Reading template, processing files, and building pivot comparison... Please wait."):
             try:
-                # Private repository ke liye local file read karne ka tareeqa
+                # Template load check
                 try:
                     with open("Output.xlsx", "rb") as f:
                         template_bytes = f.read()
@@ -100,7 +108,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Route Number Finding Logic (Scans ALL rows above FG row up to fg_row)
+                    # 3. Route Number Finding Logic
                     route_num = "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
                     
@@ -160,7 +168,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Pure Valid FG Columns Collection (Strictly before total_col)
+                    # 5. Pure Valid FG Columns Collection
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
@@ -188,6 +196,9 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     
                     valid_items_created = 0
                     missing_items_created = 0
+                    
+                    # Track data for pivot comparison
+                    comparison_rows = []
 
                     for r in range(fg_row + 1, df_input.shape[0]):
                         agency = df_input.iloc[r, agency_col] if agency_col >= 0 else None
@@ -196,11 +207,10 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
                                 agency_val = int(agency_str)
                                 
-                                # --- ROBUST DR CODE & ZERO HANDLER (Maintains all old logic + handles 0) ---
+                                # --- ROBUST DR CODE & ZERO HANDLER ---
                                 has_dr_code = False
                                 clean_dr = ""
                                 
-                                # First check via detected dr_code_col
                                 if dr_code_col >= 0 and dr_code_col < df_input.shape[1]:
                                     raw_dr = df_input.iloc[r, dr_code_col]
                                     if pd.notna(raw_dr):
@@ -210,7 +220,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                             has_dr_code = True
                                             clean_dr = val_str
 
-                                # Fallback scan across columns before FG if column index missed
                                 if not has_dr_code:
                                     for c_scan in range(fg_col):
                                         cell_val = df_input.iloc[r, c_scan]
@@ -232,6 +241,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     current_r = valid_row
                                     order_num = valid_order_num
                                     dr_to_use = clean_dr
+                                    file_type = "Valid"
                                 else:
                                     agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
                                     current_seq = agency_counts_missing[agency_val]
@@ -241,6 +251,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     current_r = missing_row
                                     order_num = missing_order_num
                                     dr_to_use = f"NEW_CUST_{agency_val}"
+                                    file_type = "Missing / New"
 
                                 item_id = 10
                                 row_has_items = False
@@ -261,6 +272,16 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                                     current_fg = fg_code.strip()
                                                 else:
                                                     current_fg = "FG500014"
+                                                
+                                                # Collect for comparison pivot
+                                                comparison_rows.append({
+                                                    "File": short_filename,
+                                                    "Category": file_type,
+                                                    "Agency": agency_val,
+                                                    "DR Code": dr_to_use,
+                                                    "FG Code": current_fg,
+                                                    "Quantity": qty_val
+                                                })
                                                 
                                                 target_ws.cell(row=current_r, column=2, value=order_num)
                                                 target_ws.cell(row=current_r, column=3, value="OR")
@@ -320,10 +341,18 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             "filename": safe_route_num + "_" + today_date + "_" + timestamp + "_Missing_DR.xlsx",
                             "orders": missing_items_created
                         })
+                    
+                    if comparison_rows:
+                        df_comp = pd.DataFrame(comparison_rows)
+                        # Pivot summary grouped by Agency, DR Code, FG Code
+                        df_pivot = df_comp.pivot_table(
+                            index=["File", "Category", "Agency", "DR Code", "FG Code"],
+                            values="Quantity",
+                            aggfunc="sum"
+                        ).reset_index()
+                        st.session_state.comparison_summary.append(df_pivot)
 
-                    total_processed += 1
-
-                st.success("✅ Batch Processing Complete!")
+                st.success("✅ Batch Processing & Comparison Complete!")
 
             except Exception as e:
                 st.error("❌ Error aagaya: " + str(e))
@@ -332,6 +361,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
 
 if st.session_state.processed_files:
     st.markdown("---")
+    st.markdown("### 📥 Download Generated Files")
     for item in st.session_state.processed_files:
         st.success("✅ Processed: " + item['name'] + " -> Orders created: " + str(item['orders']))
         if st.download_button(
@@ -342,6 +372,5 @@ if st.session_state.processed_files:
             key=item['filename']
         ):
             st.toast(f"🎉 '{item['filename']}' successfully download ho gaya hai!", icon="📥")
-    
-    st.markdown("---")
-    st.info("📊 **Batch Summary:** Total Output Files Generated: " + str(len(st.session_state.processed_files)))
+
+if st.session_state.comparis
