@@ -49,7 +49,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
         st.session_state.processed_files = []
         with st.spinner("⚡ Reading template and processing files... Please wait."):
             try:
-                # Private repository ke liye local file read karne ka tareeqa
+                # Template load check
                 try:
                     with open("Output.xlsx", "rb") as f:
                         template_bytes = f.read()
@@ -182,7 +182,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
                                 agency_val = int(agency_str)
                                 
-                                # --- ULTIMATE SCANNER FOR DR CODE IN THE ENTIRE ROW ---
+                                # --- ROBUST DR CODE CHECKER ---
                                 has_dr_code = False
                                 clean_dr = ""
                                 
@@ -191,11 +191,30 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     if pd.notna(cell_val):
                                         val_str = str(cell_val).replace('.0', '').strip()
                                         upper_str = val_str.upper()
-                                        # Check if cell contains 'DR' and numbers (e.g. DR10520) and is not just '0'
                                         if "DR" in upper_str and any(char.isdigit() for char in upper_str) and upper_str != "0":
                                             has_dr_code = True
                                             clean_dr = val_str
                                             break
+
+                                # First, check if this row actually has valid item quantities > 0
+                                row_has_items = False
+                                valid_row_quantities = []
+                                for c, fg_code in valid_cols:
+                                    if c >= total_col:
+                                        continue
+                                    sku_qty = df_input.iloc[r, c]
+                                    if pd.notna(sku_qty) and str(sku_qty).strip() != "":
+                                        try:
+                                            qty_val = float(sku_qty)
+                                            if qty_val > 0:
+                                                row_has_items = True
+                                                valid_row_quantities.append((c, fg_code, qty_val))
+                                        except ValueError:
+                                            pass
+
+                                # If no items/quantities in this row, skip it completely
+                                if not row_has_items:
+                                    continue
 
                                 # Route based on DR Code presence
                                 if has_dr_code:
@@ -218,54 +237,39 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     dr_to_use = f"NEW_CUST_{agency_val}"
 
                                 item_id = 10
-                                row_has_items = False
-                                
-                                for c, fg_code in valid_cols:
-                                    if c >= total_col:
-                                        continue
-                                        
-                                    sku_qty = df_input.iloc[r, c]
-                                    if pd.notna(sku_qty) and str(sku_qty).strip() != "":
-                                        try:
-                                            qty_val = float(sku_qty)
-                                            if qty_val > 0:
-                                                row_has_items = True
-                                                
-                                                upper_fg = str(fg_code).strip().upper()
-                                                current_fg = fg_code.strip() if upper_fg.startswith("FG") else "FG500014"
-                                                
-                                                target_ws.cell(row=current_r, column=2, value=order_num)
-                                                target_ws.cell(row=current_r, column=3, value="OR")
-                                                target_ws.cell(row=current_r, column=4, value="SO20")
-                                                target_ws.cell(row=current_r, column=5, value=10)
-                                                target_ws.cell(row=current_r, column=6, value=20)
-                                                target_ws.cell(row=current_r, column=7, value=dr_to_use)
-                                                target_ws.cell(row=current_r, column=8, value=dr_to_use)
-                                                target_ws.cell(row=current_r, column=9, value=ref_number)
-                                                target_ws.cell(row=current_r, column=10, value=today_date)
-                                                target_ws.cell(row=current_r, column=11, value=today_date)
-                                                target_ws.cell(row=current_r, column=15, value=item_id)
-                                                target_ws.cell(row=current_r, column=16, value=current_fg)
-                                                target_ws.cell(row=current_r, column=19, value=qty_val)
-                                                target_ws.cell(row=current_r, column=20, value="Bag")
-                                                target_ws.cell(row=current_r, column=22, value=2100)
-                                                target_ws.cell(row=current_r, column=26, value=str(route_num))
-                                                target_ws.cell(row=current_r, column=27, value=agency_val)
-                                                
-                                                item_id += 10
-                                                current_r += 1
-                                        except ValueError:
-                                            pass
-                                
-                                if row_has_items:
-                                    if has_dr_code:
-                                        valid_row = current_r
-                                        valid_order_num += 1
-                                        valid_items_created += 1
-                                    else:
-                                        missing_row = current_r
-                                        missing_order_num += 1
-                                        missing_items_created += 1
+                                for c, fg_code, qty_val in valid_row_quantities:
+                                    upper_fg = str(fg_code).strip().upper()
+                                    current_fg = fg_code.strip() if upper_fg.startswith("FG") else "FG500014"
+                                    
+                                    target_ws.cell(row=current_r, column=2, value=order_num)
+                                    target_ws.cell(row=current_r, column=3, value="OR")
+                                    target_ws.cell(row=current_r, column=4, value="SO20")
+                                    target_ws.cell(row=current_r, column=5, value=10)
+                                    target_ws.cell(row=current_r, column=6, value=20)
+                                    target_ws.cell(row=current_r, column=7, value=dr_to_use)
+                                    target_ws.cell(row=current_r, column=8, value=dr_to_use)
+                                    target_ws.cell(row=current_r, column=9, value=ref_number)
+                                    target_ws.cell(row=current_r, column=10, value=today_date)
+                                    target_ws.cell(row=current_r, column=11, value=today_date)
+                                    target_ws.cell(row=current_r, column=15, value=item_id)
+                                    target_ws.cell(row=current_r, column=16, value=current_fg)
+                                    target_ws.cell(row=current_r, column=19, value=qty_val)
+                                    target_ws.cell(row=current_r, column=20, value="Bag")
+                                    target_ws.cell(row=current_r, column=22, value=2100)
+                                    target_ws.cell(row=current_r, column=26, value=str(route_num))
+                                    target_ws.cell(row=current_r, column=27, value=agency_val)
+                                    
+                                    item_id += 10
+                                    current_r += 1
+
+                                if has_dr_code:
+                                    valid_row = current_r
+                                    valid_order_num += 1
+                                    valid_items_created += 1
+                                else:
+                                    missing_row = current_r
+                                    missing_order_num += 1
+                                    missing_items_created += 1
 
                     if valid_items_created > 0:
                         buf_valid = io.BytesIO()
