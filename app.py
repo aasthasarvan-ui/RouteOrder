@@ -219,7 +219,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     raw_dr = df_input.iloc[r, dr_code_col]
                                     if pd.notna(raw_dr) and str(raw_dr).strip() != "":
                                         clean_dr = str(raw_dr).replace('.0', '').strip()
-                                        if clean_dr.upper() != "NAN" and clean_dr != "":
+                                        if clean_dr.upper() not in ["NAN", "", "0", "0.0"]:
                                             has_dr_code = True
 
                                 # Route based on DR Code presence
