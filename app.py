@@ -74,7 +74,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     for r in range(df_input.shape[0]):
                         for c in range(df_input.shape[1]):
                             val = str(df_input.iloc[r, c]).strip().upper()
-                            if val.startswith("FG"):
+                            if "FG" in val:
                                 fg_row, fg_col = r, c
                                 break
                         if fg_row != -1:
@@ -100,7 +100,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Route Number Finding Logic (Scans ALL rows above FG row up to fg_row)
+                    # 3. Route Number Finding Logic
                     route_num = "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
                     
@@ -129,10 +129,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         valid_agency_count = 0
-                        header_val = str(df_input.iloc[fg_row, cSearch] if fg_row >= 0 else "").strip().upper()
-                        if any(s in header_val for s in ["S.NO", "SR", "NO.", "INDEX", "SEQ"]):
-                            continue 
-
                         extracted_numbers = []
                         for rCheck in range(fg_row + 1, df_input.shape[0]):
                             v = df_input.iloc[rCheck, cSearch]
@@ -142,12 +138,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     extracted_numbers.append(int(clean_v))
                                     valid_agency_count += 1
                         
-                        if len(extracted_numbers) > 2:
-                            is_sequential = all(extracted_numbers[i] < extracted_numbers[i+1] for i in range(len(extracted_numbers)-1))
-                            first_num = extracted_numbers[0]
-                            if is_sequential and (first_num == 1 or first_num == 0):
-                                continue 
-
                         if valid_agency_count > 0:
                             agency_col = cSearch
                             break
@@ -155,25 +145,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     if agency_col == -1 and fg_col > 0:
                         agency_col = fg_col - 1
 
-                    # 4.1 Strict DR Code Column Detection
-                    dr_code_col = -1
-                    for cSearch in range(fg_col - 1, -1, -1):
-                        sample_val = str(df_input.iloc[fg_row + 1, cSearch] if fg_row + 1 < df_input.shape[0] else "").strip().upper()
-                        if re.match(r'^DR\d+', sample_val):
-                            dr_code_col = cSearch
-                            break
-                        
-                        matched_count = 0
-                        for offset in range(1, min(4, df_input.shape[0] - fg_row)):
-                            v = str(df_input.iloc[fg_row + offset, cSearch]).strip().upper()
-                            if re.match(r'^DR\d+', v):
-                                matched_count += 1
-                        
-                        if matched_count > 0:
-                            dr_code_col = cSearch
-                            break
-
-                    # 5. Pure Valid FG Columns Collection (Strictly before total_col)
+                    # 5. Pure Valid FG Columns Collection
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
@@ -182,7 +154,8 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                         if any(kw in upper_fg for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
                             break
                         
-                        valid_cols.append((c, fg_code))
+                        if "FG" in upper_fg:
+                            valid_cols.append((c, fg_code))
 
                     # 6. Load Template for Valid & Missing DR Orders separately
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
@@ -209,34 +182,20 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
                                 agency_val = int(agency_str)
                                 
-                                # --- BULLETPROOF AUTO-SCANNING DR CODE CHECK ---
+                                # --- ULTIMATE SCANNER FOR DR CODE IN THE ENTIRE ROW ---
                                 has_dr_code = False
                                 clean_dr = ""
                                 
-                                # 1. Check via detected column first
-                                target_col_to_check = dr_code_col
-                                if target_col_to_check < 0 or target_col_to_check >= df_input.shape[1]:
-                                    target_col_to_check = agency_col - 1 if agency_col > 0 else 0
-
-                                if 0 <= target_col_to_check < df_input.shape[1]:
-                                    raw_dr = df_input.iloc[r, target_col_to_check]
-                                    if pd.notna(raw_dr):
-                                        potential_dr = str(raw_dr).replace('.0', '').strip()
-                                        if potential_dr.upper() not in ["NAN", "", "NONE", "NULL"] and potential_dr != "0" and "DR" in potential_dr.upper():
-                                            if any(char.isdigit() for char in potential_dr):
-                                                has_dr_code = True
-                                                clean_dr = potential_dr
-
-                                # 2. Fallback: Scan entire row before FG if column miss happened
-                                if not has_dr_code:
-                                    for c_idx in range(min(fg_col, df_input.shape[1])):
-                                        val_cell = df_input.iloc[r, c_idx]
-                                        if pd.notna(val_cell):
-                                            val_str = str(val_cell).replace('.0', '').strip()
-                                            if "DR" in val_str.upper() and any(char.isdigit() for char in val_str):
-                                                has_dr_code = True
-                                                clean_dr = val_str
-                                                break
+                                for c_scan in range(fg_col):
+                                    cell_val = df_input.iloc[r, c_scan]
+                                    if pd.notna(cell_val):
+                                        val_str = str(cell_val).replace('.0', '').strip()
+                                        upper_str = val_str.upper()
+                                        # Check if cell contains 'DR' and numbers (e.g. DR10520) and is not just '0'
+                                        if "DR" in upper_str and any(char.isdigit() for char in upper_str) and upper_str != "0":
+                                            has_dr_code = True
+                                            clean_dr = val_str
+                                            break
 
                                 # Route based on DR Code presence
                                 if has_dr_code:
@@ -273,10 +232,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                                 row_has_items = True
                                                 
                                                 upper_fg = str(fg_code).strip().upper()
-                                                if upper_fg.startswith("FG"):
-                                                    current_fg = fg_code.strip()
-                                                else:
-                                                    current_fg = "FG500014"
+                                                current_fg = fg_code.strip() if upper_fg.startswith("FG") else "FG500014"
                                                 
                                                 target_ws.cell(row=current_r, column=2, value=order_num)
                                                 target_ws.cell(row=current_r, column=3, value="OR")
