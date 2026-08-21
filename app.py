@@ -209,20 +209,34 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
                                 agency_val = int(agency_str)
                                 
-                                # --- ACCURATE DR CODE CHECK: "DR" + Numbers Required ---
+                                # --- BULLETPROOF AUTO-SCANNING DR CODE CHECK ---
                                 has_dr_code = False
                                 clean_dr = ""
-                                if dr_code_col >= 0:
-                                    raw_dr = df_input.iloc[r, dr_code_col]
+                                
+                                # 1. Check via detected column first
+                                target_col_to_check = dr_code_col
+                                if target_col_to_check < 0 or target_col_to_check >= df_input.shape[1]:
+                                    target_col_to_check = agency_col - 1 if agency_col > 0 else 0
+
+                                if 0 <= target_col_to_check < df_input.shape[1]:
+                                    raw_dr = df_input.iloc[r, target_col_to_check]
                                     if pd.notna(raw_dr):
-                                        clean_dr = str(raw_dr).replace('.0', '').strip()
-                                        
-                                        # Rule: Blank, NaN, ya single "0" na ho, aur "DR" ke sath numbers hone chahiye
-                                        is_not_empty = clean_dr.upper() not in ["NAN", "", "NONE", "NULL"] and clean_dr != "0"
-                                        has_numbers = any(char.isdigit() for char in clean_dr)
-                                        
-                                        if is_not_empty and ("DR" in clean_dr.upper()) and has_numbers:
-                                            has_dr_code = True
+                                        potential_dr = str(raw_dr).replace('.0', '').strip()
+                                        if potential_dr.upper() not in ["NAN", "", "NONE", "NULL"] and potential_dr != "0" and "DR" in potential_dr.upper():
+                                            if any(char.isdigit() for char in potential_dr):
+                                                has_dr_code = True
+                                                clean_dr = potential_dr
+
+                                # 2. Fallback: Scan entire row before FG if column miss happened
+                                if not has_dr_code:
+                                    for c_idx in range(min(fg_col, df_input.shape[1])):
+                                        val_cell = df_input.iloc[r, c_idx]
+                                        if pd.notna(val_cell):
+                                            val_str = str(val_cell).replace('.0', '').strip()
+                                            if "DR" in val_str.upper() and any(char.isdigit() for char in val_str):
+                                                has_dr_code = True
+                                                clean_dr = val_str
+                                                break
 
                                 # Route based on DR Code presence
                                 if has_dr_code:
@@ -312,7 +326,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
 
                     if missing_items_created > 0:
                         buf_missing = io.BytesIO()
-                        wb_missing.properties.creator = "Microsoft Excel" # <--- Fixed: wb_missing saved properly here
+                        wb_missing.properties.creator = "Microsoft Excel"
                         wb_missing.save(buf_missing)
                         buf_missing.seek(0)
                         
