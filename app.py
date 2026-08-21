@@ -57,9 +57,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     st.error("❌ 'Output.xlsx' template file repository mein nahi mili. Kripya template file ko GitHub repo ke main folder mein upload karein.")
                     st.stop()
                 
-                total_processed = 0
-                total_orders_created = 0
-                
                 today_date = datetime.date.today().strftime("%Y-%m-%d")
                 timestamp = datetime.datetime.now().strftime("%H%M%S")
 
@@ -212,16 +209,20 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
                                 agency_val = int(agency_str)
                                 
-                                                                # Check if DR Code exists for this row
+                                # --- ACCURATE DR CODE CHECK: "DR" + Numbers Required ---
                                 has_dr_code = False
                                 clean_dr = ""
                                 if dr_code_col >= 0:
                                     raw_dr = df_input.iloc[r, dr_code_col]
-                                    if pd.notna(raw_dr) and str(raw_dr).strip() != "":
+                                    if pd.notna(raw_dr):
                                         clean_dr = str(raw_dr).replace('.0', '').strip()
-                                        if clean_dr.upper() != "NAN" and clean_dr != "": # <--- Yahan change karna hai
+                                        
+                                        # Rule: Blank, NaN, ya single "0" na ho, aur "DR" ke sath numbers hone chahiye
+                                        is_not_empty = clean_dr.upper() not in ["NAN", "", "NONE", "NULL"] and clean_dr != "0"
+                                        has_numbers = any(char.isdigit() for char in clean_dr)
+                                        
+                                        if is_not_empty and ("DR" in clean_dr.upper()) and has_numbers:
                                             has_dr_code = True
-
 
                                 # Route based on DR Code presence
                                 if has_dr_code:
@@ -311,7 +312,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
 
                     if missing_items_created > 0:
                         buf_missing = io.BytesIO()
-                        wb_valid.properties.creator = "Microsoft Excel"
+                        wb_missing.properties.creator = "Microsoft Excel" # <--- Fixed: wb_missing saved properly here
                         wb_missing.save(buf_missing)
                         buf_missing.seek(0)
                         
@@ -321,8 +322,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             "filename": safe_route_num + "_" + today_date + "_" + timestamp + "_Missing_DR.xlsx",
                             "orders": missing_items_created
                         })
-
-                    total_processed += 1
 
                 st.success("✅ Batch Processing Complete!")
 
