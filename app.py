@@ -125,25 +125,22 @@ if st.button("🚀 Process Batch Orders", type="primary"):
 
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
-                    # 4. Smart Agency Detection
+                    # 4. Accurate Agency Detection (Scans columns before FG to find numbers 1 to 9999)
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
-                        valid_agency_count = 0
-                        extracted_numbers = []
-                        for rCheck in range(fg_row + 1, df_input.shape[0]):
+                        valid_count = 0
+                        for rCheck in range(fg_row + 1, min(fg_row + 15, df_input.shape[0])):
                             v = df_input.iloc[rCheck, cSearch]
-                            if pd.notna(v) and str(v).strip() != "":
-                                clean_v = str(v).replace('.0', '').strip()
-                                if clean_v.isdigit() and 1 <= len(clean_v) <= 5:
-                                    extracted_numbers.append(int(clean_v))
-                                    valid_agency_count += 1
-                        
-                        if valid_agency_count > 0:
+                            if pd.notna(v):
+                                s_val = str(v).replace('.0', '').strip()
+                                if s_val.isdigit() and 1 <= len(s_val) <= 4:
+                                    valid_count += 1
+                        if valid_count >= 3:  # Agar kam se kam 3 rows mein agency numbers mil gaye
                             agency_col = cSearch
                             break
 
-                    if agency_col == -1 and fg_col > 0:
-                        agency_col = fg_col - 1
+                    if agency_col == -1:
+                        agency_col = 1  # Fallback for standard layout
 
                     # 5. Pure Valid FG Columns Collection
                     valid_cols = []
@@ -191,7 +188,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     if pd.notna(cell_val):
                                         val_str = str(cell_val).replace('.0', '').strip()
                                         upper_str = val_str.upper()
-                                        # Check if it contains "DR" and numbers, and is strictly NOT "0"
                                         if "DR" in upper_str and any(char.isdigit() for char in upper_str) and upper_str != "0":
                                             has_dr_code = True
                                             clean_dr = val_str
