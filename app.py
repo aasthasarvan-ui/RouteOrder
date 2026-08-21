@@ -36,33 +36,37 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📊 Sales Order Automation Hub")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, view KPI metrics, and export audit reports.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, view KPIs, and track skipped/invalid rows.")
 st.markdown("---")
 
-# Session State for persistent buttons and summaries
+# Session State for persistent buttons and logs
 if 'processed_files' not in st.session_state:
     st.session_state.processed_files = []
 if 'comparison_summary' not in st.session_state:
     st.session_state.comparison_summary = []
+if 'skipped_rows_log' not in st.session_state:
+    st.session_state.skipped_rows_log = []
 if 'kpi_data' not in st.session_state:
-    st.session_state.kpi_data = {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0}
+    st.session_state.kpi_data = {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0, "skipped_count": 0}
 
 # File Upload Section
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if st.button("🚀 Process Batch Orders & Audit", type="primary"):
+if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
     if uploaded_inputs:
         st.session_state.processed_files = []
         st.session_state.comparison_summary = []
+        st.session_state.skipped_rows_log = []
         
         total_input_qty = 0
         total_gen_qty = 0
         total_valid_orders = 0
         total_missing_orders = 0
+        total_skipped_rows = 0
         
-        with st.spinner("⚡ Reading template, processing files, and building audit reports... Please wait."):
+        with st.spinner("⚡ Reading files, processing orders, and checking for exceptions... Please wait."):
             try:
                 # Template load check
                 try:
@@ -96,6 +100,7 @@ if st.button("🚀 Process Batch Orders & Audit", type="primary"):
                             break
 
                     if fg_row == -1:
+                        st.warning(f"⚠️ '{short_filename}' mein 'FG' header nahi mila. File skip ho rahi hai.")
                         continue
 
                     # 2. Strict Total/Sum Column Detection
@@ -208,121 +213,147 @@ if st.button("🚀 Process Batch Orders & Audit", type="primary"):
 
                     for r in range(fg_row + 1, df_input.shape[0]):
                         agency = df_input.iloc[r, agency_col] if agency_col >= 0 else None
-                        if pd.notna(agency) and str(agency).strip() != "":
-                            agency_str = str(agency).replace('.0','').strip()
-                            if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
-                                agency_val = int(agency_str)
-                                
-                                # --- ROBUST DR CODE & ZERO HANDLER ---
-                                has_dr_code = False
-                                clean_dr = ""
-                                
-                                if dr_code_col >= 0 and dr_code_col < df_input.shape[1]:
-                                    raw_dr = df_input.iloc[r, dr_code_col]
-                                    if pd.notna(raw_dr):
-                                        val_str = str(raw_dr).replace('.0', '').strip()
-                                        upper_str = val_str.upper()
-                                        if "DR" in upper_str and any(char.isdigit() for char in upper_str) and upper_str != "0":
-                                            has_dr_code = True
-                                            clean_dr = val_str
+                        
+                        # Exception Logging: Check if agency is missing or invalid
+                        if pd.isna(agency) or str(agency).strip() in ["", "nan", "None"]:
+                            continue
+                        
+                        agency_str = str(agency).replace('.0','').strip()
+                        if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
+                            # Log skipped row due to invalid agency
+                            st.session_state.skipped_rows_log.append({
+                                "File Name": short_filename,
+                                "Row Index": r + 1,
+                                "Agency Value": str(agency),
+                                "Reason": "Invalid or Non-numeric Agency Number"
+                            })
+                            total_skipped_rows += 1
+                            continue
 
-                                if not has_dr_code:
-                                    for c_scan in range(fg_col):
-                                        cell_val = df_input.iloc[r, c_scan]
-                                        if pd.notna(cell_val):
-                                            val_str = str(cell_val).replace('.0', '').strip()
-                                            upper_str = val_str.upper()
-                                            if "DR" in upper_str and any(char.isdigit() for char in upper_str) and upper_str != "0":
-                                                has_dr_code = True
-                                                clean_dr = val_str
-                                                break
+                        agency_val = int(agency_str)
+                        
+                        # --- ROBUST DR CODE & ZERO HANDLER ---
+                        has_dr_code = False
+                        clean_dr = ""
+                        
+                        if dr_code_col >= 0 and dr_code_col < df_input.shape[1]:
+                            raw_dr = df_input.iloc[r, dr_code_col]
+                            if pd.notna(raw_dr):
+                                val_str = str(raw_dr).replace('.0', '').strip()
+                                upper_str = val_str.upper()
+                                if "DR" in upper_str and any(char.isdigit() for char in upper_str) and upper_str != "0":
+                                    has_dr_code = True
+                                    clean_dr = val_str
 
-                                # Route based on DR Code presence
-                                if has_dr_code:
-                                    agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
-                                    current_seq = agency_counts_valid[agency_val]
-                                    ref_number = f"RT-{route_num}-{agency_val}-{today_date}" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-{current_seq}"
-                                    
-                                    target_ws = ws_valid
-                                    current_r = valid_row
-                                    order_num = valid_order_num
-                                    dr_to_use = clean_dr
-                                    file_category = "Valid DR"
-                                else:
-                                    agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
-                                    current_seq = agency_counts_missing[agency_val]
-                                    ref_number = f"RT-{route_num}-{agency_val}-{today_date}-NEW" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-NEW-{current_seq}"
-                                    
-                                    target_ws = ws_missing
-                                    current_r = missing_row
-                                    order_num = missing_order_num
-                                    dr_to_use = f"NEW_CUST_{agency_val}"
-                                    file_category = "Missing DR"
+                        if not has_dr_code:
+                            for c_scan in range(fg_col):
+                                cell_val = df_input.iloc[r, c_scan]
+                                if pd.notna(cell_val):
+                                    val_str = str(cell_val).replace('.0', '').strip()
+                                    upper_str = val_str.upper()
+                                    if "DR" in upper_str and any(char.isdigit() for char in upper_str) and upper_str != "0":
+                                        has_dr_code = True
+                                        clean_dr = val_str
+                                        break
 
-                                item_id = 10
-                                row_has_items = False
-                                
-                                for c, fg_code in valid_cols:
-                                    if c >= total_col:
-                                        continue
-                                        
-                                    sku_qty = df_input.iloc[r, c]
-                                    if pd.notna(sku_qty) and str(sku_qty).strip() != "":
-                                        try:
-                                            qty_val = float(sku_qty)
-                                            if qty_val > 0:
-                                                row_has_items = True
-                                                
-                                                upper_fg = str(fg_code).strip().upper()
-                                                current_fg = fg_code.strip() if upper_fg.startswith("FG") else "FG500014"
-                                                
-                                                total_input_qty += qty_val
-                                                total_gen_qty += qty_val
-                                                
-                                                file_comparison_rows.append({
-                                                    "File Name": short_filename,
-                                                    "Status": file_category,
-                                                    "Agency": agency_val,
-                                                    "DR Code": dr_to_use,
-                                                    "FG Code": current_fg,
-                                                    "Input Qty": qty_val,
-                                                    "Generated Qty": qty_val
-                                                })
-                                                
-                                                target_ws.cell(row=current_r, column=2, value=order_num)
-                                                target_ws.cell(row=current_r, column=3, value="OR")
-                                                target_ws.cell(row=current_r, column=4, value="SO20")
-                                                target_ws.cell(row=current_r, column=5, value=10)
-                                                target_ws.cell(row=current_r, column=6, value=20)
-                                                target_ws.cell(row=current_r, column=7, value=dr_to_use)
-                                                target_ws.cell(row=current_r, column=8, value=dr_to_use)
-                                                target_ws.cell(row=current_r, column=9, value=ref_number)
-                                                target_ws.cell(row=current_r, column=10, value=today_date)
-                                                target_ws.cell(row=current_r, column=11, value=today_date)
-                                                target_ws.cell(row=current_r, column=15, value=item_id)
-                                                target_ws.cell(row=current_r, column=16, value=current_fg)
-                                                target_ws.cell(row=current_r, column=19, value=qty_val)
-                                                target_ws.cell(row=current_r, column=20, value="Bag")
-                                                target_ws.cell(row=current_r, column=22, value=2100)
-                                                target_ws.cell(row=current_r, column=26, value=str(route_num))
-                                                target_ws.cell(row=current_r, column=27, value=agency_val)
-                                                
-                                                item_id += 10
-                                                current_r += 1
-                                        except ValueError:
-                                            pass
-                                
-                                if row_has_items:
-                                    if has_dr_code:
-                                        valid_row = current_r
-                                        valid_order_num += 1
-                                        valid_items_created += 1
-                                        total_valid_orders += 1
-                                    else:
-                                        missing_row = current_r
-                                        missing_order_num += 1
-                                        missing_items_created += 1
-                                        total_missing_orders += 1
+                        # Check item quantities for this row
+                        row_has_items = False
+                        valid_row_quantities = []
+                        for c, fg_code in valid_cols:
+                            if c >= total_col:
+                                continue
+                            sku_qty = df_input.iloc[r, c]
+                            if pd.notna(sku_qty) and str(sku_qty).strip() != "":
+                                try:
+                                    qty_val = float(sku_qty)
+                                    if qty_val > 0:
+                                        row_has_items = True
+                                        valid_row_quantities.append((c, fg_code, qty_val))
+                                except ValueError:
+                                    pass
+
+                        # Exception Logging: If agency is valid but has no quantities/items
+                        if not row_has_items:
+                            st.session_state.skipped_rows_log.append({
+                                "File Name": short_filename,
+                                "Row Index": r + 1,
+                                "Agency Value": agency_val,
+                                "Reason": "Skipped: Zero or Blank Quantities across all SKUs"
+                            })
+                            total_skipped_rows += 1
+                            continue
+
+                        # Route based on DR Code presence
+                        if has_dr_code:
+                            agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
+                            current_seq = agency_counts_valid[agency_val]
+                            ref_number = f"RT-{route_num}-{agency_val}-{today_date}" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-{current_seq}"
+                            
+                            target_ws = ws_valid
+                            current_r = valid_row
+                            order_num = valid_order_num
+                            dr_to_use = clean_dr
+                            file_category = "Valid DR"
+                        else:
+                            agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
+                            current_seq = agency_counts_missing[agency_val]
+                            ref_number = f"RT-{route_num}-{agency_val}-{today_date}-NEW" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-NEW-{current_seq}"
+                            
+                            target_ws = ws_missing
+                            current_r = missing_row
+                            order_num = missing_order_num
+                            dr_to_use = f"NEW_CUST_{agency_val}"
+                            file_category = "Missing DR"
+
+                        item_id = 10
+                        for c, fg_code, qty_val in valid_row_quantities:
+                            upper_fg = str(fg_code).strip().upper()
+                            current_fg = fg_code.strip() if upper_fg.startswith("FG") else "FG500014"
+                            
+                            total_input_qty += qty_val
+                            total_gen_qty += qty_val
+                            
+                            file_comparison_rows.append({
+                                "File Name": short_filename,
+                                "Status": file_category,
+                                "Agency": agency_val,
+                                "DR Code": dr_to_use,
+                                "FG Code": current_fg,
+                                "Input Qty": qty_val,
+                                "Generated Qty": qty_val
+                            })
+                            
+                            target_ws.cell(row=current_r, column=2, value=order_num)
+                            target_ws.cell(row=current_r, column=3, value="OR")
+                            target_ws.cell(row=current_r, column=4, value="SO20")
+                            target_ws.cell(row=current_r, column=5, value=10)
+                            target_ws.cell(row=current_r, column=6, value=20)
+                            target_ws.cell(row=current_r, column=7, value=dr_to_use)
+                            target_ws.cell(row=current_r, column=8, value=dr_to_use)
+                            target_ws.cell(row=current_r, column=9, value=ref_number)
+                            target_ws.cell(row=current_r, column=10, value=today_date)
+                            target_ws.cell(row=current_r, column=11, value=today_date)
+                            target_ws.cell(row=current_r, column=15, value=item_id)
+                            target_ws.cell(row=current_r, column=16, value=current_fg)
+                            target_ws.cell(row=current_r, column=19, value=qty_val)
+                            target_ws.cell(row=current_r, column=20, value="Bag")
+                            target_ws.cell(row=current_r, column=22, value=2100)
+                            target_ws.cell(row=current_r, column=26, value=str(route_num))
+                            target_ws.cell(row=current_r, column=27, value=agency_val)
+                            
+                            item_id += 10
+                            current_r += 1
+
+                        if has_dr_code:
+                            valid_row = current_r
+                            valid_order_num += 1
+                            valid_items_created += 1
+                            total_valid_orders += 1
+                        else:
+                            missing_row = current_r
+                            missing_order_num += 1
+                            missing_items_created += 1
+                            total_missing_orders += 1
 
                     if valid_items_created > 0:
                         buf_valid = io.BytesIO()
@@ -365,26 +396,28 @@ if st.button("🚀 Process Batch Orders & Audit", type="primary"):
                     "input_qty": total_input_qty,
                     "gen_qty": total_gen_qty,
                     "valid_count": total_valid_orders,
-                    "missing_count": total_missing_orders
+                    "missing_count": total_missing_orders,
+                    "skipped_count": total_skipped_rows
                 }
 
-                st.success("✅ Batch Processing, KPI Analysis & Audit Complete!")
+                st.success("✅ Batch Processing, Exception Logging & Audit Complete!")
 
             except Exception as e:
                 st.error("❌ Error aagaya: " + str(e))
     else:
         st.warning("⚠️ Kripya pehle demand files upload karein!")
 
-# Display KPI Summary Cards if processed
-if st.session_state.processed_files:
+# Display KPI Summary Cards including Skipped rows count
+if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("---")
     st.markdown("### 📈 Batch Performance & KPI Summary")
     kpi = st.session_state.kpi_data
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total Input Qty", f"{kpi['input_qty']:,.0f}")
-    col2.metric("Total Generated Qty", f"{kpi['gen_qty']:,.0f}")
+    col2.metric("Generated Qty", f"{kpi['gen_qty']:,.0f}")
     col3.metric("Valid Orders", kpi['valid_count'])
-    col4.metric("Missing / New Orders", kpi['missing_count'])
+    col4.metric("Missing Orders", kpi['missing_count'])
+    col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
 
     st.markdown("---")
     st.markdown("### 📥 Download Generated Files")
@@ -399,15 +432,21 @@ if st.session_state.processed_files:
         ):
             st.toast(f"🎉 '{item['filename']}' successfully download ho gaya hai!", icon="📥")
 
+# Display Skipped / Invalid Rows Exception Logger Table
+if st.session_state.skipped_rows_log:
+    st.markdown("---")
+    st.markdown("### ⚠️ Skipped / Invalid Rows Exception Log")
+    st.markdown("Yeh table un rows ko dikhati hai jo data mein kamiyon (jaise blank quantities ya invalid agency number) ki wajah se skip ki gayi hain:")
+    df_skipped = pd.DataFrame(st.session_state.skipped_rows_log)
+    st.dataframe(df_skipped, use_container_width=True)
+
 if st.session_state.comparison_summary:
     st.markdown("---")
     st.markdown("### 📊 Audit Reconciliation & Comparison Pivot")
-    st.markdown("Yahan aap **Input Qty** aur **Generated Qty** check kar sakte hain (Difference 0 matlab sab kuch ekdum safe aur accurate hai):")
     
     combined_pivot = pd.concat(st.session_state.comparison_summary, ignore_index=True)
     st.dataframe(combined_pivot, use_container_width=True)
 
-    # Export Audit Report Button (Feature 4)
     audit_csv = combined_pivot.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Download Audit Reconciliation Report (CSV)",
