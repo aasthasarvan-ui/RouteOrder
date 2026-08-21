@@ -49,7 +49,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
         st.session_state.processed_files = []
         with st.spinner("⚡ Reading template and processing files... Please wait."):
             try:
-                # Private repository ke liye local file read karne ka tareeqa
+                # --- TEMPLATE LOAD CHECK ---
                 try:
                     with open("Output.xlsx", "rb") as f:
                         template_bytes = f.read()
@@ -58,8 +58,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     st.stop()
                 
                 total_processed = 0
-                total_orders_created = 0
-                
                 today_date = datetime.date.today().strftime("%Y-%m-%d")
                 timestamp = datetime.datetime.now().strftime("%H%M%S")
 
@@ -103,7 +101,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Route Number Finding Logic (Scans ALL rows above FG row up to fg_row)
+                    # 3. Route Number Finding Logic
                     route_num = "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
                     
@@ -176,7 +174,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Pure Valid FG Columns Collection (Strictly before total_col)
+                    # 5. Pure Valid FG Columns Collection
                     valid_cols = []
                     for c in range(fg_col, total_col):
                         fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
@@ -193,6 +191,31 @@ if st.button("🚀 Process Batch Orders", type="primary"):
 
                     wb_missing = openpyxl.load_workbook(io.BytesIO(template_bytes))
                     ws_missing = wb_missing["Order Data"] if "Order Data" in wb_missing.sheetnames else wb_missing.active
+
+                    # --- HEADER SAFEGUARD: Ensure Row 4 and Row 5 are strictly maintained ---
+                    header_map_row4 = {
+                        2: "HEADER.SALESORDER", 3: "HEADER.SALESORDERTYPE", 4: "HEADER.SALESORGANIZATION",
+                        5: "HEADER.DISTRIBUTIONCHANNEL", 6: "HEADER.ORGANIZATIONDIVISION", 7: "HEADER.SOLDTOPARTY",
+                        8: "HEADER.SHIPTOPARTY", 9: "HEADER.PURCHASEORDERBYCUSTOMER", 10: "HEADER.CUSTOMERPURCHASEORDERDATE",
+                        15: "ITEM.SALESORDERITEM", 16: "ITEM.MATERIAL", 19: "ITEM.REQUESTEDQUANTITY",
+                        20: "ITEM.REQUESTEDQUANTITYUNIT", 22: "ITEM.PLANT", 26: "SCHEDULELINE.SCHEDULELINE",
+                        27: "SCHEDULELINE.REQUESTEDQUANTITY"
+                    }
+
+                    header_map_row5 = {
+                        2: "*Sales Order (Temporary ID)", 3: "*Sales Order Type", 4: "*Sales Organization",
+                        5: "*Distribution Channel", 6: "*Division", 7: "*Sold-to Party",
+                        8: "Ship-to Party", 9: "Customer Reference", 10: "Customer Refernce Date",
+                        15: "*Item (Temporary ID)", 16: "*Product", 19: "*Requested Quantity",
+                        20: "Requested Quantity Unit", 22: "Plant", 26: "Schedule Line",
+                        27: "Requested Quantity"
+                    }
+
+                    for ws_target in [ws_valid, ws_missing]:
+                        for col_idx, val in header_map_row4.items():
+                            ws_target.cell(row=4, column=col_idx, value=val)
+                        for col_idx, val in header_map_row5.items():
+                            ws_target.cell(row=5, column=col_idx, value=val)
 
                     valid_row = 6
                     missing_row = 6
@@ -212,7 +235,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
                                 agency_val = int(agency_str)
                                 
-                                # Check if DR Code exists for this row
                                 has_dr_code = False
                                 clean_dr = ""
                                 if dr_code_col >= 0:
@@ -222,7 +244,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                         if clean_dr.upper() != "NAN" and clean_dr != "":
                                             has_dr_code = True
 
-                                # Route based on DR Code presence
                                 if has_dr_code:
                                     agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
                                     current_seq = agency_counts_valid[agency_val]
