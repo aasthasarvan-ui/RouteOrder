@@ -182,7 +182,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
                                 agency_val = int(agency_str)
                                 
-                                # --- ROBUST DR CODE CHECKER ---
+                                # --- FOOLPROOF DR CODE & ZERO HANDLER ---
                                 has_dr_code = False
                                 clean_dr = ""
                                 
@@ -191,12 +191,13 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                     if pd.notna(cell_val):
                                         val_str = str(cell_val).replace('.0', '').strip()
                                         upper_str = val_str.upper()
+                                        # Check if it contains "DR" and numbers, and is strictly NOT "0"
                                         if "DR" in upper_str and any(char.isdigit() for char in upper_str) and upper_str != "0":
                                             has_dr_code = True
                                             clean_dr = val_str
                                             break
 
-                                # First, check if this row actually has valid item quantities > 0
+                                # Check item quantities for this row
                                 row_has_items = False
                                 valid_row_quantities = []
                                 for c, fg_code in valid_cols:
@@ -212,7 +213,6 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                                         except ValueError:
                                             pass
 
-                                # If no items/quantities in this row, skip it completely
                                 if not row_has_items:
                                     continue
 
