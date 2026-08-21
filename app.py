@@ -212,15 +212,16 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                             if agency_str.isdigit() and 1 <= len(agency_str) <= 5:
                                 agency_val = int(agency_str)
                                 
-                                # Check if DR Code exists for this row
+                                                                # Check if DR Code exists for this row
                                 has_dr_code = False
                                 clean_dr = ""
                                 if dr_code_col >= 0:
                                     raw_dr = df_input.iloc[r, dr_code_col]
                                     if pd.notna(raw_dr) and str(raw_dr).strip() != "":
                                         clean_dr = str(raw_dr).replace('.0', '').strip()
-                                        
-                if clean_dr.upper() != "NAN" and clean_dr != "": has_dr_code = True
+                                        if clean_dr.upper() != "NAN" and clean_dr != "": # <--- Yahan change karna hai
+                                            has_dr_code = True
+
 
                                 # Route based on DR Code presence
                                 if has_dr_code:
