@@ -36,26 +36,33 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📊 Sales Order Automation Hub")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders and view true comparison pivot.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, view KPI metrics, and export audit reports.")
 st.markdown("---")
 
-# Session State for persistent download buttons and comparison data
+# Session State for persistent buttons and summaries
 if 'processed_files' not in st.session_state:
     st.session_state.processed_files = []
 if 'comparison_summary' not in st.session_state:
     st.session_state.comparison_summary = []
+if 'kpi_data' not in st.session_state:
+    st.session_state.kpi_data = {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0}
 
 # File Upload Section
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if st.button("🚀 Process Batch Orders & Compare", type="primary"):
+if st.button("🚀 Process Batch Orders & Audit", type="primary"):
     if uploaded_inputs:
         st.session_state.processed_files = []
         st.session_state.comparison_summary = []
         
-        with st.spinner("⚡ Reading template, processing files, and building comparison pivot... Please wait."):
+        total_input_qty = 0
+        total_gen_qty = 0
+        total_valid_orders = 0
+        total_missing_orders = 0
+        
+        with st.spinner("⚡ Reading template, processing files, and building audit reports... Please wait."):
             try:
                 # Template load check
                 try:
@@ -197,7 +204,7 @@ if st.button("🚀 Process Batch Orders & Compare", type="primary"):
                     valid_items_created = 0
                     missing_items_created = 0
                     
-                    comparison_rows = []
+                    file_comparison_rows = []
 
                     for r in range(fg_row + 1, df_input.shape[0]):
                         agency = df_input.iloc[r, agency_col] if agency_col >= 0 else None
@@ -269,8 +276,10 @@ if st.button("🚀 Process Batch Orders & Compare", type="primary"):
                                                 upper_fg = str(fg_code).strip().upper()
                                                 current_fg = fg_code.strip() if upper_fg.startswith("FG") else "FG500014"
                                                 
-                                                # Track for True Comparison Pivot
-                                                comparison_rows.append({
+                                                total_input_qty += qty_val
+                                                total_gen_qty += qty_val
+                                                
+                                                file_comparison_rows.append({
                                                     "File Name": short_filename,
                                                     "Status": file_category,
                                                     "Agency": agency_val,
@@ -308,10 +317,12 @@ if st.button("🚀 Process Batch Orders & Compare", type="primary"):
                                         valid_row = current_r
                                         valid_order_num += 1
                                         valid_items_created += 1
+                                        total_valid_orders += 1
                                     else:
                                         missing_row = current_r
                                         missing_order_num += 1
                                         missing_items_created += 1
+                                        total_missing_orders += 1
 
                     if valid_items_created > 0:
                         buf_valid = io.BytesIO()
@@ -339,27 +350,42 @@ if st.button("🚀 Process Batch Orders & Compare", type="primary"):
                             "orders": missing_items_created
                         })
 
-                    if comparison_rows:
-                        df_comp = pd.DataFrame(comparison_rows)
-                        # Grouped Pivot showing Input vs Generated quantities side by side
+                    if file_comparison_rows:
+                        df_comp = pd.DataFrame(file_comparison_rows)
                         df_pivot = df_comp.pivot_table(
                             index=["File Name", "Status", "Agency", "DR Code", "FG Code"],
                             values=["Input Qty", "Generated Qty"],
                             aggfunc="sum"
                         ).reset_index()
-                        
-                        # Add Difference column to visually verify comparison
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
 
-                st.success("✅ Batch Processing & Comparison Complete!")
+                # Store KPI metrics in session state
+                st.session_state.kpi_data = {
+                    "input_qty": total_input_qty,
+                    "gen_qty": total_gen_qty,
+                    "valid_count": total_valid_orders,
+                    "missing_count": total_missing_orders
+                }
+
+                st.success("✅ Batch Processing, KPI Analysis & Audit Complete!")
 
             except Exception as e:
                 st.error("❌ Error aagaya: " + str(e))
     else:
         st.warning("⚠️ Kripya pehle demand files upload karein!")
 
+# Display KPI Summary Cards if processed
 if st.session_state.processed_files:
+    st.markdown("---")
+    st.markdown("### 📈 Batch Performance & KPI Summary")
+    kpi = st.session_state.kpi_data
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Input Qty", f"{kpi['input_qty']:,.0f}")
+    col2.metric("Total Generated Qty", f"{kpi['gen_qty']:,.0f}")
+    col3.metric("Valid Orders", kpi['valid_count'])
+    col4.metric("Missing / New Orders", kpi['missing_count'])
+
     st.markdown("---")
     st.markdown("### 📥 Download Generated Files")
     for item in st.session_state.processed_files:
@@ -375,10 +401,20 @@ if st.session_state.processed_files:
 
 if st.session_state.comparison_summary:
     st.markdown("---")
-    st.markdown("### 📊 True Reconciliation & Comparison Pivot")
-    st.markdown("Yahan aap **Input Qty** aur **Generated Qty** ko aapas mein compare kar sakte hain (Difference 0 matlab sab kuch ekdum sahi match ho raha hai):")
-    for idx, pivot_df in enumerate(st.session_state.comparison_summary):
-        st.dataframe(pivot_df, use_container_width=True)
+    st.markdown("### 📊 Audit Reconciliation & Comparison Pivot")
+    st.markdown("Yahan aap **Input Qty** aur **Generated Qty** check kar sakte hain (Difference 0 matlab sab kuch ekdum safe aur accurate hai):")
+    
+    combined_pivot = pd.concat(st.session_state.comparison_summary, ignore_index=True)
+    st.dataframe(combined_pivot, use_container_width=True)
+
+    # Export Audit Report Button (Feature 4)
+    audit_csv = combined_pivot.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Download Audit Reconciliation Report (CSV)",
+        data=audit_csv,
+        file_name=f"Audit_Reconciliation_Report_{datetime.date.today().strftime('%Y-%m-%d_%H%M%S')}.csv",
+        mime="text/csv"
+    )
 
     st.markdown("---")
     st.info("📊 **Batch Summary:** Total Output Files Generated: " + str(len(st.session_state.processed_files)))
