@@ -90,7 +90,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                     total_col = df_input.shape[1]
                     for cSearch in range(fg_col, df_input.shape[1]):
                         is_total = False
-                        for scan_r in range(max(0, fg_row - 10), min(fg_row + 5, df_input.shape[0])):
+                        for scan_r in range(max(0, fg_row - 10), min(fg_row + 3, df_input.shape[0])):
                             cell_val = str(df_input.iloc[scan_r, cSearch]).strip().upper()
                             if any(kw in cell_val for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
                                 is_total = True
