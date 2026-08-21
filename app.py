@@ -299,6 +299,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                         buf_valid = io.BytesIO()
                         wb_valid.save(buf_valid)
                         buf_valid.seek(0)
+                        wb_valid.properties.creator = "Microsoft Excel"
                         st.session_state.processed_files.append({
                             "name": short_filename + " (Valid DR)",
                             "data": buf_valid.getvalue(),
@@ -310,6 +311,7 @@ if st.button("🚀 Process Batch Orders", type="primary"):
                         buf_missing = io.BytesIO()
                         wb_missing.save(buf_missing)
                         buf_missing.seek(0)
+                        wb_valid.properties.creator = "Microsoft Excel"
                         st.session_state.processed_files.append({
                             "name": short_filename + " (Missing DR / New Customer)",
                             "data": buf_missing.getvalue(),
