@@ -104,7 +104,7 @@ st.sidebar.subheader("📱 WhatsApp Notification")
 whatsapp_num = st.sidebar.text_input("WhatsApp Number (e.g., 919876543210)")
 
 st.title("📊 Enterprise Sales Order Automation Hub")
-st.markdown("Upload multiple **Inbound Demand Files** with Pre-flight checks, Fuzzy agency parsing, Visual charts, and SQLite trends.")
+st.markdown("Upload multiple **Inbound Demand Files** with Pre-flight checks, Clean Agency parsing, Visual charts, and SQLite trends.")
 st.markdown("---")
 
 # Session State Initialization
@@ -119,7 +119,7 @@ if 'kpi_data' not in st.session_state:
 
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
 
-# --- FEATURE 1: Pre-flight File Health Check ---
+# --- Pre-flight File Health Check ---
 if uploaded_inputs:
     with st.expander("🔍 Pre-flight File Health Check Report", expanded=False):
         preflight_logs = []
@@ -153,7 +153,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
         total_missing_orders = 0
         total_skipped_rows = 0
         
-        with st.spinner("⚡ Reading files, applying fuzzy regex cleaning, and processing orders... Please wait."):
+        with st.spinner("⚡ Reading files, processing orders, and checking for exceptions... Please wait."):
             try:
                 try:
                     with open("Output.xlsx", "rb") as f:
@@ -224,7 +224,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
 
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
-                    # 4. Smart Agency Detection
+                    # 4. Smart Agency Detection (Original Logic)
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         valid_count = 0
@@ -282,19 +282,19 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         if pd.isna(agency) or str(agency).strip() in ["", "nan", "None"]:
                             continue
                         
-                        # --- FEATURE 2: Advanced Fuzzy / Regex Auto-Correction for Agency ---
-                        agency_digits = re.sub(r'\D', '', str(agency))
-                        if not agency_digits or not (1 <= len(agency_digits) <= 5):
+                        # --- Restored Original Exact Agency String Cleaning ---
+                        agency_str = str(agency).replace('.0','').strip()
+                        if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
                             st.session_state.skipped_rows_log.append({
                                 "File Name": short_filename,
                                 "Row Index": r + 1,
                                 "Agency Value": str(agency),
-                                "Reason": "Fuzzy Parser: Invalid or Non-numeric Agency Number"
+                                "Reason": "Invalid or Non-numeric Agency Number"
                             })
                             total_skipped_rows += 1
                             continue
 
-                        agency_val = int(agency_digits)
+                        agency_val = int(agency_str)
                         
                         # DR Code Detection
                         has_dr_code = False
@@ -476,7 +476,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     col4.metric("Missing Orders", kpi['missing_count'])
     col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
 
-    # --- FEATURE 3: Visual Analytics Charts ---
+    # --- Visual Analytics Charts ---
     if st.session_state.comparison_summary:
         st.markdown("---")
         st.markdown("### 📊 Visual Demand Analytics")
@@ -509,7 +509,6 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         )
         
     with col_summary:
-        # --- FEATURE 4: Downloadable Summary Report ---
         summary_txt = f"""=== ENTERPRISE SALES ORDER SUMMARY ===
 Date: {datetime.date.today()}
 ----------------------------------------
@@ -531,7 +530,6 @@ Status: Successfully Processed & Audited
         )
     
     with col_email:
-        # --- FEATURE 5: Custom HTML Rich Email Notification ---
         if st.button("📧 Send HTML Email"):
             if email_user and email_pass and recipient_email:
                 try:
@@ -619,7 +617,7 @@ if st.session_state.comparison_summary:
         key="audit_csv_download"
     )
 
-# --- FEATURE 6: Historical Trend Analysis (SQLite Database View) ---
+# --- Historical Trend Analysis View ---
 st.markdown("---")
 with st.expander("🕒 View Historical Trend Analysis (SQLite Database)"):
     try:
