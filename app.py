@@ -10,7 +10,7 @@ import sqlite3
 import smtplib
 import urllib.parse
 from email.message import EmailMessage
-from fpdf import FPDF  # PDF Generation ke liye
+from fpdf import FPDF
 
 # Page Configuration & Styling
 st.set_page_config(
@@ -41,7 +41,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# IST Timezone Helper
+# IST Timezone Helper via pytz
 IST = pytz.timezone('Asia/Kolkata')
 
 def get_ist_now():
@@ -180,7 +180,7 @@ for line in agency_fg_override.split('\n'):
         if ag.isdigit() and col_idx.isdigit():
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
-st.title("📊 Enterprise Sales Order Automation Hub (IST)")
+st.title("📊 Enterprise Sales Order Automation Hub (IST & PDF)")
 st.markdown("Upload multiple **Inbound Demand Files** to process orders, apply direct column mappings, view KPIs, and export audit reports.")
 st.markdown("---")
 
@@ -282,11 +282,11 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Route Number Logic (Sidebar input strictly followed)
+                    # 3. Route Number Logic
                     route_num = default_fallback_route
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
-                    # 4. Smart Agency Detection (Original Logic)
+                    # 4. Smart Agency Detection
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         valid_count = 0
@@ -344,7 +344,6 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         if pd.isna(agency) or str(agency).strip() in ["", "nan", "None"]:
                             continue
                         
-                        # Restored Original Agency String Cleaning (No Extra Zeros)
                         agency_str = str(agency).replace('.0','').strip()
                         if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
                             st.session_state.skipped_rows_log.append({
@@ -571,7 +570,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         )
         
     with col_pdf:
-        # --- PDF Invoice Generation Feature ---
+        # --- Fixed PDF Invoice Generation Feature via fpdf2 ---
         try:
             pdf = FPDF()
             pdf.add_page()
@@ -598,7 +597,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
                 pdf.cell(100, 8, m_desc, border=1)
                 pdf.cell(90, 8, m_val, border=1, ln=True)
                 
-            pdf_bytes = pdf.output(dest='S').encode('latin1')
+            pdf_bytes = bytes(pdf.output())  # Fixed: Direct bytearray conversion
             st.download_button(
                 label="📄 PDF Invoice",
                 data=pdf_bytes,
