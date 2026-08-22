@@ -553,6 +553,21 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         ):
             st.toast(f"🎉 '{item['filename']}' successfully download ho gaya hai!", icon="📥")
 
+# Display Agency-wise Material & Quantity Breakdown with Comparison
+if st.session_state.comparison_summary:
+    st.markdown("---")
+    st.markdown("### 📋 Agency-wise Material, Quantity & Input Comparison")
+    st.markdown("Yeh table dikhati hai ki kis agency ne kis Material (FG Code) ki kitni quantity mangi aur generate hui:")
+    
+    combined_df = pd.concat(st.session_state.comparison_summary, ignore_index=True)
+    agency_material_summary = combined_df.groupby(["Agency", "DR Code", "FG Code"], as_index=False).agg({
+        "Input Qty": "sum",
+        "Generated Qty": "sum"
+    })
+    agency_material_summary["Difference"] = agency_material_summary["Input Qty"] - agency_material_summary["Generated Qty"]
+    
+    st.dataframe(agency_material_summary, use_container_width=True)
+
 # Display Skipped / Invalid Rows Exception Logger Table
 if st.session_state.skipped_rows_log:
     st.markdown("---")
