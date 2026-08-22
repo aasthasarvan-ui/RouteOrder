@@ -585,3 +585,4 @@ if st.session_state.history:
     st.markdown("---")
     with st.expander("🕒 View Session Processing History"):
         st.dataframe(pd.DataFrame(st.session_state.history), use_container_width=True)
+
