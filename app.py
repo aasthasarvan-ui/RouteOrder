@@ -4,12 +4,13 @@ import openpyxl
 import datetime
 import io
 import re
+import zipfile
 
 # Page Configuration & Styling
 st.set_page_config(
     page_title="Sales Order Automation Hub", 
     page_icon="🚀", 
-    layout="centered"
+    layout="wide"
 )
 
 st.markdown("""
@@ -35,8 +36,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 Sales Order Automation Hub")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, view KPIs, and track skipped/invalid rows.")
+# Sidebar Settings
+st.sidebar.title("⚙️ System Settings")
+default_fg_code = st.sidebar.text_input("Default Fallback FG Code", value="FG500014")
+default_fallback_route = st.sidebar.text_input("Default Route Fallback", value="22")
+st.sidebar.markdown("---")
+st.sidebar.info("💡 Yeh settings tab use hoti hain jab demand file mein route ya product code properly format na ho.")
+
+st.title("📊 Enterprise Sales Order Automation Hub")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, view KPIs, export audit reports, and download as ZIP.")
 st.markdown("---")
 
 # Session State for persistent buttons and logs
@@ -46,6 +54,8 @@ if 'comparison_summary' not in st.session_state:
     st.session_state.comparison_summary = []
 if 'skipped_rows_log' not in st.session_state:
     st.session_state.skipped_rows_log = []
+if 'history' not in st.session_state:
+    st.session_state.history = []
 if 'kpi_data' not in st.session_state:
     st.session_state.kpi_data = {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0, "skipped_count": 0}
 
@@ -121,7 +131,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                             break
 
                     # 3. Route Number Finding Logic
-                    route_num = "22"
+                    route_num = default_fallback_route
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
                     
                     for r in range(fg_row):
@@ -140,7 +150,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                                 if any(char.isdigit() for char in cell_val):
                                     route_num = cell_val
                                     break
-                        if route_num != "22":
+                        if route_num != default_fallback_route:
                             break
 
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
@@ -214,13 +224,11 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                     for r in range(fg_row + 1, df_input.shape[0]):
                         agency = df_input.iloc[r, agency_col] if agency_col >= 0 else None
                         
-                        # Exception Logging: Check if agency is missing or invalid
                         if pd.isna(agency) or str(agency).strip() in ["", "nan", "None"]:
                             continue
                         
                         agency_str = str(agency).replace('.0','').strip()
                         if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
-                            # Log skipped row due to invalid agency
                             st.session_state.skipped_rows_log.append({
                                 "File Name": short_filename,
                                 "Row Index": r + 1,
@@ -272,7 +280,6 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                                 except ValueError:
                                     pass
 
-                        # Exception Logging: If agency is valid but has no quantities/items
                         if not row_has_items:
                             st.session_state.skipped_rows_log.append({
                                 "File Name": short_filename,
@@ -308,7 +315,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         item_id = 10
                         for c, fg_code, qty_val in valid_row_quantities:
                             upper_fg = str(fg_code).strip().upper()
-                            current_fg = fg_code.strip() if upper_fg.startswith("FG") else "FG500014"
+                            current_fg = fg_code.strip() if upper_fg.startswith("FG") else default_fg_code
                             
                             total_input_qty += qty_val
                             total_gen_qty += qty_val
@@ -391,7 +398,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
 
-                # Store KPI metrics in session state
+                # Store KPI metrics & History
                 st.session_state.kpi_data = {
                     "input_qty": total_input_qty,
                     "gen_qty": total_gen_qty,
@@ -399,6 +406,13 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                     "missing_count": total_missing_orders,
                     "skipped_count": total_skipped_rows
                 }
+                
+                st.session_state.history.append({
+                    "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "Files Processed": len(uploaded_inputs),
+                    "Total Qty": total_input_qty,
+                    "Status": "Success"
+                })
 
                 st.success("✅ Batch Processing, Exception Logging & Audit Complete!")
 
@@ -407,7 +421,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
     else:
         st.warning("⚠️ Kripya pehle demand files upload karein!")
 
-# Display KPI Summary Cards including Skipped rows count
+# Display KPI Summary Cards
 if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("---")
     st.markdown("### 📈 Batch Performance & KPI Summary")
@@ -420,11 +434,28 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
 
     st.markdown("---")
-    st.markdown("### 📥 Download Generated Files")
+    st.markdown("### 📥 Bulk Download Options")
+    
+    # One-Click ZIP Download Feature
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for item in st.session_state.processed_files:
+            zip_file.writestr(item['filename'], item['data'])
+    
+    st.download_button(
+        label="📦 Download All Output Files as ZIP",
+        data=zip_buffer.getvalue(),
+        file_name=f"Batch_Orders_ZIP_{datetime.date.today().strftime('%Y-%m-%d_%H%M%S')}.zip",
+        mime="application/zip",
+        key="zip_download"
+    )
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("##### Individual File Downloads:")
     for item in st.session_state.processed_files:
-        st.success("✅ Processed: " + item['name'] + " -> Orders created: " + str(item['orders']))
+        st.success(f"✅ Processed: {item['name']} -> Orders created: {item['orders']}")
         if st.download_button(
-            label="📥 Download " + item['name'],
+            label=f"📥 Download {item['name']}",
             data=item['data'],
             file_name=item['filename'],
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -456,4 +487,10 @@ if st.session_state.comparison_summary:
     )
 
     st.markdown("---")
-    st.info("📊 **Batch Summary:** Total Output Files Generated: " + str(len(st.session_state.processed_files)))
+    st.info(f"📊 **Batch Summary:** Total Output Files Generated: {len(st.session_state.processed_files)}")
+
+# Session History Section
+if st.session_state.history:
+    st.markdown("---")
+    with st.expander("🕒 View Session Processing History"):
+        st.dataframe(pd.DataFrame(st.session_state.history), use_container_width=True)
