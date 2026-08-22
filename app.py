@@ -42,10 +42,11 @@ st.markdown("""
 st.sidebar.title("⚙️ System Settings")
 default_fg_code = st.sidebar.text_input("Default Fallback FG Code", value="FG500014")
 
-mapping_input = st.sidebar.text_area(
-    "Dynamic FG Fallback Mapping (Header:Code)", 
-    value="FG:FG500014\nSKU:FG500014N01",
-    help="Header wise fallback mapping."
+# Naya Positional Mapping Feature (Column Position ke hisaab se code assign karne ke liye)
+position_mapping_input = st.sidebar.text_area(
+    "Positional Column Mapping (ColumnNo:Code)", 
+    value="1:FG500014N01\n2:FG500014N02\n3:FG500014N03\n4:FG500014N04",
+    help="Agar column mein FG code nahi hai, toh position (1, 2, 3...) ke hisaab se code assign karein."
 )
 
 # Agency-wise Override for specific agencies without FG code
@@ -59,12 +60,14 @@ agency_fg_override = st.sidebar.text_area(
 
 default_fallback_route = st.sidebar.text_input("Default Route Fallback", value="22")
 
-# Parse Header Fallback Mapping
-fg_mapping = {}
-for line in mapping_input.split('\n'):
+# Parse Positional Mapping
+pos_mapping = {}
+for line in position_mapping_input.split('\n'):
     if ':' in line:
         parts = line.split(':')
-        fg_mapping[parts[0].strip().upper()] = parts[1].strip()
+        idx_str = parts[0].strip()
+        if idx_str.isdigit():
+            pos_mapping[int(idx_str)] = parts[1].strip()
 
 # Parse Agency Override Mapping
 agency_override_map = {}
@@ -86,7 +89,7 @@ st.sidebar.subheader("📱 WhatsApp Notification")
 whatsapp_num = st.sidebar.text_input("WhatsApp Number (e.g., 919876543210)")
 
 st.title("📊 Enterprise Sales Order Automation Hub")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, apply agency overrides, view KPIs, and export audit reports.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, apply positional mappings, view KPIs, and export audit reports.")
 st.markdown("---")
 
 # Session State Initialization
@@ -307,7 +310,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         # Check item quantities for this row
                         row_has_items = False
                         valid_row_quantities = []
-                        for c, fg_code in valid_cols:
+                        for col_idx, (c, fg_code) in enumerate(valid_cols, start=1):
                             if c >= total_col:
                                 continue
                             sku_qty = df_input.iloc[r, c]
@@ -316,7 +319,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                                     qty_val = float(sku_qty)
                                     if qty_val > 0:
                                         row_has_items = True
-                                        valid_row_quantities.append((c, fg_code, qty_val))
+                                        valid_row_quantities.append((col_idx, fg_code, qty_val))
                                 except ValueError:
                                     pass
 
@@ -353,16 +356,18 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                             file_category = "Missing DR"
 
                         item_id = 10
-                        for c, fg_code, qty_val in valid_row_quantities:
+                        for col_idx, fg_code, qty_val in valid_row_quantities:
                             upper_fg = str(fg_code).strip().upper()
                             
-                            # --- ADVANCED DYNAMIC OVERRIDE & FALLBACK LOGIC ---
+                            # --- POSITIONAL & OVERRIDE LOGIC ---
                             if upper_fg.startswith("FG"):
                                 current_fg = fg_code.strip()
                             elif agency_val in agency_override_map:
                                 current_fg = agency_override_map[agency_val]
+                            elif col_idx in pos_mapping:
+                                current_fg = pos_mapping[col_idx]
                             else:
-                                current_fg = fg_mapping.get(upper_fg, default_fg_code)
+                                current_fg = default_fg_code
                             
                             total_input_qty += qty_val
                             total_gen_qty += qty_val
@@ -461,7 +466,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                     "Status": "Success"
                 })
 
-                st.success("✅ Batch Processing, Agency Override & Audit Complete!")
+                st.success("✅ Batch Processing, Positional Mapping & Audit Complete!")
 
             except Exception as e:
                 st.error(f"❌ Error aagaya: {str(e)}")
