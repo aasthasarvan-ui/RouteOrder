@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import openpyxl
 import datetime
+import pytz
 import io
 import re
 import zipfile
@@ -9,6 +10,7 @@ import sqlite3
 import smtplib
 import urllib.parse
 from email.message import EmailMessage
+from fpdf import FPDF  # PDF Generation ke liye
 
 # Page Configuration & Styling
 st.set_page_config(
@@ -39,7 +41,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# SQLite Database Initialization for Historical Trends
+# IST Timezone Helper
+IST = pytz.timezone('Asia/Kolkata')
+
+def get_ist_now():
+    return datetime.datetime.now(IST)
+
+# SQLite Database Initialization for Historical Trends (IST Timestamp)
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
@@ -57,25 +65,104 @@ def init_db():
 
 init_db()
 
-# Sidebar Settings & Dynamic Mapping
-st.sidebar.title("⚙️ System Settings")
-default_fg_code = st.sidebar.text_input("Default Fallback FG Code", value="FG500014")
+# --- Session State Defaults for Reset/Clear/Restore ---
+DEFAULTS = {
+    "fg_code": "FG500014",
+    "col_map": "36:FG500014AJ\n37:FG500014AK",
+    "agency_override": "101:36:FG500014N01\n101:37:FG500014N02",
+    "route": "22",
+    "email_user": st.secrets.get("email", {}).get("sender_email", ""),
+    "email_pass": st.secrets.get("email", {}).get("app_password", ""),
+    "recipient": st.secrets.get("email", {}).get("recipient_email", ""),
+    "whatsapp": ""
+}
 
-col_mapping_input = st.sidebar.text_area(
-    "Direct Column Index Mapping (ColIndex:Code)", 
-    value="36:FG500014AJ\n37:FG500014AK",
-    help="Excel file ke exact column index ke anusaar code assign karein jahan header blank ho."
-)
+for key, val in DEFAULTS.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
+
+# Sidebar Settings & Dynamic Mapping with Clear/Restore
+st.sidebar.title("⚙️ System Settings")
+
+if st.sidebar.button("🔄 Reset All to Defaults"):
+    for k, v in DEFAULTS.items():
+        st.session_state[k] = v
+    st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🎯 Agency-wise FG Override")
-agency_fg_override = st.sidebar.text_area(
-    "Agency:CustomFG (e.g., 101:FG500014N01)", 
-    value="101:FG500014N01\n102:FG500014N02",
-    help="Agar kisi specific agency ke paas FG code nahi hai, toh yahan unka custom code define karein."
-)
 
-default_fallback_route = st.sidebar.text_input("Default Route Fallback", value="22")
+# 1. Default FG Code
+st.sidebar.subheader("Default Fallback FG Code")
+st.session_state.fg_code = st.sidebar.text_input("FG Code Input", value=st.session_state.fg_code, label_visibility="collapsed")
+c1, c2 = st.sidebar.columns(2)
+if c1.button("Clear FG"): st.session_state.fg_code = ""; st.rerun()
+if c2.button("Restore FG"): st.session_state.fg_code = DEFAULTS["fg_code"]; st.rerun()
+
+# 2. Column Mapping
+st.sidebar.subheader("Direct Column Index Mapping")
+st.session_state.col_map = st.sidebar.text_area("Col Map Input", value=st.session_state.col_map, label_visibility="collapsed", help="ColIndex:Code")
+c1, c2 = st.sidebar.columns(2)
+if c1.button("Clear Map"): st.session_state.col_map = ""; st.rerun()
+if c2.button("Restore Map"): st.session_state.col_map = DEFAULTS["col_map"]; st.rerun()
+
+st.sidebar.markdown("---")
+
+# 3. Agency Override
+st.sidebar.subheader("Agency & Column-wise FG Override")
+st.session_state.agency_override = st.sidebar.text_area("Agency Override Input", value=st.session_state.agency_override, label_visibility="collapsed", help="Agency:ColIndex:CustomFG")
+c1, c2 = st.sidebar.columns(2)
+if c1.button("Clear Override"): st.session_state.agency_override = ""; st.rerun()
+if c2.button("Restore Override"): st.session_state.agency_override = DEFAULTS["agency_override"]; st.rerun()
+
+# 4. Route Fallback
+st.sidebar.subheader("Default Route Fallback")
+st.session_state.route = st.sidebar.text_input("Route Input", value=st.session_state.route, label_visibility="collapsed")
+c1, c2 = st.sidebar.columns(2)
+if c1.button("Clear Route"): st.session_state.route = ""; st.rerun()
+if c2.button("Restore Route"): st.session_state.route = DEFAULTS["route"]; st.rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📧 Email Dispatch Settings")
+
+# 5. Sender Email
+st.sidebar.text("Sender Email ID")
+st.session_state.email_user = st.sidebar.text_input("Sender Input", value=st.session_state.email_user, label_visibility="collapsed")
+c1, c2 = st.sidebar.columns(2)
+if c1.button("Clear Email"): st.session_state.email_user = ""; st.rerun()
+if c2.button("Restore Email"): st.session_state.email_user = DEFAULTS["email_user"]; st.rerun()
+
+# 6. Email Password
+st.sidebar.text("Email App Password")
+st.session_state.email_pass = st.sidebar.text_input("Pass Input", type="password", value=st.session_state.email_pass, label_visibility="collapsed")
+c1, c2 = st.sidebar.columns(2)
+if c1.button("Clear Pass"): st.session_state.email_pass = ""; st.rerun()
+if c2.button("Restore Pass"): st.session_state.email_pass = DEFAULTS["email_pass"]; st.rerun()
+
+# 7. Recipient Email
+st.sidebar.text("Recipient Email")
+st.session_state.recipient = st.sidebar.text_input("Recipient Input", value=st.session_state.recipient, label_visibility="collapsed")
+c1, c2 = st.sidebar.columns(2)
+if c1.button("Clear Recipient"): st.session_state.recipient = ""; st.rerun()
+if c2.button("Restore Recipient"): st.session_state.recipient = DEFAULTS["recipient"]; st.rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📱 WhatsApp Notification")
+
+# 8. WhatsApp Number
+st.session_state.whatsapp = st.sidebar.text_input("WhatsApp Number (e.g., 919876543210)", value=st.session_state.whatsapp)
+c1, c2 = st.sidebar.columns(2)
+if c1.button("Clear WA"): st.session_state.whatsapp = ""; st.rerun()
+if c2.button("Restore WA"): st.session_state.whatsapp = DEFAULTS["whatsapp"]; st.rerun()
+
+# Mapping assignments
+default_fg_code = st.session_state.fg_code
+col_mapping_input = st.session_state.col_map
+agency_fg_override = st.session_state.agency_override
+default_fallback_route = st.session_state.route
+email_user = st.session_state.email_user
+email_pass = st.session_state.email_pass
+recipient_email = st.session_state.recipient
+whatsapp_num = st.session_state.whatsapp
 
 direct_col_mapping = {}
 for line in col_mapping_input.split('\n'):
@@ -85,26 +172,16 @@ for line in col_mapping_input.split('\n'):
         if idx_str.isdigit():
             direct_col_mapping[int(idx_str)] = parts[1].strip()
 
-agency_override_map = {}
+agency_col_override_map = {}
 for line in agency_fg_override.split('\n'):
-    if ':' in line:
-        ag, fg = line.split(':')
-        ag_clean = ag.strip()
-        if ag_clean.isdigit():
-            agency_override_map[int(ag_clean)] = fg.strip()
+    parts = line.split(':')
+    if len(parts) == 3:
+        ag, col_idx, fg = parts[0].strip(), parts[1].strip(), parts[2].strip()
+        if ag.isdigit() and col_idx.isdigit():
+            agency_col_override_map[(int(ag), int(col_idx))] = fg
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("📧 Email Dispatch Settings")
-email_user = st.sidebar.text_input("Sender Email ID", value=st.secrets.get("email", {}).get("sender_email", ""))
-email_pass = st.sidebar.text_input("Email App Password", type="password", value=st.secrets.get("email", {}).get("app_password", ""))
-recipient_email = st.sidebar.text_input("Recipient Email", value=st.secrets.get("email", {}).get("recipient_email", ""))
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("📱 WhatsApp Notification")
-whatsapp_num = st.sidebar.text_input("WhatsApp Number (e.g., 919876543210)")
-
-st.title("📊 Enterprise Sales Order Automation Hub")
-st.markdown("Upload multiple **Inbound Demand Files** with Pre-flight checks, Clean Agency parsing, Visual charts, and SQLite trends.")
+st.title("📊 Enterprise Sales Order Automation Hub (IST)")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, apply direct column mappings, view KPIs, and export audit reports.")
 st.markdown("---")
 
 # Session State Initialization
@@ -162,8 +239,9 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                     st.error("❌ 'Output.xlsx' template file repository mein nahi mili. Kripya template file ko GitHub repo ke main folder mein upload karein.")
                     st.stop()
                 
-                today_date = datetime.date.today().strftime("%Y-%m-%d")
-                timestamp = datetime.datetime.now().strftime("%H%M%S")
+                ist_now = get_ist_now()
+                today_date = ist_now.strftime("%Y-%m-%d")
+                timestamp = ist_now.strftime("%H%M%S")
 
                 for uploaded_file in uploaded_inputs:
                     short_filename = uploaded_file.name
@@ -204,24 +282,8 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Route Number Finding Logic
+                    # 3. Route Number Logic (Sidebar input strictly followed)
                     route_num = default_fallback_route
-                    ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
-                    
-                    for r in range(fg_row):
-                        for c in range(min(total_col, 30)):
-                            cell_val = str(df_input.iloc[r, c]).strip()
-                            upper_val = cell_val.upper()
-                            if upper_val in ignore_list:
-                                continue
-                            if any(upper_val.startswith(p) for p in ["PC", "MS", "M", "GM", "DP", "SKU", "FG"]):
-                                continue
-                            if cell_val != "" and 1 <= len(cell_val) <= 4 and any(char.isdigit() for char in cell_val):
-                                route_num = cell_val
-                                break
-                        if route_num != default_fallback_route:
-                            break
-
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
                     # 4. Smart Agency Detection (Original Logic)
@@ -282,7 +344,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         if pd.isna(agency) or str(agency).strip() in ["", "nan", "None"]:
                             continue
                         
-                        # --- Restored Original Exact Agency String Cleaning ---
+                        # Restored Original Agency String Cleaning (No Extra Zeros)
                         agency_str = str(agency).replace('.0','').strip()
                         if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
                             st.session_state.skipped_rows_log.append({
@@ -359,10 +421,10 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                             cleaned_fg = str(fg_code).strip()
                             upper_fg = cleaned_fg.upper()
                             
-                            if upper_fg.startswith("FG"):
+                            if (agency_val, c) in agency_col_override_map:
+                                current_fg = agency_col_override_map[(agency_val, c)]
+                            elif upper_fg.startswith("FG"):
                                 current_fg = cleaned_fg
-                            elif agency_val in agency_override_map:
-                                current_fg = agency_override_map[agency_val]
                             elif upper_fg in ["", "NAN", "NONE"]:
                                 current_fg = direct_col_mapping.get(c, default_fg_code)
                             else:
@@ -439,7 +501,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
 
-                # Store KPI metrics & Save to SQLite Database for Historical Trends
+                # Store KPI metrics & Save to SQLite Database (IST Timestamp)
                 st.session_state.kpi_data = {
                     "input_qty": total_input_qty,
                     "gen_qty": total_gen_qty,
@@ -452,7 +514,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                 cursor = conn.cursor()
                 cursor.execute(
                     "INSERT INTO history_logs (timestamp, files_count, total_qty, status) VALUES (?, ?, ?, ?)",
-                    (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), len(uploaded_inputs), total_input_qty, "Success")
+                    (get_ist_now().strftime("%Y-%m-%d %H:%M:%S"), len(uploaded_inputs), total_input_qty, "Success")
                 )
                 conn.commit()
                 conn.close()
@@ -497,20 +559,59 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         for item in st.session_state.processed_files:
             zip_file.writestr(item['filename'], item['data'])
     
-    col_zip, col_summary, col_email, col_wa = st.columns(4)
+    col_zip, col_pdf, col_summary, col_email, col_wa = st.columns(5)
     
     with col_zip:
         st.download_button(
             label="📦 Download ZIP",
             data=zip_buffer.getvalue(),
-            file_name=f"Batch_Orders_{datetime.date.today()}.zip",
+            file_name=f"Batch_Orders_{get_ist_now().strftime('%Y-%m-%d')}.zip",
             mime="application/zip",
             key="zip_download"
         )
         
+    with col_pdf:
+        # --- PDF Invoice Generation Feature ---
+        try:
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 16)
+            pdf.cell(190, 10, "Enterprise Sales Order Summary Invoice", ln=True, align="C")
+            pdf.set_font("Arial", "", 10)
+            pdf.cell(190, 6, f"Generated On (IST): {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align="C")
+            pdf.ln(10)
+            
+            pdf.set_font("Arial", "B", 11)
+            pdf.cell(100, 8, "Metric Description", border=1)
+            pdf.cell(90, 8, "Value", border=1, ln=True)
+            
+            pdf.set_font("Arial", "", 11)
+            metrics_list = [
+                ("Total Input Quantity", f"{kpi['input_qty']:,.0f}"),
+                ("Total Generated Quantity", f"{kpi['gen_qty']:,.0f}"),
+                ("Valid DR Orders", str(kpi['valid_count'])),
+                ("Missing DR Orders", str(kpi['missing_count'])),
+                ("Skipped Rows Logged", str(kpi['skipped_count'])),
+                ("Total Output Files", str(len(st.session_state.processed_files)))
+            ]
+            for m_desc, m_val in metrics_list:
+                pdf.cell(100, 8, m_desc, border=1)
+                pdf.cell(90, 8, m_val, border=1, ln=True)
+                
+            pdf_bytes = pdf.output(dest='S').encode('latin1')
+            st.download_button(
+                label="📄 PDF Invoice",
+                data=pdf_bytes,
+                file_name=f"Sales_Invoice_{get_ist_now().strftime('%Y-%m-%d')}.pdf",
+                mime="application/pdf",
+                key="pdf_invoice_download"
+            )
+        except Exception as e:
+            st.error(f"PDF Error: {str(e)}")
+
     with col_summary:
-        summary_txt = f"""=== ENTERPRISE SALES ORDER SUMMARY ===
-Date: {datetime.date.today()}
+        summary_txt = f"""=== ENTERPRISE SALES ORDER SUMMARY (IST) ===
+Date/Time: {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}
 ----------------------------------------
 Total Input Quantity : {kpi['input_qty']:,.0f}
 Total Generated Qty  : {kpi['gen_qty']:,.0f}
@@ -524,7 +625,7 @@ Status: Successfully Processed & Audited
         st.download_button(
             label="📄 Summary Report",
             data=summary_txt.encode('utf-8'),
-            file_name=f"Summary_Report_{datetime.date.today()}.txt",
+            file_name=f"Summary_Report_{get_ist_now().strftime('%Y-%m-%d')}.txt",
             mime="text/plain",
             key="summary_txt_download"
         )
@@ -534,7 +635,7 @@ Status: Successfully Processed & Audited
             if email_user and email_pass and recipient_email:
                 try:
                     msg = EmailMessage()
-                    msg['Subject'] = f"🚀 Sales Orders Batch Execution Report - {datetime.date.today()}"
+                    msg['Subject'] = f"🚀 Sales Orders Batch Execution Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}"
                     msg['From'] = email_user
                     msg['To'] = recipient_email
                     
@@ -543,7 +644,7 @@ Status: Successfully Processed & Audited
                       <body style="font-family: Arial, sans-serif; color: #333;">
                         <h2 style="color: #10b981;">📊 Sales Order Batch Automation Hub</h2>
                         <p>Hello Team,</p>
-                        <p>The daily inbound demand batch has been processed successfully. Here are the key highlights:</p>
+                        <p>The daily inbound demand batch has been processed successfully on <b>{get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} IST</b>. Here are the key highlights:</p>
                         <table style="border-collapse: collapse; width: 100%; max-width: 500px;">
                           <tr style="background-color: #f3f4f6;"><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Metric</th><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Value</th></tr>
                           <tr><td style="border: 1px solid #ddd; padding: 8px;">Total Input Qty</td><td style="border: 1px solid #ddd; padding: 8px;"><b>{kpi['input_qty']:,.0f}</b></td></tr>
@@ -552,7 +653,7 @@ Status: Successfully Processed & Audited
                           <tr><td style="border: 1px solid #ddd; padding: 8px;">Skipped Rows</td><td style="border: 1px solid #ddd; padding: 8px;">{kpi['skipped_count']}</td></tr>
                         </table>
                         <p style="margin-top: 20px;">Please find the generated order files attached herewith.</p>
-                        <p style="color: #666; font-size: 12px;">Automated via Sales Order Hub</p>
+                        <p style="color: #666; font-size: 12px;">Automated via Sales Order Hub (IST)</p>
                       </body>
                     </html>
                     """
@@ -612,14 +713,14 @@ if st.session_state.comparison_summary:
     st.download_button(
         label="📥 Download Audit Reconciliation Report (CSV)",
         data=audit_csv,
-        file_name=f"Audit_Reconciliation_Report_{datetime.date.today()}.csv",
+        file_name=f"Audit_Reconciliation_Report_{get_ist_now().strftime('%Y-%m-%d')}.csv",
         mime="text/csv",
         key="audit_csv_download"
     )
 
 # --- Historical Trend Analysis View ---
 st.markdown("---")
-with st.expander("🕒 View Historical Trend Analysis (SQLite Database)"):
+with st.expander("🕒 View Historical Trend Analysis (SQLite Database - IST)"):
     try:
         conn = sqlite3.connect("sales_history.db")
         df_history = pd.read_sql("SELECT * FROM history_logs ORDER BY id DESC", conn)
