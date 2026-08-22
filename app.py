@@ -216,7 +216,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                                 continue
                             if any(upper_val.startswith(p) for p in ["PC", "MS", "M", "GM", "DP", "SKU", "FG"]):
                                 continue
-                            if cell_val != "" and 1 <= len(cell_val) <= 5 and any(char.isdigit() for char in cell_val):
+                            if cell_val != "" and 1 <= len(cell_val) <= 4 and any(char.isdigit() for char in cell_val):
                                 route_num = cell_val
                                 break
                         if route_num != default_fallback_route:
