@@ -195,7 +195,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
 
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
-                    # 4. Smart Agency Detection (Exact Original Logic Restored)
+                    # 4. Smart Agency Detection (Original Logic)
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         valid_count = 0
@@ -496,7 +496,8 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         for item in st.session_state.processed_files:
             zip_file.writestr(item['filename'], item['data'])
     
-    col_zip, col_pdf, col_email, col_wa = st.columns(4)
+    # 4 columns for ZIP, Summary Report, Email, and WhatsApp
+    col_zip, col_summary, col_email, col_wa = st.columns(4)
     
     with col_zip:
         st.download_button(
@@ -507,7 +508,8 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
             key="zip_download"
         )
         
-    with col_pdf:
+    with col_summary:
+        # --- NEW FEATURE: Summary Report Download ---
         summary_txt = f"""=== ENTERPRISE SALES ORDER SUMMARY ===
 Date: {datetime.date.today()}
 ----------------------------------------
@@ -521,7 +523,7 @@ Generated Files Count: {len(st.session_state.processed_files)}
 Status: Successfully Processed & Audited
 ========================================"""
         st.download_button(
-            label="📄 Download Summary Report",
+            label="📄 Summary Report",
             data=summary_txt.encode('utf-8'),
             file_name=f"Summary_Report_{datetime.date.today()}.txt",
             mime="text/plain",
@@ -529,11 +531,14 @@ Status: Successfully Processed & Audited
         )
     
     with col_email:
+        # --- NEW FEATURE: HTML Rich Text Email ---
         if st.button("📧 Send HTML Email"):
             if email_user and email_pass and recipient_email:
                 try:
+                    email_today_date = datetime.date.today().strftime("%Y-%m-%d")
+                    
                     msg = EmailMessage()
-                    msg['Subject'] = f"🚀 Sales Orders Batch Execution Report - {datetime.date.today()}"
+                    msg['Subject'] = f"🚀 Sales Orders Batch Execution Report - {email_today_date}"
                     msg['From'] = email_user
                     msg['To'] = recipient_email
                     
