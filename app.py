@@ -514,8 +514,11 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         if st.button("📧 Send Email"):
             if email_user and email_pass and recipient_email:
                 try:
+                    # Safe fallback for email_today_date to prevent NameError
+                    email_today_date = datetime.date.today().strftime("%Y-%m-%d")
+                    
                     msg = EmailMessage()
-                    msg['Subject'] = f"Sales Orders Batch Report - {today_date}"
+                    msg['Subject'] = f"Sales Orders Batch Report - {email_today_date}"
                     msg['From'] = email_user
                     msg['To'] = recipient_email
                     msg.set_content(f"Hello,\n\nPlease find attached the generated batch orders report.\n\nTotal Input Qty: {kpi['input_qty']}\nTotal Valid Orders: {kpi['valid_count']}\nTotal Missing Orders: {kpi['missing_count']}")
