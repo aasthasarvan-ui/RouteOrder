@@ -42,11 +42,11 @@ st.markdown("""
 st.sidebar.title("⚙️ System Settings")
 default_fg_code = st.sidebar.text_input("Default Fallback FG Code", value="FG500014")
 
-# Naya Direct Column Index Mapping Feature (Exact Column Number ke hisaab se code assign karne ke liye)
+# Direct Column Index Mapping Feature (Fixed for Blank/NAN columns)
 col_mapping_input = st.sidebar.text_area(
     "Direct Column Index Mapping (ColIndex:Code)", 
     value="36:FG500014AJ\n37:FG500014AK",
-    help="Excel file ke exact python column index ke anusaar code assign karein taaki mix ya skip na ho."
+    help="Excel file ke exact column index ke anusaar code assign karein jahan header blank ho."
 )
 
 # Agency-wise Override for specific agencies without FG code
@@ -357,13 +357,19 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
 
                         item_id = 10
                         for c, fg_code, qty_val in valid_row_quantities:
-                            upper_fg = str(fg_code).strip().upper()
+                            cleaned_fg = str(fg_code).strip()
+                            upper_fg = cleaned_fg.upper()
                             
-                            # --- DIRECT COLUMN INDEX & OVERRIDE LOGIC ---
+                            # --- STRICT BLANK & DIRECT INDEX MAPPING LOGIC ---
                             if upper_fg.startswith("FG"):
-                                current_fg = fg_code.strip()
+                                current_fg = cleaned_fg
                             elif agency_val in agency_override_map:
                                 current_fg = agency_override_map[agency_val]
+                            elif upper_fg in ["", "NAN", "NONE"]:
+                                if c in direct_col_mapping:
+                                    current_fg = direct_col_mapping[c]
+                                else:
+                                    current_fg = default_fg_code
                             elif c in direct_col_mapping:
                                 current_fg = direct_col_mapping[c]
                             else:
@@ -466,7 +472,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                     "Status": "Success"
                 })
 
-                st.success("✅ Batch Processing, Direct Column Mapping & Audit Complete!")
+                st.success("✅ Batch Processing, Fixed Column Mapping & Audit Complete!")
 
             except Exception as e:
                 st.error(f"❌ Error aagaya: {str(e)}")
