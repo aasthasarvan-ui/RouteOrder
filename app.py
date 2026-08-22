@@ -5,6 +5,8 @@ import datetime
 import io
 import re
 import zipfile
+import smtplib
+from email.message import EmailMessage
 
 # Page Configuration & Styling
 st.set_page_config(
@@ -15,7 +17,6 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-        /* GitHub Icon aur Header Tools ko hide karne ke liye */
         #GithubIcon { visibility: hidden !important; display: none !important; }
         .stAppHeader { background-color: transparent !important; }
         header[data-testid="stHeader"] { display: none !important; }
@@ -36,18 +37,33 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Sidebar Settings
+# Sidebar Settings & Dynamic Fallback Mapping
 st.sidebar.title("⚙️ System Settings")
-default_fg_code = st.sidebar.text_input("Default Fallback FG Code", value="FG500014")
+mapping_input = st.sidebar.text_area(
+    "Dynamic FG Fallback Mapping (Header:Code)", 
+    value="FG:FG500014\nSKU:FG500014N01\nPRODUCT:FG500014N02",
+    help="Yahan aap specify kar sakte hain ki kis header ke liye kaunsa fallback code assign hona chahiye."
+)
 default_fallback_route = st.sidebar.text_input("Default Route Fallback", value="22")
+
+# Parse Mapping
+fg_mapping = {}
+for line in mapping_input.split('\n'):
+    if ':' in line:
+        parts = line.split(':')
+        fg_mapping[parts[0].strip().upper()] = parts[1].strip()
+
 st.sidebar.markdown("---")
-st.sidebar.info("💡 Yeh settings tab use hoti hain jab demand file mein route ya product code properly format na ho.")
+st.sidebar.subheader("📧 Email Dispatch Settings")
+email_user = st.sidebar.text_input("Sender Email ID")
+email_pass = st.sidebar.text_input("Email App Password", type="password")
+recipient_email = st.sidebar.text_input("Recipient Email")
 
 st.title("📊 Enterprise Sales Order Automation Hub")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, view KPIs, export audit reports, and download as ZIP.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, view KPIs, export audit reports, and email attachments.")
 st.markdown("---")
 
-# Session State for persistent buttons and logs
+# Session State Initialization
 if 'processed_files' not in st.session_state:
     st.session_state.processed_files = []
 if 'comparison_summary' not in st.session_state:
@@ -78,7 +94,6 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
         
         with st.spinner("⚡ Reading files, processing orders, and checking for exceptions... Please wait."):
             try:
-                # Template load check
                 try:
                     with open("Output.xlsx", "rb") as f:
                         template_bytes = f.read()
@@ -94,7 +109,6 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                     if short_filename.lower() == "output.xlsx":
                         continue
 
-                    # Read input file via pandas
                     file_bytes = uploaded_file.getvalue()
                     df_input = pd.read_excel(io.BytesIO(file_bytes), header=None)
 
@@ -315,7 +329,9 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         item_id = 10
                         for c, fg_code, qty_val in valid_row_quantities:
                             upper_fg = str(fg_code).strip().upper()
-                            current_fg = fg_code.strip() if upper_fg.startswith("FG") else default_fg_code
+                            
+                            # --- DYNAMIC MAPPING FALLBACK LOGIC ---
+                            current_fg = fg_code.strip() if upper_fg.startswith("FG") else fg_mapping.get(upper_fg, "FG500014")
                             
                             total_input_qty += qty_val
                             total_gen_qty += qty_val
@@ -417,7 +433,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                 st.success("✅ Batch Processing, Exception Logging & Audit Complete!")
 
             except Exception as e:
-                st.error("❌ Error aagaya: " + str(e))
+                st.error(f"❌ Error aagaya: {str(e)}")
     else:
         st.warning("⚠️ Kripya pehle demand files upload karein!")
 
@@ -434,7 +450,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
 
     st.markdown("---")
-    st.markdown("### 📥 Bulk Download Options")
+    st.markdown("### 📥 Bulk Download & Email Dispatch")
     
     # One-Click ZIP Download Feature
     zip_buffer = io.BytesIO()
@@ -442,14 +458,39 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         for item in st.session_state.processed_files:
             zip_file.writestr(item['filename'], item['data'])
     
-    st.download_button(
-        label="📦 Download All Output Files as ZIP",
-        data=zip_buffer.getvalue(),
-        file_name=f"Batch_Orders_ZIP_{datetime.date.today().strftime('%Y-%m-%d_%H%M%S')}.zip",
-        mime="application/zip",
-        key="zip_download"
-    )
+    col_zip, col_email = st.columns(2)
+    with col_zip:
+        st.download_button(
+            label="📦 Download All Output Files as ZIP",
+            data=zip_buffer.getvalue(),
+            file_name=f"Batch_Orders_ZIP_{datetime.date.today().strftime('%Y-%m-%d_%H%M%S')}.zip",
+            mime="application/zip",
+            key="zip_download"
+        )
     
+    with col_email:
+        if st.button("📧 Send Processed Files via Email"):
+            if email_user and email_pass and recipient_email:
+                try:
+                    msg = EmailMessage()
+                    msg['Subject'] = f"Sales Orders Batch Report - {today_date}"
+                    msg['From'] = email_user
+                    msg['To'] = recipient_email
+                    msg.set_content(f"Hello,\n\nPlease find attached the generated batch orders report for date {today_date}.\n\nTotal Input Qty: {kpi['input_qty']}\nTotal Valid Orders: {kpi['valid_count']}\nTotal Missing Orders: {kpi['missing_count']}")
+                    
+                    for item in st.session_state.processed_files:
+                        msg.add_attachment(item['data'], maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=item['filename'])
+                    
+                    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                        smtp.login(email_user, email_pass)
+                        smtp.send_message(msg)
+                    
+                    st.success("✅ Email successfully sent with attachments!")
+                except Exception as e:
+                    st.error(f"❌ Email sending failed: {str(e)}")
+            else:
+                st.warning("⚠️ Kripya sidebar mein Sender Email, App Password, aur Recipient Email enter karein!")
+
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("##### Individual File Downloads:")
     for item in st.session_state.processed_files:
@@ -494,4 +535,3 @@ if st.session_state.history:
     st.markdown("---")
     with st.expander("🕒 View Session Processing History"):
         st.dataframe(pd.DataFrame(st.session_state.history), use_container_width=True)
-
