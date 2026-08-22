@@ -282,8 +282,30 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Route Number Logic
-                    route_num = default_fallback_route
+                    # 3. Restored Original Route Number Finding Logic (File scan first, fallback to sidebar)
+                    route_num = default_fallback_route if default_fallback_route != "" else "22"
+                    ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
+                    
+                    for r in range(fg_row):
+                        for c in range(min(total_col, 30)):
+                            cell_val = str(df_input.iloc[r, c]).strip()
+                            upper_val = cell_val.upper()
+                            if upper_val in ignore_list:
+                                continue
+                            is_product_code = any(upper_val.startswith(p) for p in ["PC", "MS", "M", "GM", "DP", "SKU", "FG"])
+                            if is_product_code:
+                                continue
+                            if cell_val != "" and 1 <= len(cell_val) <= 5:
+                                if any(char.isdigit() for char in cell_val):
+                                    route_num = cell_val
+                                    break
+                        if route_num != (default_fallback_route if default_fallback_route != "" else "22"):
+                            break
+
+                    # Agar sidebar mein user ne explicitly kuch dala hai aur file me nahi mila, toh sidebar wala use hoga
+                    if default_fallback_route != "" and default_fallback_route != "22":
+                        route_num = default_fallback_route
+
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
                     # 4. Smart Agency Detection
@@ -570,7 +592,6 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         )
         
     with col_pdf:
-        # --- Fixed PDF Invoice Generation Feature via fpdf2 ---
         try:
             pdf = FPDF()
             pdf.add_page()
@@ -597,7 +618,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
                 pdf.cell(100, 8, m_desc, border=1)
                 pdf.cell(90, 8, m_val, border=1, ln=True)
                 
-            pdf_bytes = bytes(pdf.output())  # Fixed: Direct bytearray conversion
+            pdf_bytes = bytes(pdf.output())
             st.download_button(
                 label="📄 PDF Invoice",
                 data=pdf_bytes,
@@ -732,4 +753,3 @@ with st.expander("🕒 View Historical Trend Analysis (SQLite Database - IST)"):
             st.info("No historical logs available yet.")
     except Exception as e:
         st.error(f"Error loading history: {str(e)}")
-
