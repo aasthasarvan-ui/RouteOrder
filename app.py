@@ -195,16 +195,15 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
 
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
-                    # 4. Smart Agency Detection (with robust fallback)
+                    # 4. Smart Agency Detection (Exact Original Logic Restored)
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         valid_count = 0
                         for rCheck in range(fg_row + 1, min(fg_row + 15, df_input.shape[0])):
                             v = df_input.iloc[rCheck, cSearch]
                             if pd.notna(v):
-                                # Enhanced fuzzy extraction to support clean numeric IDs safely
-                                cleaned_digits = re.sub(r'\D', '', str(v))
-                                if 1 <= len(cleaned_digits) <= 5:
+                                s_val = str(v).replace('.0', '').strip()
+                                if s_val.isdigit() and 1 <= len(s_val) <= 5:
                                     valid_count += 1
                         if valid_count >= 3:
                             agency_col = cSearch
@@ -268,9 +267,8 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         if pd.isna(agency) or str(agency).strip() in ["", "nan", "None"]:
                             continue
                         
-                        # Advanced fuzzy regex cleanup for agency string to prevent formatting issues
-                        agency_digits = re.sub(r'\D', '', str(agency))
-                        if not agency_digits or not (1 <= len(agency_digits) <= 5):
+                        agency_str = str(agency).replace('.0','').strip()
+                        if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
                             st.session_state.skipped_rows_log.append({
                                 "File Name": short_filename,
                                 "Row Index": r + 1,
@@ -280,7 +278,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                             total_skipped_rows += 1
                             continue
 
-                        agency_val = int(agency_digits)
+                        agency_val = int(agency_str)
                         
                         # --- ROBUST DR CODE & ZERO HANDLER ---
                         has_dr_code = False
@@ -510,7 +508,6 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         )
         
     with col_pdf:
-        # --- PDF/Text Summary Report Feature ---
         summary_txt = f"""=== ENTERPRISE SALES ORDER SUMMARY ===
 Date: {datetime.date.today()}
 ----------------------------------------
@@ -532,7 +529,6 @@ Status: Successfully Processed & Audited
         )
     
     with col_email:
-        # --- HTML Rich Email Notification Feature ---
         if st.button("📧 Send HTML Email"):
             if email_user and email_pass and recipient_email:
                 try:
