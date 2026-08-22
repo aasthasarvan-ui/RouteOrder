@@ -6,6 +6,7 @@ import io
 import re
 import zipfile
 import smtplib
+import urllib.parse
 from email.message import EmailMessage
 
 # Page Configuration & Styling
@@ -37,21 +38,42 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Sidebar Settings & Dynamic Fallback Mapping
+# Sidebar Settings & Dynamic Mapping
 st.sidebar.title("⚙️ System Settings")
+default_fg_code = st.sidebar.text_input("Default Fallback FG Code", value="FG500014")
+
 mapping_input = st.sidebar.text_area(
     "Dynamic FG Fallback Mapping (Header:Code)", 
-    value="FG:FG500014\nSKU:FG500014N01\nPRODUCT:FG500014N02",
-    help="Yahan aap specify kar sakte hain ki kis header ke liye kaunsa fallback code assign hona chahiye."
+    value="FG:FG500014\nSKU:FG500014N01",
+    help="Header wise fallback mapping."
 )
+
+# Agency-wise Override for specific agencies without FG code
+st.sidebar.markdown("---")
+st.sidebar.subheader("🎯 Agency-wise FG Override")
+agency_fg_override = st.sidebar.text_area(
+    "Agency:CustomFG (e.g., 101:FG500014N01)", 
+    value="101:FG500014N01\n102:FG500014N02",
+    help="Agar kisi specific agency ke paas FG code nahi hai, toh yahan unka custom code define karein."
+)
+
 default_fallback_route = st.sidebar.text_input("Default Route Fallback", value="22")
 
-# Parse Mapping
+# Parse Header Fallback Mapping
 fg_mapping = {}
 for line in mapping_input.split('\n'):
     if ':' in line:
         parts = line.split(':')
         fg_mapping[parts[0].strip().upper()] = parts[1].strip()
+
+# Parse Agency Override Mapping
+agency_override_map = {}
+for line in agency_fg_override.split('\n'):
+    if ':' in line:
+        ag, fg = line.split(':')
+        ag_clean = ag.strip()
+        if ag_clean.isdigit():
+            agency_override_map[int(ag_clean)] = fg.strip()
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📧 Email Dispatch Settings")
@@ -59,8 +81,12 @@ email_user = st.sidebar.text_input("Sender Email ID")
 email_pass = st.sidebar.text_input("Email App Password", type="password")
 recipient_email = st.sidebar.text_input("Recipient Email")
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("📱 WhatsApp Notification")
+whatsapp_num = st.sidebar.text_input("WhatsApp Number (e.g., 919876543210)")
+
 st.title("📊 Enterprise Sales Order Automation Hub")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, view KPIs, export audit reports, and email attachments.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, apply agency overrides, view KPIs, and export audit reports.")
 st.markdown("---")
 
 # Session State Initialization
@@ -330,8 +356,13 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         for c, fg_code, qty_val in valid_row_quantities:
                             upper_fg = str(fg_code).strip().upper()
                             
-                            # --- DYNAMIC MAPPING FALLBACK LOGIC ---
-                            current_fg = fg_code.strip() if upper_fg.startswith("FG") else fg_mapping.get(upper_fg, "FG500014")
+                            # --- ADVANCED DYNAMIC OVERRIDE & FALLBACK LOGIC ---
+                            if upper_fg.startswith("FG"):
+                                current_fg = fg_code.strip()
+                            elif agency_val in agency_override_map:
+                                current_fg = agency_override_map[agency_val]
+                            else:
+                                current_fg = fg_mapping.get(upper_fg, default_fg_code)
                             
                             total_input_qty += qty_val
                             total_gen_qty += qty_val
@@ -430,7 +461,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                     "Status": "Success"
                 })
 
-                st.success("✅ Batch Processing, Exception Logging & Audit Complete!")
+                st.success("✅ Batch Processing, Agency Override & Audit Complete!")
 
             except Exception as e:
                 st.error(f"❌ Error aagaya: {str(e)}")
@@ -450,18 +481,18 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
 
     st.markdown("---")
-    st.markdown("### 📥 Bulk Download & Email Dispatch")
+    st.markdown("### 📥 Bulk Download & Notifications")
     
-    # One-Click ZIP Download Feature
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for item in st.session_state.processed_files:
             zip_file.writestr(item['filename'], item['data'])
     
-    col_zip, col_email = st.columns(2)
+    col_zip, col_email, col_wa = st.columns(3)
+    
     with col_zip:
         st.download_button(
-            label="📦 Download All Output Files as ZIP",
+            label="📦 Download ZIP",
             data=zip_buffer.getvalue(),
             file_name=f"Batch_Orders_ZIP_{datetime.date.today().strftime('%Y-%m-%d_%H%M%S')}.zip",
             mime="application/zip",
@@ -469,14 +500,14 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         )
     
     with col_email:
-        if st.button("📧 Send Processed Files via Email"):
+        if st.button("📧 Send Email"):
             if email_user and email_pass and recipient_email:
                 try:
                     msg = EmailMessage()
                     msg['Subject'] = f"Sales Orders Batch Report - {today_date}"
                     msg['From'] = email_user
                     msg['To'] = recipient_email
-                    msg.set_content(f"Hello,\n\nPlease find attached the generated batch orders report for date {today_date}.\n\nTotal Input Qty: {kpi['input_qty']}\nTotal Valid Orders: {kpi['valid_count']}\nTotal Missing Orders: {kpi['missing_count']}")
+                    msg.set_content(f"Hello,\n\nPlease find attached the generated batch orders report.\n\nTotal Input Qty: {kpi['input_qty']}\nTotal Valid Orders: {kpi['valid_count']}\nTotal Missing Orders: {kpi['missing_count']}")
                     
                     for item in st.session_state.processed_files:
                         msg.add_attachment(item['data'], maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=item['filename'])
@@ -485,11 +516,18 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
                         smtp.login(email_user, email_pass)
                         smtp.send_message(msg)
                     
-                    st.success("✅ Email successfully sent with attachments!")
+                    st.success("✅ Email sent with attachments!")
                 except Exception as e:
-                    st.error(f"❌ Email sending failed: {str(e)}")
+                    st.error(f"❌ Email failed: {str(e)}")
             else:
-                st.warning("⚠️ Kripya sidebar mein Sender Email, App Password, aur Recipient Email enter karein!")
+                st.warning("⚠️ Enter email credentials in sidebar!")
+
+    with col_wa:
+        if whatsapp_num:
+            wa_text = f"Hello, Sales Order Batch Report is ready. Total Qty: {kpi['input_qty']}, Valid Orders: {kpi['valid_count']}, Missing Orders: {kpi['missing_count']}."
+            encoded_wa = urllib.parse.quote(wa_text)
+            wa_link = f"https://wa.me/{whatsapp_num}?text={encoded_wa}"
+            st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; padding:14px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold;">📱 Send WhatsApp</button></a>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("##### Individual File Downloads:")
@@ -508,7 +546,6 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
 if st.session_state.skipped_rows_log:
     st.markdown("---")
     st.markdown("### ⚠️ Skipped / Invalid Rows Exception Log")
-    st.markdown("Yeh table un rows ko dikhati hai jo data mein kamiyon (jaise blank quantities ya invalid agency number) ki wajah se skip ki gayi hain:")
     df_skipped = pd.DataFrame(st.session_state.skipped_rows_log)
     st.dataframe(df_skipped, use_container_width=True)
 
