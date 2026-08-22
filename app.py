@@ -42,14 +42,12 @@ st.markdown("""
 st.sidebar.title("⚙️ System Settings")
 default_fg_code = st.sidebar.text_input("Default Fallback FG Code", value="FG500014")
 
-# Direct Column Index Mapping Feature (Fixed for Blank/NAN columns)
 col_mapping_input = st.sidebar.text_area(
     "Direct Column Index Mapping (ColIndex:Code)", 
     value="36:FG500014AJ\n37:FG500014AK",
     help="Excel file ke exact column index ke anusaar code assign karein jahan header blank ho."
 )
 
-# Agency-wise Override for specific agencies without FG code
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎯 Agency-wise FG Override")
 agency_fg_override = st.sidebar.text_area(
@@ -60,7 +58,6 @@ agency_fg_override = st.sidebar.text_area(
 
 default_fallback_route = st.sidebar.text_input("Default Route Fallback", value="22")
 
-# Parse Direct Column Index Mapping
 direct_col_mapping = {}
 for line in col_mapping_input.split('\n'):
     if ':' in line:
@@ -69,7 +66,6 @@ for line in col_mapping_input.split('\n'):
         if idx_str.isdigit():
             direct_col_mapping[int(idx_str)] = parts[1].strip()
 
-# Parse Agency Override Mapping
 agency_override_map = {}
 for line in agency_fg_override.split('\n'):
     if ':' in line:
@@ -80,9 +76,11 @@ for line in agency_fg_override.split('\n'):
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📧 Email Dispatch Settings")
-email_user = st.sidebar.text_input("Sender Email ID")
-email_pass = st.sidebar.text_input("Email App Password", type="password")
-recipient_email = st.sidebar.text_input("Recipient Email")
+
+# --- YAHAN PASTE KARNA THA (Streamlit Secrets Integration) ---
+email_user = st.sidebar.text_input("Sender Email ID", value=st.secrets.get("email", {}).get("sender_email", ""))
+email_pass = st.sidebar.text_input("Email App Password", type="password", value=st.secrets.get("email", {}).get("app_password", ""))
+recipient_email = st.sidebar.text_input("Recipient Email", value=st.secrets.get("email", {}).get("recipient_email", ""))
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📱 WhatsApp Notification")
@@ -104,7 +102,6 @@ if 'history' not in st.session_state:
 if 'kpi_data' not in st.session_state:
     st.session_state.kpi_data = {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0, "skipped_count": 0}
 
-# File Upload Section
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -514,7 +511,6 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         if st.button("📧 Send Email"):
             if email_user and email_pass and recipient_email:
                 try:
-                    # Safe fallback for email_today_date to prevent NameError
                     email_today_date = datetime.date.today().strftime("%Y-%m-%d")
                     
                     msg = EmailMessage()
