@@ -425,13 +425,10 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
                     ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
 
-                    wb_missing = openpyxl.load_workbook(io.BytesIO(template_bytes))
-                    ws_missing = wb_missing["Order Data"] if "Order Data" in wb_missing.sheetnames else wb_missing.active
-
-                    valid_row, missing_row = 6, 6
-                    valid_order_num, missing_order_num = 1, 1
-                    agency_counts_valid, agency_counts_missing = {}, {}
-                    valid_items_created, missing_items_created = 0, 0
+                    valid_row = 6
+                    valid_order_num = 1
+                    agency_counts_valid = {}
+                    valid_items_created = 0
                     file_comparison_rows = []
 
                     for r in range(fg_row + 1, df_input.shape[0]):
@@ -452,7 +449,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
 
                         agency_val = int(agency_str)
                         
-                        # --- STRICT QUANTITY CHECK FIRST ---
+                        # --- QUANTITY CHECK FIRST ---
                         row_has_items = False
                         valid_row_quantities = []
                         row_total_qty = 0
@@ -470,7 +467,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 except ValueError:
                                     pass
 
-                        # --- AGAR QUANTITY ZERO/BLANK HAI TO YAHIN SKIP KAREIN (No Unmapped Entry) ---
                         if not row_has_items:
                             st.session_state.skipped_rows_log.append({
                                 "File Name": short_filename,
@@ -518,18 +514,25 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 has_dr_code = True
                                 clean_dr = db_match[0]
 
+                        # --- IF STILL NO DR CODE, SKIP AND LOG INTO UNMAPPED LEDGER ---
                         if not has_dr_code:
-                            unmapped_records_to_insert.append((short_filename, str(route_num), str(agency_val), f"NEW_CUST_{agency_val}", ist_now.strftime("%Y-%m-%d %H:%M:%S")))
+                            unmapped_records_to_insert.append((short_filename, str(route_num), str(agency_val), "SKIPPED_MISSING_DR", ist_now.strftime("%Y-%m-%d %H:%M:%S")))
                             st.session_state.unmapped_current_batch.append({
                                 "File Name": short_filename,
                                 "Route": route_num,
                                 "Agency": agency_val,
-                                "Status": "Generated via NEW_CUST (Missing DR in File and Master DB)"
+                                "Status": "Skipped (Has Quantity but No DR Code in File or Master DB)"
                             })
+                            st.session_state.skipped_rows_log.append({
+                                "File Name": short_filename,
+                                "Row Index": r + 1,
+                                "Agency Value": agency_val,
+                                "Reason": "Skipped (Has Quantity but No DR Code in File or Master DB)"
+                            })
+                            total_skipped_rows += 1
+                            continue
 
-                        final_dr = clean_dr if has_dr_code else f"NEW_CUST_{agency_val}"
-                        
-                        db_records_to_insert.append((short_filename, str(route_num), str(agency_val), str(final_dr), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
+                        db_records_to_insert.append((short_filename, str(route_num), str(agency_val), str(clean_dr), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
 
                         if row_total_qty > 500:
                             st.session_state.anomaly_logs.append({
@@ -540,16 +543,9 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 "Flag": "⚠️ High Volume Spike (>500)"
                             })
 
-                        if has_dr_code:
-                            agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
-                            current_seq = agency_counts_valid[agency_val]
-                            ref_number = f"RT-{route_num}-{agency_val}-{today_date}" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-{current_seq}"
-                            target_ws, current_r, order_num, dr_to_use, file_category = ws_valid, valid_row, valid_order_num, clean_dr, "Valid DR"
-                        else:
-                            agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
-                            current_seq = agency_counts_missing[agency_val]
-                            ref_number = f"RT-{route_num}-{agency_val}-{today_date}-NEW" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-NEW-{current_seq}"
-                            target_ws, current_r, order_num, dr_to_use, file_category = ws_missing, missing_row, missing_order_num, f"NEW_CUST_{agency_val}", "Missing DR"
+                        agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
+                        current_seq = agency_counts_valid[agency_val]
+                        ref_number = f"RT-{route_num}-{agency_val}-{today_date}" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-{current_seq}"
 
                         item_id = 10
                         for c, fg_code, qty_val in valid_row_quantities:
@@ -570,39 +566,38 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             
                             file_comparison_rows.append({
                                 "File Name": short_filename,
-                                "Status": file_category,
+                                "Status": "Valid DR",
                                 "Agency": agency_val,
-                                "DR Code": dr_to_use,
+                                "DR Code": clean_dr,
                                 "FG Code": current_fg,
                                 "Input Qty": qty_val,
                                 "Generated Qty": qty_val
                             })
                             
-                            target_ws.cell(row=current_r, column=2, value=order_num)
-                            target_ws.cell(row=current_r, column=3, value="OR")
-                            target_ws.cell(row=current_r, column=4, value="SO20")
-                            target_ws.cell(row=current_r, column=5, value=10)
-                            target_ws.cell(row=current_r, column=6, value=20)
-                            target_ws.cell(row=current_r, column=7, value=dr_to_use)
-                            target_ws.cell(row=current_r, column=8, value=dr_to_use)
-                            target_ws.cell(row=current_r, column=9, value=ref_number)
-                            target_ws.cell(row=current_r, column=10, value=today_date)
-                            target_ws.cell(row=current_r, column=11, value=today_date)
-                            target_ws.cell(row=current_r, column=15, value=item_id)
-                            target_ws.cell(row=current_r, column=16, value=current_fg)
-                            target_ws.cell(row=current_r, column=19, value=qty_val)
-                            target_ws.cell(row=current_r, column=20, value="Bag")
-                            target_ws.cell(row=current_r, column=22, value=2100)
-                            target_ws.cell(row=current_r, column=26, value=str(route_num))
-                            target_ws.cell(row=current_r, column=27, value=agency_val)
+                            ws_valid.cell(row=valid_row, column=2, value=valid_order_num)
+                            ws_valid.cell(row=valid_row, column=3, value="OR")
+                            ws_valid.cell(row=valid_row, column=4, value="SO20")
+                            ws_valid.cell(row=valid_row, column=5, value=10)
+                            ws_valid.cell(row=valid_row, column=6, value=20)
+                            ws_valid.cell(row=valid_row, column=7, value=clean_dr)
+                            ws_valid.cell(row=valid_row, column=8, value=clean_dr)
+                            ws_valid.cell(row=valid_row, column=9, value=ref_number)
+                            ws_valid.cell(row=valid_row, column=10, value=today_date)
+                            ws_valid.cell(row=valid_row, column=11, value=today_date)
+                            ws_valid.cell(row=valid_row, column=15, value=item_id)
+                            ws_valid.cell(row=valid_row, column=16, value=current_fg)
+                            ws_valid.cell(row=valid_row, column=19, value=qty_val)
+                            ws_valid.cell(row=valid_row, column=20, value="Bag")
+                            ws_valid.cell(row=valid_row, column=22, value=2100)
+                            ws_valid.cell(row=valid_row, column=26, value=str(route_num))
+                            ws_valid.cell(row=valid_row, column=27, value=agency_val)
                             
                             item_id += 10
-                            current_r += 1
+                            valid_row += 1
 
-                        if has_dr_code:
-                            valid_row, valid_order_num, valid_items_created, total_valid_orders = current_r, valid_order_num + 1, valid_items_created + 1, total_valid_orders + 1
-                        else:
-                            missing_row, missing_order_num, missing_items_created, total_missing_orders = current_r, missing_order_num + 1, missing_items_created + 1, total_missing_orders + 1
+                        valid_order_num += 1
+                        valid_items_created += 1
+                        total_valid_orders += 1
 
                     if valid_items_created > 0:
                         buf_valid = io.BytesIO()
@@ -610,25 +605,12 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                         buf_valid.seek(0)
                         out_fname = safe_route_num + "_" + today_date + "_" + timestamp + "_Valid.xlsx"
                         st.session_state.processed_files.append({
-                            "name": short_filename + " (Valid DR)",
+                            "name": short_filename + " (Processed Orders)",
                             "data": buf_valid.getvalue(),
                             "filename": out_fname,
                             "orders": valid_items_created
                         })
                         output_files_to_store.append((out_fname, "Valid DR", buf_valid.getvalue(), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
-
-                    if missing_items_created > 0:
-                        buf_missing = io.BytesIO()
-                        wb_missing.save(buf_missing)
-                        buf_missing.seek(0)
-                        out_fname_miss = safe_route_num + "_" + today_date + "_" + timestamp + "_Missing_DR.xlsx"
-                        st.session_state.processed_files.append({
-                            "name": short_filename + " (Missing DR / New)",
-                            "data": buf_missing.getvalue(),
-                            "filename": out_fname_miss,
-                            "orders": missing_items_created
-                        })
-                        output_files_to_store.append((out_fname_miss, "Missing DR", buf_missing.getvalue(), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
 
                     if file_comparison_rows:
                         df_comp = pd.DataFrame(file_comparison_rows)
@@ -670,7 +652,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     "input_qty": total_input_qty,
                     "gen_qty": total_gen_qty,
                     "valid_count": total_valid_orders,
-                    "missing_count": total_missing_orders,
+                    "missing_count": 0,
                     "skipped_count": total_skipped_rows
                 }
 
@@ -687,8 +669,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("### 📈 Batch Performance & KPI Summary")
     kpi = st.session_state.kpi_data
     
-    total_processed_orders = kpi['valid_count'] + kpi['missing_count']
-    success_rate = (kpi['valid_count'] / total_processed_orders * 100) if total_processed_orders > 0 else 0
+    success_rate = (kpi['valid_count'] / (kpi['valid_count'] + kpi['skipped_count']) * 100) if (kpi['valid_count'] + kpi['skipped_count']) > 0 else 0
     
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total Input Qty", f"{kpi['input_qty']:,.0f}")
@@ -705,9 +686,9 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
 
     if st.session_state.unmapped_current_batch:
         st.markdown("---")
-        st.markdown("### 🚨 Unmapped Missing DR Alerts (Logged & Generated via Fallback)")
-        st.error("⚠️ The following agencies had valid quantity but no DR code in file or Master DB. They were logged into the Unmapped Ledger and generated via `NEW_CUST` fallback:")
-        st.dataframe(pd.DataFrame(st.session_state.unmapped_current_batch), use_container_width=True)
+        st.markdown("### ⚠️ Unmapped Missing DRs (Skipped & Logged):")
+        for um in st.session_state.unmapped_current_batch:
+            st.markdown(f"* **File**: {um['File Name']} | **Route**: {um['Route']} | **Agency**: {um['Agency']} | **Status**: {um['Status']}")
 
     st.markdown("---")
     st.markdown("### 📥 Bulk Download & Notifications")
@@ -751,7 +732,6 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
                 ("Total Input Quantity", f"{kpi['input_qty']:,.0f}"),
                 ("Total Generated Quantity", f"{kpi['gen_qty']:,.0f}"),
                 ("Valid DR Orders", str(kpi['valid_count'])),
-                ("Missing DR Orders", str(kpi['missing_count'])),
                 ("Skipped Rows Logged", str(kpi['skipped_count'])),
                 ("Success Rate", f"{success_rate:.1f}%")
             ]
@@ -777,7 +757,6 @@ Date/Time: {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}
 Total Input Quantity : {kpi['input_qty']:,.0f}
 Total Generated Qty  : {kpi['gen_qty']:,.0f}
 Valid DR Orders      : {kpi['valid_count']}
-Missing DR Orders    : {kpi['missing_count']}
 Skipped Rows Logged  : {kpi['skipped_count']}
 Success Rate         : {success_rate:.1f}%
 ----------------------------------------
@@ -834,9 +813,9 @@ Status: Successfully Processed & Audited
                     unmapped_rows_html = ""
                     if st.session_state.unmapped_current_batch:
                         for um in st.session_state.unmapped_current_batch:
-                            unmapped_rows_html += f"<tr><td style='padding:8px; border:1px solid #ddd;'>{um['File Name']}</td><td style='padding:8px; border:1px solid #ddd;'>{um['Route']}</td><td style='padding:8px; border:1px solid #ddd;'>{um['Agency']}</td><td style='padding:8px; border:1px solid #ddd; color:red;'>{um['Status']}</td></tr>"
+                            unmapped_rows_html += f"<li><b>File:</b> {um['File Name']} | <b>Route:</b> {um['Route']} | <b>Agency:</b> {um['Agency']} | <b>Status:</b> {um['Status']}</li>"
                     else:
-                        unmapped_rows_html = "<tr><td colspan='4' style='padding:8px; text-align:center;'>No unmapped missing DR records in this batch.</td></tr>"
+                        unmapped_rows_html = "<li>No skipped missing DR records in this batch.</li>"
 
                     msg = EmailMessage()
                     msg['Subject'] = email_subject_custom
@@ -867,8 +846,8 @@ Status: Successfully Processed & Audited
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{kpi['valid_count']}</td>
                             </tr>
                             <tr style="background-color: #f3f4f6;">
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Missing DR Orders (NEW_CUST)</td>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; color: red;"><b>{kpi['missing_count']}</b></td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Skipped Rows (No DR Code)</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; color: red;"><b>{kpi['skipped_count']}</b></td>
                             </tr>
                             <tr>
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Success Rate</td>
@@ -876,16 +855,10 @@ Status: Successfully Processed & Audited
                             </tr>
                           </table>
 
-                          <h3 style="margin-top: 20px; color: #ef4444;">🚨 Unmapped Missing DRs Alert List</h3>
-                          <table style="border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 13px;">
-                            <tr style="background-color: #ef4444; color: white;">
-                              <th style="padding: 8px; border: 1px solid #ddd;">File Name</th>
-                              <th style="padding: 8px; border: 1px solid #ddd;">Route</th>
-                              <th style="padding: 8px; border: 1px solid #ddd;">Agency</th>
-                              <th style="padding: 8px; border: 1px solid #ddd;">Status</th>
-                            </tr>
+                          <h3 style="margin-top: 20px; color: #d97706;">⚠️ Unmapped Missing DRs (Skipped & Logged):</h3>
+                          <ul>
                             {unmapped_rows_html}
-                          </table>
+                          </ul>
 
                           <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; padding-top: 10px;">Master Routes and Unmapped Ledgers are attached herewith as an Excel workbook.</p>
                         </div>
