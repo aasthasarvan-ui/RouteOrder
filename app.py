@@ -13,7 +13,7 @@ import urllib.parse
 from email.message import EmailMessage
 from fpdf import FPDF
 
-# Page Configuration & Styling
+# Page Configuration & Styling (Stretch & Alignment Fixed)
 st.set_page_config(
     page_title="Sales Order Automation Hub", 
     page_icon="🚀", 
@@ -26,15 +26,19 @@ st.markdown("""
         .stAppHeader { background-color: transparent !important; }
         header[data-testid="stHeader"] { display: none !important; }
         
+        /* Uniform button sizing and layout stabilization to prevent vertical stretching */
         .stButton>button {
             width: 100%;
+            height: 50px;
             background-color: #10b981 !important;
             color: #ffffff !important;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 700;
-            padding: 14px;
             border-radius: 8px;
             border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .stButton>button:hover {
             background-color: #059669 !important;
@@ -181,7 +185,7 @@ for line in agency_fg_override.split('\n'):
         if ag.isdigit() and col_idx.isdigit():
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
-st.title("🚀 Enterprise Sales Order Automation Hub (Advance Edition)")
+st.title("🚀 Enterprise Sales Order Automation Hub (Pro Edition)")
 st.markdown("Upload multiple **Inbound Demand Files** to process orders, track advanced KPIs, run smart anomaly detection, and export audit reports.")
 st.markdown("---")
 
@@ -563,9 +567,8 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     col4.metric("Success Rate", f"{success_rate:.1f}%")
     col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
 
-    # --- NEW FEATURE: Anomaly & Outlier Detection Alert ---
     if kpi['skipped_count'] > 5:
-        st.warning(f"⚠️ **Smart Audit Alert:** {kpi['skipped_count']} rows skipped check exception logs. Data consistency par dhyan dein.")
+        st.warning(f"⚠️ **Smart Audit Alert:** {kpi['skipped_count']} rows skipped check exception logs.")
 
     # --- ADVANCED TABBED VISUAL ANALYTICS ---
     if st.session_state.comparison_summary:
@@ -673,10 +676,9 @@ Status: Successfully Processed & Audited
         )
         
     with col_print:
-        # --- NEW FEATURE: One-Click Print View ---
         st.markdown(f"""
             <a href="javascript:window.print()" style="text-decoration:none;">
-                <button style="width:100%; padding:14px; background:#3b82f6; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">
+                <button style="width:100%; height:50px; background:#3b82f6; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">
                     🖨️ Print
                 </button>
             </a>
@@ -691,14 +693,42 @@ Status: Successfully Processed & Audited
                     msg['From'] = email_user
                     msg['To'] = recipient_email
                     
+                    # --- Enhanced Modern Rich HTML Email Table ---
                     html_content = f"""
                     <html>
-                      <body style="font-family: Arial, sans-serif; color: #333;">
-                        <h2 style="color: #10b981;">📊 Sales Order Batch Automation Hub</h2>
-                        <p>Hello Team,</p>
-                        <p>The daily inbound demand batch has been processed successfully on <b>{get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} IST</b>.</p>
-                        <p><b>Total Input Qty:</b> {kpi['input_qty']:,.0f} | <b>Success Rate:</b> {success_rate:.1f}%</p>
-                        <p style="color: #666; font-size: 12px;">Automated via Sales Order Hub (IST)</p>
+                      <body style="font-family: Arial, sans-serif; color: #333; background-color: #f9fafb; padding: 20px;">
+                        <div style="max-width: 600px; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                          <h2 style="color: #10b981; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📊 Sales Order Batch Automation Hub</h2>
+                          <p>Hello Team,</p>
+                          <p>The daily inbound demand batch has been processed successfully on <b>{get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} IST</b>.</p>
+                          <table style="border-collapse: collapse; width: 100%; margin-top: 15px; border-radius: 6px; overflow: hidden;">
+                            <tr style="background-color: #10b981; color: white;">
+                              <th style="padding: 10px; text-align: left;">Metric</th>
+                              <th style="padding: 10px; text-align: left;">Value</th>
+                            </tr>
+                            <tr style="background-color: #f3f4f6;">
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Total Input Qty</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{kpi['input_qty']:,.0f}</b></td>
+                            </tr>
+                            <tr>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Valid Orders</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{kpi['valid_count']}</td>
+                            </tr>
+                            <tr style="background-color: #f3f4f6;">
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Missing DR Orders</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{kpi['missing_count']}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Success Rate</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{success_rate:.1f}%</b></td>
+                            </tr>
+                            <tr style="background-color: #f3f4f6;">
+                              <td style="padding: 10px;">Skipped Rows</td>
+                              <td style="padding: 10px;">{kpi['skipped_count']}</td>
+                            </tr>
+                          </table>
+                          <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; paddingTop: 10px;">Automated via Sales Order Hub (IST)</p>
+                        </div>
                       </body>
                     </html>
                     """
@@ -721,7 +751,7 @@ Status: Successfully Processed & Audited
         if whatsapp_num:
             wa_text = f"Sales Order Batch Ready! Total Qty: {kpi['input_qty']}, Success Rate: {success_rate:.1f}%."
             wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
-            st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; padding:14px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:50px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("##### Individual File Downloads:")
