@@ -1037,15 +1037,19 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                 
                 with del_col1:
                     row_id_to_del = st.number_input("Enter Master Record ID", min_value=1, step=1, key="row_id_input")
+                    confirm_del_master = st.checkbox("Confirm master row deletion", key="conf_master_del")
                     if st.button("🗑️ Delete Master Row & Reset ID"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM unique_routes_master WHERE id = ?", (row_id_to_del,))
-                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
-                        conn.commit()
-                        conn.close()
-                        st.success(f"✅ Master Record ID {row_id_to_del} deleted & ID sequence reset!")
-                        st.rerun()
+                        if confirm_del_master:
+                            conn = sqlite3.connect("sales_history.db")
+                            cursor = conn.cursor()
+                            cursor.execute("DELETE FROM unique_routes_master WHERE id = ?", (row_id_to_del,))
+                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
+                            conn.commit()
+                            conn.close()
+                            st.success(f"✅ Master Record ID {row_id_to_del} deleted & ID sequence reset!")
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ Kripya deletion confirmation checkbox tick karein.")
 
                 with del_col2:
                     unique_files = df_master['file_name'].dropna().unique().tolist() if 'file_name' in df_master.columns else []
