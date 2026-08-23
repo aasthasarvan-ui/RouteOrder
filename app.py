@@ -212,7 +212,7 @@ for line in agency_fg_override.split('\n'):
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
 st.title("🚀 Enterprise Sales Order Automation Hub (Pro Master Edition)")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs from Master DB, and archive outputs.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, maintain unique route-agency-DR master links, and archive outputs.")
 st.markdown("---")
 
 # Session State Initialization
@@ -224,6 +224,8 @@ if 'skipped_rows_log' not in st.session_state:
     st.session_state.skipped_rows_log = []
 if 'anomaly_logs' not in st.session_state:
     st.session_state.anomaly_logs = []
+if 'missing_dr_current_batch' not in st.session_state:
+    st.session_state.missing_dr_current_batch = []
 if 'kpi_data' not in st.session_state:
     st.session_state.kpi_data = {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0, "skipped_count": 0}
 
@@ -257,6 +259,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
         st.session_state.comparison_summary = []
         st.session_state.skipped_rows_log = []
         st.session_state.anomaly_logs = []
+        st.session_state.missing_dr_current_batch = []
         
         total_input_qty = 0
         total_gen_qty = 0
@@ -267,7 +270,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
         db_records_to_insert = []
         output_files_to_store = []
         
-        with st.spinner("⚡ Reading files, auto-looking up missing DRs, and archiving outputs... Please wait."):
+        with st.spinner("⚡ Reading files, processing orders, and archiving outputs... Please wait."):
             try:
                 try:
                     with open("Output.xlsx", "rb") as f:
@@ -479,6 +482,15 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             if db_match:
                                 has_dr_code = True
                                 clean_dr = db_match[0]
+
+                        # If still no DR code, log into missing list for Email Alert & generate as Missing DR file
+                        if not has_dr_code:
+                            st.session_state.missing_dr_current_batch.append({
+                                "File Name": short_filename,
+                                "Route": route_num,
+                                "Agency": agency_val,
+                                "Assigned Dummy": f"NEW_CUST_{agency_val}"
+                            })
 
                         final_dr = clean_dr if has_dr_code else f"NEW_CUST_{agency_val}"
                         
@@ -698,7 +710,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
             pdf.set_font("Arial", "B", 16)
             pdf.cell(190, 10, "Enterprise Sales Order Summary Invoice", ln=True, align="C")
             pdf.set_font("Arial", "", 10)
-            pdf.cell(190, 6, f"Generated On (IST): {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} | Memo: {kpi.get('memo', '')}", ln=True, align="C")
+            pdf.cell(190, 6, f"Generated On (IST): {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align="C")
             pdf.ln(10)
             
             pdf.set_font("Arial", "B", 11)
@@ -787,6 +799,13 @@ Status: Successfully Processed & Audited
                     df_master_email.to_excel(excel_buffer, index=False, sheet_name="Master Routes")
                     excel_buffer.seek(0)
 
+                    missing_email_html = ""
+                    if st.session_state.missing_dr_current_batch:
+                        missing_email_html = "<h3 style='color: #d97706;'>⚠️ Missing DR Agencies (Generated as NEW_CUST):</h3><ul>"
+                        for item in st.session_state.missing_dr_current_batch:
+                            missing_email_html += f"<li>File: {item['File Name']} | Route: {item['Route']} | Agency: {item['Agency']}</li>"
+                        missing_email_html += "</ul>"
+
                     msg = EmailMessage()
                     msg['Subject'] = email_subject_custom
                     msg['From'] = email_user
@@ -822,6 +841,7 @@ Status: Successfully Processed & Audited
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{success_rate:.1f}%</b></td>
                             </tr>
                           </table>
+                          {missing_email_html}
                           <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; paddingTop: 10px;">Master Route-Agency-DR Database attached herewith.</p>
                         </div>
                       </body>
@@ -838,11 +858,11 @@ Status: Successfully Processed & Audited
                     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                         smtp.login(email_user, email_pass)
                         smtp.send_message(msg)
-                    st.success("✅ Email dispatched with Master DB attached!")
+                    st.success("✅ Email dispatched with Missing DR alerts & Master DB attached!")
                 except Exception as e:
                     st.error(f"❌ Email failed: {str(e)}")
             else:
-                st.warning("⚠️ Enter email credentials!")
+                st.warning("⚠️ Kripya sidebar mein Email credentials enter karein!")
 
     with col_wa:
         if whatsapp_num:
