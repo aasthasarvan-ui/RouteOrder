@@ -8,6 +8,7 @@ import re
 import zipfile
 import sqlite3
 import smtplib
+import json
 import urllib.parse
 from email.message import EmailMessage
 from fpdf import FPDF
@@ -180,8 +181,8 @@ for line in agency_fg_override.split('\n'):
         if ag.isdigit() and col_idx.isdigit():
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
-st.title("📊 Enterprise Sales Order Automation Hub (IST & PDF)")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, apply direct column mappings, view KPIs, and export audit reports.")
+st.title("🚀 Enterprise Sales Order Automation Hub (Advance Edition)")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, track advanced KPIs, run smart anomaly detection, and export audit reports.")
 st.markdown("---")
 
 # Session State Initialization
@@ -282,7 +283,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Restored Original Route Number Finding Logic (File scan first, fallback to sidebar)
+                    # 3. Route Number Finding Logic
                     route_num = default_fallback_route if default_fallback_route != "" else "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
                     
@@ -302,7 +303,6 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         if route_num != (default_fallback_route if default_fallback_route != "" else "22"):
                             break
 
-                    # Agar sidebar mein user ne explicitly kuch dala hai aur file me nahi mila, toh sidebar wala use hoga
                     if default_fallback_route != "" and default_fallback_route != "22":
                         route_num = default_fallback_route
 
@@ -547,29 +547,36 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
     else:
         st.warning("⚠️ Kripya pehle demand files upload karein!")
 
-# Display KPI Summary Cards & Visual Analytics
+# Display KPI Summary Cards & Advanced Visual Analytics
 if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("---")
     st.markdown("### 📈 Batch Performance & KPI Summary")
     kpi = st.session_state.kpi_data
+    
+    total_processed_orders = kpi['valid_count'] + kpi['missing_count']
+    success_rate = (kpi['valid_count'] / total_processed_orders * 100) if total_processed_orders > 0 else 0
+    
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total Input Qty", f"{kpi['input_qty']:,.0f}")
     col2.metric("Generated Qty", f"{kpi['gen_qty']:,.0f}")
     col3.metric("Valid Orders", kpi['valid_count'])
-    col4.metric("Missing Orders", kpi['missing_count'])
+    col4.metric("Success Rate", f"{success_rate:.1f}%")
     col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
 
-    # --- Visual Analytics Charts ---
+    # --- NEW FEATURE: Anomaly & Outlier Detection Alert ---
+    if kpi['skipped_count'] > 5:
+        st.warning(f"⚠️ **Smart Audit Alert:** {kpi['skipped_count']} rows skipped check exception logs. Data consistency par dhyan dein.")
+
+    # --- ADVANCED TABBED VISUAL ANALYTICS ---
     if st.session_state.comparison_summary:
         st.markdown("---")
-        st.markdown("### 📊 Visual Demand Analytics")
+        st.markdown("### 📊 Advanced Visual Analytics Dashboard")
         combined_df_chart = pd.concat(st.session_state.comparison_summary, ignore_index=True)
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            st.markdown("##### Agency-wise Generated Quantity")
+        
+        tab1, tab2 = st.tabs(["📊 Agency-wise Breakdown", "📦 SKU-wise Share"])
+        with tab1:
             st.bar_chart(combined_df_chart.groupby("Agency")["Generated Qty"].sum())
-        with col_c2:
-            st.markdown("##### SKU-wise Demand Share")
+        with tab2:
             st.bar_chart(combined_df_chart.groupby("FG Code")["Generated Qty"].sum())
 
     st.markdown("---")
@@ -580,11 +587,11 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         for item in st.session_state.processed_files:
             zip_file.writestr(item['filename'], item['data'])
     
-    col_zip, col_pdf, col_summary, col_email, col_wa = st.columns(5)
+    col_zip, col_pdf, col_summary, col_json, col_print, col_email, col_wa = st.columns(7)
     
     with col_zip:
         st.download_button(
-            label="📦 Download ZIP",
+            label="📦 ZIP",
             data=zip_buffer.getvalue(),
             file_name=f"Batch_Orders_{get_ist_now().strftime('%Y-%m-%d')}.zip",
             mime="application/zip",
@@ -612,7 +619,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
                 ("Valid DR Orders", str(kpi['valid_count'])),
                 ("Missing DR Orders", str(kpi['missing_count'])),
                 ("Skipped Rows Logged", str(kpi['skipped_count'])),
-                ("Total Output Files", str(len(st.session_state.processed_files)))
+                ("Success Rate", f"{success_rate:.1f}%")
             ]
             for m_desc, m_val in metrics_list:
                 pdf.cell(100, 8, m_desc, border=1)
@@ -620,7 +627,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
                 
             pdf_bytes = bytes(pdf.output())
             st.download_button(
-                label="📄 PDF Invoice",
+                label="📄 PDF",
                 data=pdf_bytes,
                 file_name=f"Sales_Invoice_{get_ist_now().strftime('%Y-%m-%d')}.pdf",
                 mime="application/pdf",
@@ -638,20 +645,45 @@ Total Generated Qty  : {kpi['gen_qty']:,.0f}
 Valid DR Orders      : {kpi['valid_count']}
 Missing DR Orders    : {kpi['missing_count']}
 Skipped Rows Logged  : {kpi['skipped_count']}
+Success Rate         : {success_rate:.1f}%
 ----------------------------------------
 Generated Files Count: {len(st.session_state.processed_files)}
 Status: Successfully Processed & Audited
 ========================================"""
         st.download_button(
-            label="📄 Summary Report",
+            label="📄 TXT",
             data=summary_txt.encode('utf-8'),
             file_name=f"Summary_Report_{get_ist_now().strftime('%Y-%m-%d')}.txt",
             mime="text/plain",
             key="summary_txt_download"
         )
+        
+    with col_json:
+        json_data = json.dumps({
+            "timestamp": get_ist_now().strftime('%Y-%m-%d %H:%M:%S'),
+            "metrics": kpi,
+            "success_rate": f"{success_rate:.1f}%"
+        }, indent=4)
+        st.download_button(
+            label="💾 JSON",
+            data=json_data.encode('utf-8'),
+            file_name=f"Audit_Backup_{get_ist_now().strftime('%Y-%m-%d')}.json",
+            mime="application/json",
+            key="json_backup_download"
+        )
+        
+    with col_print:
+        # --- NEW FEATURE: One-Click Print View ---
+        st.markdown(f"""
+            <a href="javascript:window.print()" style="text-decoration:none;">
+                <button style="width:100%; padding:14px; background:#3b82f6; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">
+                    🖨️ Print
+                </button>
+            </a>
+        """, unsafe_allow_html=True)
     
     with col_email:
-        if st.button("📧 Send HTML Email"):
+        if st.button("📧 Email"):
             if email_user and email_pass and recipient_email:
                 try:
                     msg = EmailMessage()
@@ -664,15 +696,8 @@ Status: Successfully Processed & Audited
                       <body style="font-family: Arial, sans-serif; color: #333;">
                         <h2 style="color: #10b981;">📊 Sales Order Batch Automation Hub</h2>
                         <p>Hello Team,</p>
-                        <p>The daily inbound demand batch has been processed successfully on <b>{get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} IST</b>. Here are the key highlights:</p>
-                        <table style="border-collapse: collapse; width: 100%; max-width: 500px;">
-                          <tr style="background-color: #f3f4f6;"><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Metric</th><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Value</th></tr>
-                          <tr><td style="border: 1px solid #ddd; padding: 8px;">Total Input Qty</td><td style="border: 1px solid #ddd; padding: 8px;"><b>{kpi['input_qty']:,.0f}</b></td></tr>
-                          <tr><td style="border: 1px solid #ddd; padding: 8px;">Valid Orders</td><td style="border: 1px solid #ddd; padding: 8px;">{kpi['valid_count']}</td></tr>
-                          <tr><td style="border: 1px solid #ddd; padding: 8px;">Missing DR Orders</td><td style="border: 1px solid #ddd; padding: 8px;">{kpi['missing_count']}</td></tr>
-                          <tr><td style="border: 1px solid #ddd; padding: 8px;">Skipped Rows</td><td style="border: 1px solid #ddd; padding: 8px;">{kpi['skipped_count']}</td></tr>
-                        </table>
-                        <p style="margin-top: 20px;">Please find the generated order files attached herewith.</p>
+                        <p>The daily inbound demand batch has been processed successfully on <b>{get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} IST</b>.</p>
+                        <p><b>Total Input Qty:</b> {kpi['input_qty']:,.0f} | <b>Success Rate:</b> {success_rate:.1f}%</p>
                         <p style="color: #666; font-size: 12px;">Automated via Sales Order Hub (IST)</p>
                       </body>
                     </html>
@@ -686,17 +711,17 @@ Status: Successfully Processed & Audited
                     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                         smtp.login(email_user, email_pass)
                         smtp.send_message(msg)
-                    st.success("✅ HTML Rich Email dispatched successfully!")
+                    st.success("✅ Email dispatched!")
                 except Exception as e:
                     st.error(f"❌ Email failed: {str(e)}")
             else:
-                st.warning("⚠️ Enter email credentials in sidebar!")
+                st.warning("⚠️ Enter email credentials!")
 
     with col_wa:
         if whatsapp_num:
-            wa_text = f"Sales Order Batch Ready! Total Qty: {kpi['input_qty']}, Valid: {kpi['valid_count']}, Missing: {kpi['missing_count']}."
+            wa_text = f"Sales Order Batch Ready! Total Qty: {kpi['input_qty']}, Success Rate: {success_rate:.1f}%."
             wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
-            st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; padding:14px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold;">📱 WhatsApp Alert</button></a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; padding:14px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("##### Individual File Downloads:")
@@ -710,19 +735,40 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# Tables and Logs
+# Tables and Logs with Search & Filter Feature
 if st.session_state.comparison_summary:
     st.markdown("---")
     st.markdown("### 📋 Agency-wise Material & Input Comparison")
+    
+    search_query = st.text_input("🔍 Search Table (Filter by Agency, DR Code, or FG Code)", "", key="table_search")
+    
     combined_df = pd.concat(st.session_state.comparison_summary, ignore_index=True)
     summary_table = combined_df.groupby(["Agency", "DR Code", "FG Code"], as_index=False).agg({"Input Qty": "sum", "Generated Qty": "sum"})
     summary_table["Difference"] = summary_table["Input Qty"] - summary_table["Generated Qty"]
+    
+    if search_query:
+        q = search_query.lower()
+        summary_table = summary_table[
+            summary_table['Agency'].astype(str).str.lower().str.contains(q) |
+            summary_table['DR Code'].astype(str).str.lower().str.contains(q) |
+            summary_table['FG Code'].astype(str).str.lower().str.contains(q)
+        ]
+        
     st.dataframe(summary_table, use_container_width=True)
 
 if st.session_state.skipped_rows_log:
     st.markdown("---")
     st.markdown("### ⚠️ Skipped / Invalid Rows Exception Log")
-    st.dataframe(pd.DataFrame(st.session_state.skipped_rows_log), use_container_width=True)
+    df_skipped = pd.DataFrame(st.session_state.skipped_rows_log)
+    
+    skip_search = st.text_input("🔍 Search Skipped Log (Filter by File Name or Agency)", "", key="skip_search")
+    if skip_search:
+        sq = skip_search.lower()
+        df_skipped = df_skipped[
+            df_skipped['File Name'].astype(str).str.lower().str.contains(sq) |
+            df_skipped['Agency Value'].astype(str).str.lower().str.contains(sq)
+        ]
+    st.dataframe(df_skipped, use_container_width=True)
 
 if st.session_state.comparison_summary:
     st.markdown("---")
