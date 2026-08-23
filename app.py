@@ -245,7 +245,7 @@ for line in agency_fg_override.split('\n'):
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
 st.title("🚀 Enterprise Sales Order Automation Hub (Pro Master Edition)")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs, log unmapped entries, and archive outputs.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs, log valid unmapped entries, and archive outputs.")
 st.markdown("---")
 
 # Session State Initialization
@@ -449,7 +449,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
 
                         agency_val = int(agency_str)
                         
-                        # Quantities Check First (If no quantity, do not process or log into unmapped)
+                        # Quantities Check FIRST: If quantity is 0 or blank, ignore completely (do not log into unmapped ledger)
                         row_has_items = False
                         valid_row_quantities = []
                         row_total_qty = 0
@@ -468,7 +468,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                     pass
 
                         if not row_has_items:
-                            # Skip rows with zero or blank quantities silently without unmapped logging
                             total_skipped_rows += 1
                             continue
 
@@ -509,20 +508,20 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 has_dr_code = True
                                 clean_dr = db_match[0]
 
-                        # If agency has quantity but NO DR Code anywhere, SKIP and log into Unmapped Ledger
+                        # If quantity is valid (>0) but STILL no DR Code in file or DB, ONLY THEN log into Unmapped Ledger
                         if not has_dr_code:
                             unmapped_records_to_insert.append((short_filename, str(route_num), str(agency_val), "UNMAPPED_MISSING", ist_now.strftime("%Y-%m-%d %H:%M:%S")))
                             st.session_state.unmapped_current_batch.append({
                                 "File Name": short_filename,
                                 "Route": route_num,
                                 "Agency": agency_val,
-                                "Status": "Skipped (Has Quantity but No DR Code in File or Master DB)"
+                                "Status": "Skipped (Has Valid Quantity > 0 but No DR Code in File or Master DB)"
                             })
                             st.session_state.skipped_rows_log.append({
                                 "File Name": short_filename,
                                 "Row Index": r + 1,
                                 "Agency Value": agency_val,
-                                "Reason": "Skipped: Has Quantity but Missing DR Code"
+                                "Reason": "Skipped: Has Quantity > 0 but Missing DR Code"
                             })
                             total_skipped_rows += 1
                             continue
@@ -687,7 +686,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     if st.session_state.unmapped_current_batch:
         st.markdown("---")
         st.markdown("### 🚨 Unmapped Missing DR Alerts (Skipped & Logged)")
-        st.error("⚠️ The following agencies had valid quantity but no DR code in file or Master DB, and were skipped & logged into the Unmapped Ledger:")
+        st.error("⚠️ The following agencies had valid quantity (>0) but no DR code in file or Master DB, and were skipped & logged into the Unmapped Ledger:")
         st.dataframe(pd.DataFrame(st.session_state.unmapped_current_batch), use_container_width=True)
 
     # --- ADVANCED TABBED VISUAL ANALYTICS ---
@@ -883,7 +882,7 @@ Status: Successfully Processed & Audited
                 except Exception as e:
                     st.error(f"❌ Email failed: {str(e)}")
             else:
-                st.warning("⚠️ Enter email credentials!")
+                st.warning("⚠️ Kripya sidebar mein Email credentials enter karein!")
 
     with col_wa:
         if whatsapp_num:
