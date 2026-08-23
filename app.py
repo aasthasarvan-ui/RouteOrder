@@ -77,7 +77,6 @@ def init_db():
             UNIQUE(route_no, agency_no, dr_code)
         )
     """)
-    # --- NEW TABLE: Unique Output File Archive Ledger (No Duplicates on Filename) ---
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS output_files_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -213,7 +212,7 @@ for line in agency_fg_override.split('\n'):
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
 st.title("🚀 Enterprise Sales Order Automation Hub (Pro Master Edition)")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, maintain unique route-agency-DR master links, and archive outputs.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs from Master DB, and archive outputs.")
 st.markdown("---")
 
 # Session State Initialization
@@ -268,7 +267,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
         db_records_to_insert = []
         output_files_to_store = []
         
-        with st.spinner("⚡ Reading files, processing orders, and archiving outputs in database... Please wait."):
+        with st.spinner("⚡ Reading files, auto-looking up missing DRs from Master DB, and archiving outputs... Please wait."):
             try:
                 try:
                     with open("Output.xlsx", "rb") as f:
@@ -437,6 +436,22 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                         clean_dr = val_str
                                         break
 
+                        # --- SMART FEATURE: Auto-lookup missing DR from Database Master ---
+                        if not has_dr_code:
+                            conn_lookup = sqlite3.connect("sales_history.db")
+                            cursor_lookup = conn_lookup.cursor()
+                            cursor_lookup.execute("""
+                                SELECT dr_code FROM unique_routes_master 
+                                WHERE route_no = ? AND agency_no = ? AND dr_code LIKE 'DR%' 
+                                LIMIT 1
+                            """, (str(route_num), str(agency_val)))
+                            db_match = cursor_lookup.fetchone()
+                            conn_lookup.close()
+                            
+                            if db_match:
+                                has_dr_code = True
+                                clean_dr = db_match[0]
+
                         final_dr = clean_dr if has_dr_code else f"NEW_CUST_{agency_val}"
                         
                         # Collect linked data with File Name tracking for Master DB
@@ -587,7 +602,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     VALUES (?, ?, ?, ?, ?)
                 """, db_records_to_insert)
                 
-                # Store output files in database without duplication on filename
                 for fname, ftype, fdata, fdate in output_files_to_store:
                     cursor.execute("""
                         INSERT OR IGNORE INTO output_files_ledger (file_name, file_type, file_data, created_at)
@@ -609,7 +623,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     "skipped_count": total_skipped_rows
                 }
 
-                st.success("✅ Batch Processing, Master DB & Output Archive Updated Successfully!")
+                st.success("✅ Batch Processing, Master DB Auto-Lookup & Output Archive Updated Successfully!")
 
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
