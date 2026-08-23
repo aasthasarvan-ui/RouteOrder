@@ -12,7 +12,6 @@ import json
 import urllib.parse
 from email.message import EmailMessage
 from fpdf import FPDF
-import streamlit.components.v1 as components
 
 # Page Configuration & Styling (Stretch & Alignment Fixed)
 st.set_page_config(
@@ -677,14 +676,13 @@ Status: Successfully Processed & Audited
         )
         
     with col_print:
-        print_html = """
-        <div style="width:100%; margin:0; padding:0;">
-            <button onclick="parent.window.print()" style="width:100%; height:50px; background:#3b82f6; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-family:sans-serif; display:flex; align-items:center; justify-content:center;">
-                🖨️ Print
-            </button>
-        </div>
-        """
-        components.html(print_html, height=60)
+        st.markdown(f"""
+            <a href="javascript:window.print()" style="text-decoration:none;">
+                <button style="width:100%; height:50px; background:#3b82f6; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                    🖨️ Print
+                </button>
+            </a>
+        """, unsafe_allow_html=True)
     
     with col_email:
         if st.button("📧 Email"):
@@ -695,6 +693,7 @@ Status: Successfully Processed & Audited
                     msg['From'] = email_user
                     msg['To'] = recipient_email
                     
+                    # --- Enhanced Modern Rich HTML Email Table ---
                     html_content = f"""
                     <html>
                       <body style="font-family: Arial, sans-serif; color: #333; background-color: #f9fafb; padding: 20px;">
@@ -753,6 +752,7 @@ Status: Successfully Processed & Audited
             wa_text = f"Sales Order Batch Ready! Total Qty: {kpi['input_qty']}, Success Rate: {success_rate:.1f}%."
             wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
             st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:50px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
+
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("##### Individual File Downloads:")
     for i, item in enumerate(st.session_state.processed_files):
