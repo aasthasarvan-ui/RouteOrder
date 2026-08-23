@@ -12,6 +12,7 @@ import json
 import urllib.parse
 from email.message import EmailMessage
 from fpdf import FPDF
+import streamlit.components.v1 as components
 
 # Page Configuration & Styling (Stretch & Alignment Fixed)
 st.set_page_config(
