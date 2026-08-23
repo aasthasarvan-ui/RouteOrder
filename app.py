@@ -77,7 +77,6 @@ def init_db():
             UNIQUE(route_no, agency_no, dr_code)
         )
     """)
-    # Auto-migration check for file_name column
     cursor.execute("PRAGMA table_info(unique_routes_master)")
     columns = [col[1] for col in cursor.fetchall()]
     if "file_name" not in columns:
@@ -807,10 +806,10 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- UNIQUE MASTER DATABASE MANAGEMENT & ROW-BY-ROW ROLLBACK PANEL ---
+# --- UNIQUE MASTER DATABASE MANAGEMENT & ROLLBACK PANEL ---
 st.markdown("---")
-with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Database (Row-by-Row Delete)"):
-    st.markdown("Yahan aap master database ke records ko dekh sakte hain, search kar sakte hain, aur kisi bhi **specific row** ya file ke data ko delete kar sakte hain.")
+with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Database (File-wise & Row-wise Delete)"):
+    st.markdown("Yahan aap master database ke records ko dekh sakte hain, search kar sakte hain, aur kisi bhi **specific file** ya row ke data ko delete kar sakte hain, sath hi direct email par bhej sakte hain.")
     try:
         conn = sqlite3.connect("sales_history.db")
         df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
@@ -830,11 +829,10 @@ with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Da
             
             st.dataframe(filtered_master, use_container_width=True)
             
-            st.markdown("#### 🗑️ Advanced Deletion & Row-by-Row Rollback Tools")
+            st.markdown("#### 🗑️ Advanced Deletion & File-wise Rollback Tools")
             del_col1, del_col2, del_col3 = st.columns(3)
             
             with del_col1:
-                # --- NEW: Row-by-Row ID Deletion ---
                 row_id_to_del = st.number_input("Enter Record ID to Delete Single Row", min_value=1, step=1, key="row_id_input")
                 if st.button("🗑️ Delete Specific Row by ID"):
                     conn = sqlite3.connect("sales_history.db")
@@ -846,6 +844,7 @@ with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Da
                     st.rerun()
 
             with del_col2:
+                # --- FILE-WISE DELETION RESTORED ---
                 unique_files = df_master['file_name'].dropna().unique().tolist() if 'file_name' in df_master.columns else []
                 file_to_purge = st.selectbox("Select Input File to Purge Entirely", ["Select File..."] + unique_files, key="purge_file_select")
                 confirm_del_file = st.checkbox("Confirm deletion for this file", key="conf_file")
@@ -856,7 +855,7 @@ with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Da
                         cursor.execute("DELETE FROM unique_routes_master WHERE file_name = ?", (file_to_purge,))
                         conn.commit()
                         conn.close()
-                        st.success(f"✅ File '{file_to_purge}' ka saara data hata diya gaya hai!")
+                        st.success(f"✅ File '{file_to_purge}' ka saara data master database se hata diya gaya hai!")
                         st.rerun()
                     else:
                         st.warning("⚠️ Kripya valid file select karein aur confirmation tick karein.")
@@ -881,13 +880,36 @@ with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Da
             df_master.to_excel(master_excel_buf, index=False, sheet_name="Master Routes")
             master_excel_buf.seek(0)
             
-            st.download_button(
-                label="📥 Export Master Database to Excel (.xlsx)",
-                data=master_excel_buf.getvalue(),
-                file_name=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="export_master_excel"
-            )
+            dl_col1, dl_col2 = st.columns(2)
+            with dl_col1:
+                st.download_button(
+                    label="📥 Export Master Database to Excel (.xlsx)",
+                    data=master_excel_buf.getvalue(),
+                    file_name=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="export_master_excel"
+                )
+            with dl_col2:
+                # --- SEND MASTER DB VIA EMAIL BUTTON ---
+                if st.button("📧 Send Master DB via Email"):
+                    if email_user and email_pass and recipient_email:
+                        try:
+                            msg = EmailMessage()
+                            msg['Subject'] = f"📊 Master Database Export Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}"
+                            msg['From'] = email_user
+                            msg['To'] = recipient_email
+                            
+                            msg.set_content("Hello Team,\n\nPlease find attached the latest Unique Route-Agency-DR Master Database export.\n\nAutomated via Sales Order Hub (IST)")
+                            msg.add_attachment(master_excel_buf.getvalue(), maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx")
+                            
+                            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                                smtp.login(email_user, email_pass)
+                                smtp.send_message(msg)
+                            st.success("✅ Master Database successfully emailed to recipient!")
+                        except Exception as e:
+                            st.error(f"❌ Email failed: {str(e)}")
+                    else:
+                        st.warning("⚠️ Kripya sidebar mein Email credentials enter karein!")
         else:
             st.info("No master records found yet. Process a batch file to populate data.")
     except Exception as e:
