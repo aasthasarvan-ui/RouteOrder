@@ -570,7 +570,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             
                             file_comparison_rows.append({
                                 "File Name": short_filename,
-                                "Route No": str(route_num),
                                 "Status": file_category,
                                 "Agency": agency_val,
                                 "DR Code": dr_to_use,
@@ -634,7 +633,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     if file_comparison_rows:
                         df_comp = pd.DataFrame(file_comparison_rows)
                         df_pivot = df_comp.pivot_table(
-                            index=["File Name", "Route No", "Status", "Agency", "DR Code", "FG Code"],
+                            index=["File Name", "Status", "Agency", "DR Code", "FG Code"],
                             values=["Input Qty", "Generated Qty"],
                             aggfunc="sum"
                         ).reset_index()
@@ -697,22 +696,6 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     col3.metric("Valid Orders", kpi['valid_count'])
     col4.metric("Success Rate", f"{success_rate:.1f}%")
     col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
-
-    # --- RESTORED: Route-wise, Agency-wise & DR Code KPI Summary Cards/Tables ---
-    if st.session_state.comparison_summary:
-        st.markdown("---")
-        st.markdown("### 📊 Route, Agency & DR-Code Breakdown KPIs")
-        combined_kpi_df = pd.concat(st.session_state.comparison_summary, ignore_index=True)
-        
-        col_kpi_1, col_kpi_2 = st.columns(2)
-        with col_kpi_1:
-            st.markdown("##### 🛣️ Route-wise Quantity Summary")
-            route_summary = combined_kpi_df.groupby("Route No")[["Input Qty", "Generated Qty"]].sum().reset_index()
-            st.dataframe(route_summary, use_container_width=True)
-        with col_kpi_2:
-            st.markdown("##### 🏢 Agency & DR-Code Breakdown")
-            agency_dr_summary = combined_kpi_df.groupby(["Agency", "DR Code", "Status"])[["Generated Qty"]].sum().reset_index()
-            st.dataframe(agency_dr_summary, use_container_width=True)
 
     if st.session_state.anomaly_logs:
         st.markdown("---")
@@ -848,6 +831,7 @@ Status: Successfully Processed & Audited
                         df_unmapped_email.to_excel(writer, index=False, sheet_name="Unmapped Missing DRs")
                     excel_buffer.seek(0)
 
+                    # Build Unmapped HTML Table for Email Body
                     unmapped_rows_html = ""
                     if st.session_state.unmapped_current_batch:
                         for um in st.session_state.unmapped_current_batch:
@@ -932,12 +916,12 @@ Status: Successfully Processed & Audited
             wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
             st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:50px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
 
-# --- MASTER DATABASE MANAGEMENT & DR CODE UPLOAD PANEL ---
+# --- MASTER DATABASE MANAGEMENT, UNMAPPED LEDGER & OUTPUT ARCHIVE PANEL ---
 st.markdown("---")
 with st.expander("🗄️ View, Export & Manage Databases & Upload DR Master Code"):
     try:
         conn = sqlite3.connect("sales_history.db")
-        df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
+        df_master = pd.read_sql("SELECT id, file_name, route_no, agency_no, dr_code, created_at FROM unique_routes_master ORDER BY id DESC", conn)
         df_unmapped = pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger ORDER BY id DESC", conn)
         df_outputs = pd.read_sql("SELECT id, file_name, file_type, created_at FROM output_files_ledger ORDER BY id DESC", conn)
         conn.close()
@@ -947,6 +931,20 @@ with st.expander("🗄️ View, Export & Manage Databases & Upload DR Master Cod
         with tab_m1:
             st.markdown("#### 📋 Route-Agency-DR Master Database")
             if not df_master.empty:
+                # --- KPI SUMMARY METRICS FOR MASTER DATABASE ---
+                total_records_count = len(df_master)
+                total_routes_count = df_master['route_no'].nunique()
+                total_agencies_count = df_master['agency_no'].nunique()
+                total_dr_count = df_master['dr_code'].nunique()
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("📌 Total Records", total_records_count)
+                m2.metric("🛣️ Unique Routes", total_routes_count)
+                m3.metric("🏢 Unique Agencies", total_agencies_count)
+                m4.metric("🔑 Unique DR Codes", total_dr_count)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+
                 db_search = st.text_input("🔍 Search Master Database (Filter by File, Route, Agency or DR)", "", key="db_search")
                 filtered_master = df_master
                 if db_search:
