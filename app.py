@@ -53,7 +53,7 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# --- UNIQUE CHECKPOINT: Core Logic & Integrity Verification Guard ---
+# --- CORE INTEGRITY CHECK ---
 def verify_core_integrity():
     try:
         conn = sqlite3.connect("sales_history.db")
@@ -70,7 +70,7 @@ def verify_core_integrity():
     except Exception as e:
         return False, str(e)
 
-# SQLite Database Initialization with Master, Output Ledger & Unmapped Missing DR Ledger
+# SQLite Database Initialization
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
@@ -129,7 +129,7 @@ if not is_healthy:
     st.error(f"❌ **System Integrity Warning:** {health_msg}")
     st.stop()
 
-# --- Session State Defaults for Reset/Clear/Restore ---
+# --- Session State Defaults ---
 DEFAULTS = {
     "fg_code": "FG500014",
     "col_map": "36:FG500014AJ\n37:FG500014AK",
@@ -145,7 +145,7 @@ for key, val in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
-# Sidebar Settings & Dynamic Mapping with Clear/Restore
+# Sidebar Settings & Dynamic Mapping
 st.sidebar.title("⚙️ System Settings")
 
 if st.sidebar.button("🔄 Reset All to Defaults"):
@@ -517,7 +517,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 has_dr_code = True
                                 clean_dr = db_match[0]
 
-                        # If quantity is valid (>0) but STILL no DR Code in file or DB, log into Unmapped Ledger AND generate using NEW_CUST fallback so output file is created!
+                        # If quantity is valid (>0) but STILL no DR Code in file or DB, log into Unmapped Ledger
                         if not has_dr_code:
                             unmapped_records_to_insert.append((short_filename, str(route_num), str(agency_val), f"NEW_CUST_{agency_val}", ist_now.strftime("%Y-%m-%d %H:%M:%S")))
                             st.session_state.unmapped_current_batch.append({
@@ -640,7 +640,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
 
-                # --- Update Master DB, Unmapped Ledger & Output Files Ledger with ID Reset Support ---
+                # --- Update Master DB & Unmapped Ledger ---
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
                 cursor.executemany("""
@@ -681,7 +681,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
     else:
         st.warning("⚠️ Kripya pehle demand files upload karein!")
 
-# Display KPI Summary Cards & Advanced Visual Analytics
+# Display KPI Summary Cards & Advanced Analytics
 if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("---")
     st.markdown("### 📈 Batch Performance & KPI Summary")
@@ -697,10 +697,6 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     col4.metric("Success Rate", f"{success_rate:.1f}%")
     col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
 
-    if kpi['skipped_count'] > 5:
-        st.warning(f"⚠️ **Smart Audit Alert:** {kpi['skipped_count']} rows skipped check exception logs.")
-
-    # --- AI Anomaly & Unmapped Missing DR Alerts ---
     if st.session_state.anomaly_logs:
         st.markdown("---")
         st.markdown("### 🤖 AI Demand Spike & Anomaly Detector Alerts")
@@ -713,22 +709,9 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         st.error("⚠️ The following agencies had valid quantity but no DR code in file or Master DB. They were logged into the Unmapped Ledger and generated via `NEW_CUST` fallback:")
         st.dataframe(pd.DataFrame(st.session_state.unmapped_current_batch), use_container_width=True)
 
-    # --- ADVANCED TABBED VISUAL ANALYTICS ---
-    if st.session_state.comparison_summary:
-        st.markdown("---")
-        st.markdown("### 📊 Advanced Visual Analytics Dashboard")
-        combined_df_chart = pd.concat(st.session_state.comparison_summary, ignore_index=True)
-        
-        tab1, tab2 = st.tabs(["📊 Agency-wise Breakdown", "📦 SKU-wise Share"])
-        with tab1:
-            st.bar_chart(combined_df_chart.groupby("Agency")["Generated Qty"].sum())
-        with tab2:
-            st.bar_chart(combined_df_chart.groupby("FG Code")["Generated Qty"].sum())
-
     st.markdown("---")
     st.markdown("### 📥 Bulk Download & Notifications")
     
-    # --- Advanced Email Config Expander ---
     with st.expander("✉️ Advanced Email Dispatch Options (Custom Subject & Note)"):
         email_subject_custom = st.text_input("Custom Email Subject Line", f"🚀 Sales Orders Batch Execution Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}")
         email_notes_custom = st.text_area("Custom Remarks / Notes to Include in Email Body", "All routes verified and processed successfully.")
@@ -839,11 +822,22 @@ Status: Successfully Processed & Audited
                 try:
                     conn = sqlite3.connect("sales_history.db")
                     df_master_email = pd.read_sql("SELECT * FROM unique_routes_master", conn)
+                    df_unmapped_email = pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger", conn)
                     conn.close()
                     
                     excel_buffer = io.BytesIO()
-                    df_master_email.to_excel(excel_buffer, index=False, sheet_name="Master Routes")
+                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                        df_master_email.to_excel(writer, index=False, sheet_name="Master Routes")
+                        df_unmapped_email.to_excel(writer, index=False, sheet_name="Unmapped Missing DRs")
                     excel_buffer.seek(0)
+
+                    # Build Unmapped HTML Table for Email Body
+                    unmapped_rows_html = ""
+                    if st.session_state.unmapped_current_batch:
+                        for um in st.session_state.unmapped_current_batch:
+                            unmapped_rows_html += f"<tr><td style='padding:8px; border:1px solid #ddd;'>{um['File Name']}</td><td style='padding:8px; border:1px solid #ddd;'>{um['Route']}</td><td style='padding:8px; border:1px solid #ddd;'>{um['Agency']}</td><td style='padding:8px; border:1px solid #ddd; color:red;'>{um['Status']}</td></tr>"
+                    else:
+                        unmapped_rows_html = "<tr><td colspan='4' style='padding:8px; text-align:center;'>No unmapped missing DR records in this batch.</td></tr>"
 
                     msg = EmailMessage()
                     msg['Subject'] = email_subject_custom
@@ -853,12 +847,14 @@ Status: Successfully Processed & Audited
                     html_content = f"""
                     <html>
                       <body style="font-family: Arial, sans-serif; color: #333; background-color: #f9fafb; padding: 20px;">
-                        <div style="max-width: 600px; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <div style="max-width: 650px; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
                           <h2 style="color: #10b981; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📊 Sales Order Batch Automation Hub</h2>
                           <p>Hello Team,</p>
                           <p>The daily inbound demand batch has been processed successfully on <b>{get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} IST</b>.</p>
                           <p style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 10px; margin: 15px 0;"><b>Remarks:</b> {email_notes_custom}</p>
-                          <table style="border-collapse: collapse; width: 100%; margin-top: 15px; border-radius: 6px; overflow: hidden;">
+                          
+                          <h3>Key Execution Metrics</h3>
+                          <table style="border-collapse: collapse; width: 100%; margin-top: 10px; border-radius: 6px; overflow: hidden;">
                             <tr style="background-color: #10b981; color: white;">
                               <th style="padding: 10px; text-align: left;">Metric</th>
                               <th style="padding: 10px; text-align: left;">Value</th>
@@ -872,15 +868,27 @@ Status: Successfully Processed & Audited
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{kpi['valid_count']}</td>
                             </tr>
                             <tr style="background-color: #f3f4f6;">
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Missing DR Orders</td>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{kpi['missing_count']}</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Missing DR Orders (NEW_CUST)</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; color: red;"><b>{kpi['missing_count']}</b></td>
                             </tr>
                             <tr>
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Success Rate</td>
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{success_rate:.1f}%</b></td>
                             </tr>
                           </table>
-                          <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; paddingTop: 10px;">Master Route-Agency-DR Database attached herewith.</p>
+
+                          <h3 style="margin-top: 20px; color: #ef4444;">🚨 Unmapped Missing DRs Alert List</h3>
+                          <table style="border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 13px;">
+                            <tr style="background-color: #ef4444; color: white;">
+                              <th style="padding: 8px; border: 1px solid #ddd;">File Name</th>
+                              <th style="padding: 8px; border: 1px solid #ddd;">Route</th>
+                              <th style="padding: 8px; border: 1px solid #ddd;">Agency</th>
+                              <th style="padding: 8px; border: 1px solid #ddd;">Status</th>
+                            </tr>
+                            {unmapped_rows_html}
+                          </table>
+
+                          <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; padding-top: 10px;">Master Routes and Unmapped Ledgers are attached herewith as an Excel workbook.</p>
                         </div>
                       </body>
                     </html>
@@ -891,12 +899,12 @@ Status: Successfully Processed & Audited
                     for item in st.session_state.processed_files:
                         msg.add_attachment(item['data'], maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=item['filename'])
                     
-                    msg.add_attachment(excel_buffer.getvalue(), maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx")
+                    msg.add_attachment(excel_buffer.getvalue(), maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=f"Master_and_Unmapped_Ledger_{get_ist_now().strftime('%Y-%m-%d')}.xlsx")
                     
                     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                         smtp.login(email_user, email_pass)
                         smtp.send_message(msg)
-                    st.success("✅ Email dispatched with Master DB attached!")
+                    st.success("✅ Email dispatched with Unmapped Ledger details and Master DB attached!")
                 except Exception as e:
                     st.error(f"❌ Email failed: {str(e)}")
             else:
@@ -908,21 +916,9 @@ Status: Successfully Processed & Audited
             wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
             st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:50px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("##### Individual File Downloads:")
-    for i, item in enumerate(st.session_state.processed_files):
-        if st.download_button(
-            label=f"📥 Download {item['name']}",
-            data=item['data'],
-            file_name=item['filename'],
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"dl_file_{i}_{item['filename']}"
-        ):
-            st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
-
-# --- UNIQUE MASTER DATABASE MANAGEMENT, UNMAPPED LEDGER & OUTPUT ARCHIVE PANEL (Clean Screenshot Style) ---
+# --- MASTER DATABASE MANAGEMENT & DR CODE UPLOAD PANEL ---
 st.markdown("---")
-with st.expander("🗄️ View, Export & Manage Databases & Archives"):
+with st.expander("🗄️ View, Export & Manage Databases & Upload DR Master Code"):
     try:
         conn = sqlite3.connect("sales_history.db")
         df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
@@ -930,7 +926,7 @@ with st.expander("🗄️ View, Export & Manage Databases & Archives"):
         df_outputs = pd.read_sql("SELECT id, file_name, file_type, created_at FROM output_files_ledger ORDER BY id DESC", conn)
         conn.close()
         
-        tab_m1, tab_m2, tab_m3 = st.tabs(["📋 Route-Agency-DR Master", "🚨 Unmapped Missing DR Ledger", "📦 Archived Output Files"])
+        tab_m1, tab_m2, tab_m3, tab_m4 = st.tabs(["📋 Route-Agency-DR Master", "🚨 Unmapped Missing DR Ledger", "📦 Archived Output Files", "📤 Upload New DR Codes"])
         
         with tab_m1:
             st.markdown("#### 📋 Route-Agency-DR Master Database")
@@ -1087,10 +1083,44 @@ with st.expander("🗄️ View, Export & Manage Databases & Archives"):
             else:
                 st.info("No output files archived yet.")
 
+        with tab_m4:
+            st.markdown("#### 📤 Upload DR Codes / Master Mapping File")
+            st.markdown("Upload an Excel file containing columns: `route_no`, `agency_no`, `dr_code` to bulk-update or populate the master database.")
+            uploaded_dr_file = st.file_uploader("Upload DR Master Mapping Excel", type=["xlsx", "xls"], key="dr_upload_file")
+            if uploaded_dr_file:
+                try:
+                    df_upload = pd.read_excel(uploaded_dr_file)
+                    st.dataframe(df_upload.head(), use_container_width=True)
+                    if st.button("📥 Import into Master Database"):
+                        if all(col in df_upload.columns for col in ['route_no', 'agency_no', 'dr_code']):
+                            conn = sqlite3.connect("sales_history.db")
+                            cursor = conn.cursor()
+                            import_rows = []
+                            for _, row in df_upload.iterrows():
+                                import_rows.append((
+                                    uploaded_dr_file.name,
+                                    str(row['route_no']).replace('.0','').strip(),
+                                    str(row['agency_no']).replace('.0','').strip(),
+                                    str(row['dr_code']).strip(),
+                                    get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+                                ))
+                            cursor.executemany("""
+                                INSERT OR IGNORE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
+                                VALUES (?, ?, ?, ?, ?)
+                            """, import_rows)
+                            conn.commit()
+                            conn.close()
+                            st.success(f"✅ Successfully imported {len(import_rows)} mapping rows into Master DB!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Uploaded file must contain columns: route_no, agency_no, dr_code")
+                except Exception as e:
+                    st.error(f"❌ Error processing upload: {str(e)}")
+
     except Exception as e:
         st.error(f"Error loading database: {str(e)}")
 
-# Tables and Logs with Search & Filter Feature
+# Tables and Logs with Search & Filter
 if st.session_state.comparison_summary:
     st.markdown("---")
     st.markdown("### 📋 Agency-wise Material & Input Comparison")
@@ -1124,20 +1154,6 @@ if st.session_state.skipped_rows_log:
             df_skipped['Agency Value'].astype(str).str.lower().str.contains(sq)
         ]
     st.dataframe(df_skipped, use_container_width=True)
-
-if st.session_state.comparison_summary:
-    st.markdown("---")
-    st.markdown("### 📊 Audit Reconciliation & Comparison Pivot")
-    combined_pivot = pd.concat(st.session_state.comparison_summary, ignore_index=True)
-    st.dataframe(combined_pivot, use_container_width=True)
-    audit_csv = combined_pivot.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Download Audit Reconciliation Report (CSV)",
-        data=audit_csv,
-        file_name=f"Audit_Reconciliation_Report_{get_ist_now().strftime('%Y-%m-%d')}.csv",
-        mime="text/csv",
-        key="audit_csv_download"
-    )
 
 # --- Historical Trend Analysis View ---
 st.markdown("---")
