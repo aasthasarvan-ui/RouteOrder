@@ -684,9 +684,7 @@ Status: Successfully Processed & Audited
         </div>
         """
         components.html(print_html, height=60)
-
-    
-    with col_email:
+ with col_email:
         if st.button("📧 Email"):
             if email_user and email_pass and recipient_email:
                 try:
