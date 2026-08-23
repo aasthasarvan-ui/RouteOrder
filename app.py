@@ -300,7 +300,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                             is_product_code = any(upper_val.startswith(p) for p in ["PC", "MS", "M", "GM", "DP", "SKU", "FG"])
                             if is_product_code:
                                 continue
-                            if cell_val != "" and 1 <= len(cell_val) <= 5:
+                            if cell_val != "" and 1 <= len(cell_val) <= 3:
                                 if any(char.isdigit() for char in cell_val):
                                     route_num = cell_val
                                     break
