@@ -916,6 +916,19 @@ Status: Successfully Processed & Audited
             wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
             st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:50px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
 
+    # --- RESTORED: INDIVIDUAL FILE DOWNLOADS SECTION ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("##### Individual File Downloads:")
+    for i, item in enumerate(st.session_state.processed_files):
+        if st.download_button(
+            label=f"📥 Download {item['name']}",
+            data=item['data'],
+            file_name=item['filename'],
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"dl_file_{i}_{item['filename']}"
+        ):
+            st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
+
 # --- MASTER DATABASE MANAGEMENT, UNMAPPED LEDGER & OUTPUT ARCHIVE PANEL ---
 st.markdown("---")
 with st.expander("🗄️ View, Export & Manage Databases & Upload DR Master Code"):
