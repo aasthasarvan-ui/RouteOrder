@@ -55,7 +55,6 @@ def get_ist_now():
 
 # --- UNIQUE CHECKPOINT: Core Logic & Integrity Verification Guard ---
 def verify_core_integrity():
-    """Validates that all essential system functions and SQLite tables are intact."""
     try:
         conn = sqlite3.connect("sales_history.db")
         cursor = conn.cursor()
@@ -125,7 +124,6 @@ def init_db():
 
 init_db()
 
-# Run Integrity Check on Startup
 is_healthy, health_msg = verify_core_integrity()
 if not is_healthy:
     st.error(f"❌ **System Integrity Warning:** {health_msg}")
@@ -306,7 +304,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
         unmapped_records_to_insert = []
         output_files_to_store = []
         
-        with st.spinner("⚡ Reading files, auto-looking up missing DRs, logging unmapped entries... Please wait."):
+        with st.spinner("⚡ Reading files, auto-looking up missing DRs, logging valid unmapped entries... Please wait."):
             try:
                 try:
                     with open("Output.xlsx", "rb") as f:
@@ -451,6 +449,29 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
 
                         agency_val = int(agency_str)
                         
+                        # Quantities Check First (If no quantity, do not process or log into unmapped)
+                        row_has_items = False
+                        valid_row_quantities = []
+                        row_total_qty = 0
+                        for c, fg_code in valid_cols:
+                            if c >= total_col:
+                                continue
+                            sku_qty = df_input.iloc[r, c]
+                            if pd.notna(sku_qty) and str(sku_qty).strip() != "":
+                                try:
+                                    qty_val = float(sku_qty)
+                                    if qty_val > 0:
+                                        row_has_items = True
+                                        row_total_qty += qty_val
+                                        valid_row_quantities.append((c, fg_code, qty_val))
+                                except ValueError:
+                                    pass
+
+                        if not row_has_items:
+                            # Skip rows with zero or blank quantities silently without unmapped logging
+                            total_skipped_rows += 1
+                            continue
+
                         # DR Code Detection
                         has_dr_code = False
                         clean_dr = ""
@@ -488,20 +509,20 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 has_dr_code = True
                                 clean_dr = db_match[0]
 
-                        # If completely unmapped (neither in file nor in DB), SKIP this row and log into Unmapped Ledger
+                        # If agency has quantity but NO DR Code anywhere, SKIP and log into Unmapped Ledger
                         if not has_dr_code:
                             unmapped_records_to_insert.append((short_filename, str(route_num), str(agency_val), "UNMAPPED_MISSING", ist_now.strftime("%Y-%m-%d %H:%M:%S")))
                             st.session_state.unmapped_current_batch.append({
                                 "File Name": short_filename,
                                 "Route": route_num,
                                 "Agency": agency_val,
-                                "Status": "Skipped (No DR Code found in File or Master DB)"
+                                "Status": "Skipped (Has Quantity but No DR Code in File or Master DB)"
                             })
                             st.session_state.skipped_rows_log.append({
                                 "File Name": short_filename,
                                 "Row Index": r + 1,
                                 "Agency Value": agency_val,
-                                "Reason": "Skipped: Missing DR Code and not found in Master DB"
+                                "Reason": "Skipped: Has Quantity but Missing DR Code"
                             })
                             total_skipped_rows += 1
                             continue
@@ -509,24 +530,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                         final_dr = clean_dr
                         
                         db_records_to_insert.append((short_filename, str(route_num), str(agency_val), str(final_dr), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
-
-                        # Quantities Check & AI Anomaly Detection
-                        row_has_items = False
-                        valid_row_quantities = []
-                        row_total_qty = 0
-                        for c, fg_code in valid_cols:
-                            if c >= total_col:
-                                continue
-                            sku_qty = df_input.iloc[r, c]
-                            if pd.notna(sku_qty) and str(sku_qty).strip() != "":
-                                try:
-                                    qty_val = float(sku_qty)
-                                    if qty_val > 0:
-                                        row_has_items = True
-                                        row_total_qty += qty_val
-                                        valid_row_quantities.append((c, fg_code, qty_val))
-                                except ValueError:
-                                    pass
 
                         if row_total_qty > 500:
                             st.session_state.anomaly_logs.append({
@@ -536,16 +539,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 "Total Qty": row_total_qty,
                                 "Flag": "⚠️ High Volume Spike (>500)"
                             })
-
-                        if not row_has_items:
-                            st.session_state.skipped_rows_log.append({
-                                "File Name": short_filename,
-                                "Row Index": r + 1,
-                                "Agency Value": agency_val,
-                                "Reason": "Skipped: Zero or Blank Quantities across all SKUs"
-                            })
-                            total_skipped_rows += 1
-                            continue
 
                         agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
                         current_seq = agency_counts_valid[agency_val]
@@ -694,7 +687,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     if st.session_state.unmapped_current_batch:
         st.markdown("---")
         st.markdown("### 🚨 Unmapped Missing DR Alerts (Skipped & Logged)")
-        st.error("⚠️ The following agencies had no DR code in file or Master DB, and were skipped & logged into the Unmapped Ledger:")
+        st.error("⚠️ The following agencies had valid quantity but no DR code in file or Master DB, and were skipped & logged into the Unmapped Ledger:")
         st.dataframe(pd.DataFrame(st.session_state.unmapped_current_batch), use_container_width=True)
 
     # --- ADVANCED TABBED VISUAL ANALYTICS ---
@@ -1079,7 +1072,6 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped
             if not df_unmapped.empty:
                 st.dataframe(df_unmapped, use_container_width=True)
                 
-                # --- NEW: Deletion option for Unmapped Ledger ---
                 unmap_del_id = st.number_input("Enter Unmapped Record ID to Delete", min_value=1, step=1, key="unmap_del_id")
                 if st.button("🗑️ Delete Unmapped Record"):
                     conn = sqlite3.connect("sales_history.db")
