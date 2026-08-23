@@ -570,6 +570,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             
                             file_comparison_rows.append({
                                 "File Name": short_filename,
+                                "Route No": str(route_num),
                                 "Status": file_category,
                                 "Agency": agency_val,
                                 "DR Code": dr_to_use,
@@ -633,7 +634,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     if file_comparison_rows:
                         df_comp = pd.DataFrame(file_comparison_rows)
                         df_pivot = df_comp.pivot_table(
-                            index=["File Name", "Status", "Agency", "DR Code", "FG Code"],
+                            index=["File Name", "Route No", "Status", "Agency", "DR Code", "FG Code"],
                             values=["Input Qty", "Generated Qty"],
                             aggfunc="sum"
                         ).reset_index()
@@ -696,6 +697,22 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     col3.metric("Valid Orders", kpi['valid_count'])
     col4.metric("Success Rate", f"{success_rate:.1f}%")
     col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
+
+    # --- RESTORED: Route-wise, Agency-wise & DR Code KPI Summary Cards/Tables ---
+    if st.session_state.comparison_summary:
+        st.markdown("---")
+        st.markdown("### 📊 Route, Agency & DR-Code Breakdown KPIs")
+        combined_kpi_df = pd.concat(st.session_state.comparison_summary, ignore_index=True)
+        
+        col_kpi_1, col_kpi_2 = st.columns(2)
+        with col_kpi_1:
+            st.markdown("##### 🛣️ Route-wise Quantity Summary")
+            route_summary = combined_kpi_df.groupby("Route No")[["Input Qty", "Generated Qty"]].sum().reset_index()
+            st.dataframe(route_summary, use_container_width=True)
+        with col_kpi_2:
+            st.markdown("##### 🏢 Agency & DR-Code Breakdown")
+            agency_dr_summary = combined_kpi_df.groupby(["Agency", "DR Code", "Status"])[["Generated Qty"]].sum().reset_index()
+            st.dataframe(agency_dr_summary, use_container_width=True)
 
     if st.session_state.anomaly_logs:
         st.markdown("---")
@@ -831,7 +848,6 @@ Status: Successfully Processed & Audited
                         df_unmapped_email.to_excel(writer, index=False, sheet_name="Unmapped Missing DRs")
                     excel_buffer.seek(0)
 
-                    # Build Unmapped HTML Table for Email Body
                     unmapped_rows_html = ""
                     if st.session_state.unmapped_current_batch:
                         for um in st.session_state.unmapped_current_batch:
