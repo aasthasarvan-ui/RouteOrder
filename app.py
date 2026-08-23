@@ -1138,9 +1138,10 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped
                     selected_output_id = st.number_input("Enter Archived File ID", min_value=1, step=1, key="out_file_id")
                     if st.button("📥 Download Archived File"):
                         conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT file_name, file_data FROM output_files_ledger WHERE id = ?", (selected_output_id,))
-                        row_res = cursor.fetchone()
+                        cursor = conn.query("SELECT file_name, file_data FROM output_files_ledger WHERE id = ?", (selected_output_id,)) if hasattr(sqlite3.Connection, 'query') else conn.cursor()
+                        if not hasattr(sqlite3.Connection, 'query'):
+                            cursor.execute("SELECT file_name, file_data FROM output_files_ledger WHERE id = ?", (selected_output_id,))
+                            row_res = cursor.fetchone()
                         conn.close()
                         if row_res:
                             fname_res, fdata_res = row_res[0], row_res[1]
