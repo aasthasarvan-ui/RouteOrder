@@ -53,24 +53,7 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# --- UNIQUE CHECKPOINT: Core Logic & Integrity Verification Guard ---
-def verify_core_integrity():
-    try:
-        conn = sqlite3.connect("sales_history.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        existing_tables = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        
-        required_tables = ['history_logs', 'unique_routes_master', 'output_files_ledger', 'unmapped_missing_dr_ledger']
-        for t in required_tables:
-            if t not in existing_tables:
-                return False, f"Missing critical database table: {t}"
-        return True, "All Core Integrity Checkpoints Passed Successfully!"
-    except Exception as e:
-        return False, str(e)
-
-# SQLite Database Initialization with Master, Output Ledger & Unmapped Missing DR Ledger
+# SQLite Database Initialization with Master & Output Ledger
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
@@ -103,17 +86,6 @@ def init_db():
             created_at TEXT
         )
     """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT,
-            route_no TEXT,
-            agency_no TEXT,
-            dr_code TEXT,
-            created_at TEXT,
-            UNIQUE(route_no, agency_no)
-        )
-    """)
     cursor.execute("PRAGMA table_info(unique_routes_master)")
     columns = [col[1] for col in cursor.fetchall()]
     if "file_name" not in columns:
@@ -123,11 +95,6 @@ def init_db():
     conn.close()
 
 init_db()
-
-is_healthy, health_msg = verify_core_integrity()
-if not is_healthy:
-    st.error(f"❌ **System Integrity Warning:** {health_msg}")
-    st.stop()
 
 # --- Session State Defaults for Reset/Clear/Restore ---
 DEFAULTS = {
@@ -245,7 +212,7 @@ for line in agency_fg_override.split('\n'):
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
 st.title("🚀 Enterprise Sales Order Automation Hub (Pro Master Edition)")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs, log valid unmapped entries, and archive outputs.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs from Master DB, and archive outputs.")
 st.markdown("---")
 
 # Session State Initialization
@@ -257,8 +224,6 @@ if 'skipped_rows_log' not in st.session_state:
     st.session_state.skipped_rows_log = []
 if 'anomaly_logs' not in st.session_state:
     st.session_state.anomaly_logs = []
-if 'unmapped_current_batch' not in st.session_state:
-    st.session_state.unmapped_current_batch = []
 if 'kpi_data' not in st.session_state:
     st.session_state.kpi_data = {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0, "skipped_count": 0}
 
@@ -292,7 +257,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
         st.session_state.comparison_summary = []
         st.session_state.skipped_rows_log = []
         st.session_state.anomaly_logs = []
-        st.session_state.unmapped_current_batch = []
         
         total_input_qty = 0
         total_gen_qty = 0
@@ -301,10 +265,9 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
         total_skipped_rows = 0
         
         db_records_to_insert = []
-        unmapped_records_to_insert = []
         output_files_to_store = []
         
-        with st.spinner("⚡ Reading files, auto-looking up missing DRs, logging valid unmapped entries... Please wait."):
+        with st.spinner("⚡ Reading files, auto-looking up missing DRs, and archiving outputs... Please wait."):
             try:
                 try:
                     with open("Output.xlsx", "rb") as f:
@@ -425,10 +388,13 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
                     ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
 
-                    valid_row = 6
-                    valid_order_num = 1
-                    agency_counts_valid = {}
-                    valid_items_created = 0
+                    wb_missing = openpyxl.load_workbook(io.BytesIO(template_bytes))
+                    ws_missing = wb_missing["Order Data"] if "Order Data" in wb_missing.sheetnames else wb_missing.active
+
+                    valid_row, missing_row = 6, 6
+                    valid_order_num, missing_order_num = 1, 1
+                    agency_counts_valid, agency_counts_missing = {}, {}
+                    valid_items_created, missing_items_created = 0, 0
                     file_comparison_rows = []
 
                     for r in range(fg_row + 1, df_input.shape[0]):
@@ -449,7 +415,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
 
                         agency_val = int(agency_str)
                         
-                        # Quantities Check FIRST: If quantity is 0 or blank, ignore completely (do not log into unmapped ledger)
+                        # Quantities Check
                         row_has_items = False
                         valid_row_quantities = []
                         row_total_qty = 0
@@ -468,6 +434,12 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                     pass
 
                         if not row_has_items:
+                            st.session_state.skipped_rows_log.append({
+                                "File Name": short_filename,
+                                "Row Index": r + 1,
+                                "Agency Value": agency_val,
+                                "Reason": "Skipped: Zero or Blank Quantities across all SKUs"
+                            })
                             total_skipped_rows += 1
                             continue
 
@@ -508,25 +480,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 has_dr_code = True
                                 clean_dr = db_match[0]
 
-                        # If quantity is valid (>0) but STILL no DR Code in file or DB, ONLY THEN log into Unmapped Ledger
-                        if not has_dr_code:
-                            unmapped_records_to_insert.append((short_filename, str(route_num), str(agency_val), "UNMAPPED_MISSING", ist_now.strftime("%Y-%m-%d %H:%M:%S")))
-                            st.session_state.unmapped_current_batch.append({
-                                "File Name": short_filename,
-                                "Route": route_num,
-                                "Agency": agency_val,
-                                "Status": "Skipped (Has Valid Quantity > 0 but No DR Code in File or Master DB)"
-                            })
-                            st.session_state.skipped_rows_log.append({
-                                "File Name": short_filename,
-                                "Row Index": r + 1,
-                                "Agency Value": agency_val,
-                                "Reason": "Skipped: Has Quantity > 0 but Missing DR Code"
-                            })
-                            total_skipped_rows += 1
-                            continue
-
-                        final_dr = clean_dr
+                        final_dr = clean_dr if has_dr_code else f"NEW_CUST_{agency_val}"
                         
                         db_records_to_insert.append((short_filename, str(route_num), str(agency_val), str(final_dr), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
 
@@ -539,10 +493,16 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 "Flag": "⚠️ High Volume Spike (>500)"
                             })
 
-                        agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
-                        current_seq = agency_counts_valid[agency_val]
-                        ref_number = f"RT-{route_num}-{agency_val}-{today_date}" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-{current_seq}"
-                        target_ws, current_r, order_num, dr_to_use, file_category = ws_valid, valid_row, valid_order_num, final_dr, "Valid DR"
+                        if has_dr_code:
+                            agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
+                            current_seq = agency_counts_valid[agency_val]
+                            ref_number = f"RT-{route_num}-{agency_val}-{today_date}" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-{current_seq}"
+                            target_ws, current_r, order_num, dr_to_use, file_category = ws_valid, valid_row, valid_order_num, clean_dr, "Valid DR"
+                        else:
+                            agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
+                            current_seq = agency_counts_missing[agency_val]
+                            ref_number = f"RT-{route_num}-{agency_val}-{today_date}-NEW" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-NEW-{current_seq}"
+                            target_ws, current_r, order_num, dr_to_use, file_category = ws_missing, missing_row, missing_order_num, f"NEW_CUST_{agency_val}", "Missing DR"
 
                         item_id = 10
                         for c, fg_code, qty_val in valid_row_quantities:
@@ -592,7 +552,10 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             item_id += 10
                             current_r += 1
 
-                        valid_row, valid_order_num, valid_items_created, total_valid_orders = current_r, valid_order_num + 1, valid_items_created + 1, total_valid_orders + 1
+                        if has_dr_code:
+                            valid_row, valid_order_num, valid_items_created, total_valid_orders = current_r, valid_order_num + 1, valid_items_created + 1, total_valid_orders + 1
+                        else:
+                            missing_row, missing_order_num, missing_items_created, total_missing_orders = current_r, missing_order_num + 1, missing_items_created + 1, total_missing_orders + 1
 
                     if valid_items_created > 0:
                         buf_valid = io.BytesIO()
@@ -600,12 +563,25 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                         buf_valid.seek(0)
                         out_fname = safe_route_num + "_" + today_date + "_" + timestamp + "_Valid.xlsx"
                         st.session_state.processed_files.append({
-                            "name": short_filename + " (Processed Orders)",
+                            "name": short_filename + " (Valid DR)",
                             "data": buf_valid.getvalue(),
                             "filename": out_fname,
                             "orders": valid_items_created
                         })
-                        output_files_to_store.append((out_fname, "Processed Orders", buf_valid.getvalue(), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
+                        output_files_to_store.append((out_fname, "Valid DR", buf_valid.getvalue(), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
+
+                    if missing_items_created > 0:
+                        buf_missing = io.BytesIO()
+                        wb_missing.save(buf_missing)
+                        buf_missing.seek(0)
+                        out_fname_miss = safe_route_num + "_" + today_date + "_" + timestamp + "_Missing_DR.xlsx"
+                        st.session_state.processed_files.append({
+                            "name": short_filename + " (Missing DR / New)",
+                            "data": buf_missing.getvalue(),
+                            "filename": out_fname_miss,
+                            "orders": missing_items_created
+                        })
+                        output_files_to_store.append((out_fname_miss, "Missing DR", buf_missing.getvalue(), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
 
                     if file_comparison_rows:
                         df_comp = pd.DataFrame(file_comparison_rows)
@@ -617,18 +593,13 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
 
-                # --- Update Master DB, Unmapped Ledger & Output Files Ledger ---
+                # --- Update Master DB & Output Files Ledger ---
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
                 cursor.executemany("""
                     INSERT OR IGNORE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
                     VALUES (?, ?, ?, ?, ?)
                 """, db_records_to_insert)
-
-                cursor.executemany("""
-                    INSERT OR IGNORE INTO unmapped_missing_dr_ledger (file_name, route_no, agency_no, dr_code, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, unmapped_records_to_insert)
                 
                 for fname, ftype, fdata, fdate in output_files_to_store:
                     cursor.execute("""
@@ -651,7 +622,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     "skipped_count": total_skipped_rows
                 }
 
-                st.success("✅ Batch Processing, Auto-Lookup, Unmapped Ledger & Output Archive Updated Successfully!")
+                st.success("✅ Batch Processing, Auto-Lookup & Output Archive Updated Successfully!")
 
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
@@ -664,7 +635,8 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("### 📈 Batch Performance & KPI Summary")
     kpi = st.session_state.kpi_data
     
-    success_rate = (kpi['valid_count'] / (kpi['valid_count'] + kpi['skipped_count']) * 100) if (kpi['valid_count'] + kpi['skipped_count']) > 0 else 0
+    total_processed_orders = kpi['valid_count'] + kpi['missing_count']
+    success_rate = (kpi['valid_count'] / total_processed_orders * 100) if total_processed_orders > 0 else 0
     
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total Input Qty", f"{kpi['input_qty']:,.0f}")
@@ -676,18 +648,12 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     if kpi['skipped_count'] > 5:
         st.warning(f"⚠️ **Smart Audit Alert:** {kpi['skipped_count']} rows skipped check exception logs.")
 
-    # --- AI Anomaly & Unmapped Missing DR Alerts ---
+    # --- AI Anomaly / Spike Alert View ---
     if st.session_state.anomaly_logs:
         st.markdown("---")
         st.markdown("### 🤖 AI Demand Spike & Anomaly Detector Alerts")
         st.warning("⚠️ System detected high-volume demand spikes (>500 units) in the following agencies:")
         st.dataframe(pd.DataFrame(st.session_state.anomaly_logs), use_container_width=True)
-
-    if st.session_state.unmapped_current_batch:
-        st.markdown("---")
-        st.markdown("### 🚨 Unmapped Missing DR Alerts (Skipped & Logged)")
-        st.error("⚠️ The following agencies had valid quantity (>0) but no DR code in file or Master DB, and were skipped & logged into the Unmapped Ledger:")
-        st.dataframe(pd.DataFrame(st.session_state.unmapped_current_batch), use_container_width=True)
 
     # --- ADVANCED TABBED VISUAL ANALYTICS ---
     if st.session_state.comparison_summary:
@@ -732,7 +698,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
             pdf.set_font("Arial", "B", 16)
             pdf.cell(190, 10, "Enterprise Sales Order Summary Invoice", ln=True, align="C")
             pdf.set_font("Arial", "", 10)
-            pdf.cell(190, 6, f"Generated On (IST): {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align="C")
+            pdf.cell(190, 6, f"Generated On (IST): {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} | Memo: {kpi.get('memo', '')}", ln=True, align="C")
             pdf.ln(10)
             
             pdf.set_font("Arial", "B", 11)
@@ -743,7 +709,8 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
             metrics_list = [
                 ("Total Input Quantity", f"{kpi['input_qty']:,.0f}"),
                 ("Total Generated Quantity", f"{kpi['gen_qty']:,.0f}"),
-                ("Processed Orders", str(kpi['valid_count'])),
+                ("Valid DR Orders", str(kpi['valid_count'])),
+                ("Missing DR Orders", str(kpi['missing_count'])),
                 ("Skipped Rows Logged", str(kpi['skipped_count'])),
                 ("Success Rate", f"{success_rate:.1f}%")
             ]
@@ -768,7 +735,8 @@ Date/Time: {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}
 ----------------------------------------
 Total Input Quantity : {kpi['input_qty']:,.0f}
 Total Generated Qty  : {kpi['gen_qty']:,.0f}
-Processed Orders     : {kpi['valid_count']}
+Valid DR Orders      : {kpi['valid_count']}
+Missing DR Orders    : {kpi['missing_count']}
 Skipped Rows Logged  : {kpi['skipped_count']}
 Success Rate         : {success_rate:.1f}%
 ----------------------------------------
@@ -819,13 +787,6 @@ Status: Successfully Processed & Audited
                     df_master_email.to_excel(excel_buffer, index=False, sheet_name="Master Routes")
                     excel_buffer.seek(0)
 
-                    unmapped_email_html = ""
-                    if st.session_state.unmapped_current_batch:
-                        unmapped_email_html = "<h3 style='color: #dc2626;'>⚠️ Unmapped Missing DRs (Skipped):</h3><ul>"
-                        for item in st.session_state.unmapped_current_batch:
-                            unmapped_email_html += f"<li>File: {item['File Name']} | Route: {item['Route']} | Agency: {item['Agency']}</li>"
-                        unmapped_email_html += "</ul>"
-
                     msg = EmailMessage()
                     msg['Subject'] = email_subject_custom
                     msg['From'] = email_user
@@ -849,19 +810,18 @@ Status: Successfully Processed & Audited
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{kpi['input_qty']:,.0f}</b></td>
                             </tr>
                             <tr>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Processed Orders</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Valid Orders</td>
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{kpi['valid_count']}</td>
                             </tr>
                             <tr style="background-color: #f3f4f6;">
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Skipped Rows</td>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{kpi['skipped_count']}</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Missing DR Orders</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{kpi['missing_count']}</td>
                             </tr>
                             <tr>
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Success Rate</td>
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{success_rate:.1f}%</b></td>
                             </tr>
                           </table>
-                          {unmapped_email_html}
                           <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; paddingTop: 10px;">Master Route-Agency-DR Database attached herewith.</p>
                         </div>
                       </body>
@@ -878,11 +838,11 @@ Status: Successfully Processed & Audited
                     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                         smtp.login(email_user, email_pass)
                         smtp.send_message(msg)
-                    st.success("✅ Email dispatched with Missing DR alerts & Master DB attached!")
+                    st.success("✅ Email dispatched with Master DB attached!")
                 except Exception as e:
                     st.error(f"❌ Email failed: {str(e)}")
             else:
-                st.warning("⚠️ Kripya sidebar mein Email credentials enter karein!")
+                st.warning("⚠️ Enter email credentials!")
 
     with col_wa:
         if whatsapp_num:
@@ -902,18 +862,16 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- UNIQUE MASTER DATABASE MANAGEMENT, UNMAPPED LEDGER & OUTPUT ARCHIVE PANEL ---
+# --- UNIQUE MASTER DATABASE MANAGEMENT & OUTPUT ARCHIVE PANEL ---
 st.markdown("---")
-with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped Ledger & Output Archive"):
-    st.markdown("Yahan aap master database records dekh sakte hain, unmapped missing DRs ki ledger check kar sakte hain, archived files download/delete kar sakte hain, aur bulk DR codes upload kar sakte hain.")
+with st.expander("🗄️ View, Export & Manage Unique Master Database & Output File Archive"):
     try:
         conn = sqlite3.connect("sales_history.db")
         df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
-        df_unmapped = pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger ORDER BY id DESC", conn)
         df_outputs = pd.read_sql("SELECT id, file_name, file_type, created_at FROM output_files_ledger ORDER BY id DESC", conn)
         conn.close()
         
-        tab_m1, tab_m2, tab_m3 = st.tabs(["📋 Route-Agency-DR Master", "🚨 Unmapped Missing DR Ledger", "📦 Archived Output Files"])
+        tab_m1, tab_m2 = st.tabs(["📋 Route-Agency-DR Master Links", "📦 Archived Output Files Ledger"])
         
         with tab_m1:
             if not df_master.empty:
@@ -925,36 +883,6 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped
                 h_col4.metric("Tracked Files", df_master['file_name'].nunique() if 'file_name' in df_master.columns else 0)
                 
                 st.markdown("---")
-
-                with st.expander("📤 Bulk Upload / Import DR Codes into Master Database"):
-                    st.markdown("Aap ek Excel ya CSV file upload kar sakte hain jismein columns hone chahiye: `route_no`, `agency_no`, `dr_code`.")
-                    bulk_upload_file = st.file_uploader("Upload Master DR CSV/Excel", type=["csv", "xlsx"], key="bulk_dr_up")
-                    if bulk_upload_file:
-                        try:
-                            if bulk_upload_file.name.endswith('.csv'):
-                                df_bulk = pd.read_csv(bulk_upload_file)
-                            else:
-                                df_bulk = pd.read_excel(bulk_upload_file)
-                            
-                            if all(col in df_bulk.columns for col in ['route_no', 'agency_no', 'dr_code']):
-                                bulk_records = []
-                                for _, row in df_bulk.iterrows():
-                                    bulk_records.append((str(row.get('file_name', 'Manual_Upload')), str(row['route_no']), str(row['agency_no']), str(row['dr_code']), get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
-                                
-                                conn_b = sqlite3.connect("sales_history.db")
-                                cur_b = conn_b.cursor()
-                                cur_b.executemany("""
-                                    INSERT OR IGNORE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
-                                    VALUES (?, ?, ?, ?, ?)
-                                """, bulk_records)
-                                conn_b.commit()
-                                conn_b.close()
-                                st.success(f"✅ Successfully imported {len(bulk_records)} records into Master Database!")
-                                st.rerun()
-                            else:
-                                st.error("❌ File columns must contain: 'route_no', 'agency_no', 'dr_code'.")
-                        except Exception as ex:
-                            st.error(f"Error importing file: {str(ex)}")
 
                 db_search = st.text_input("🔍 Search Master Database (Filter by File, Route, Agency or DR)", "", key="db_search")
                 filtered_master = df_master
@@ -1067,34 +995,6 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped
                 st.info("No master records found yet.")
 
         with tab_m2:
-            st.markdown("#### 🚨 Unmapped Missing DR Ledger (Skipped & Logged)")
-            if not df_unmapped.empty:
-                st.dataframe(df_unmapped, use_container_width=True)
-                
-                unmap_del_id = st.number_input("Enter Unmapped Record ID to Delete", min_value=1, step=1, key="unmap_del_id")
-                if st.button("🗑️ Delete Unmapped Record"):
-                    conn = sqlite3.connect("sales_history.db")
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
-                    conn.commit()
-                    conn.close()
-                    st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted!")
-                    st.rerun()
-
-                unmapped_buf = io.BytesIO()
-                df_unmapped.to_excel(unmapped_buf, index=False, sheet_name="Unmapped DR Ledger")
-                unmapped_buf.seek(0)
-                st.download_button(
-                    label="📥 Export Unmapped Ledger to Excel (.xlsx)",
-                    data=unmapped_buf.getvalue(),
-                    file_name=f"Unmapped_Missing_DR_Ledger_{get_ist_now().strftime('%Y-%m-%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="export_unmapped_excel"
-                )
-            else:
-                st.info("No unmapped missing DR records logged yet.")
-
-        with tab_m3:
             st.markdown("#### 📦 Archived Output Files (Saved per file without duplication)")
             if not df_outputs.empty:
                 st.dataframe(df_outputs, use_container_width=True)
