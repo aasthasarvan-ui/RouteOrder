@@ -77,8 +77,7 @@ def init_db():
             UNIQUE(route_no, agency_no, dr_code)
         )
     """)
-    
-    # Auto-migration check: agar purani table me file_name column nahi hai toh add kar do
+    # Auto-migration check for file_name column
     cursor.execute("PRAGMA table_info(unique_routes_master)")
     columns = [col[1] for col in cursor.fetchall()]
     if "file_name" not in columns:
@@ -88,6 +87,7 @@ def init_db():
     conn.close()
 
 init_db()
+
 # --- Session State Defaults for Reset/Clear/Restore ---
 DEFAULTS = {
     "fg_code": "FG500014",
@@ -203,7 +203,7 @@ for line in agency_fg_override.split('\n'):
         if ag.isdigit() and col_idx.isdigit():
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
-st.title("🚀 Enterprise Sales Order Automation Hub (Master Database Edition)")
+st.title("🚀 Enterprise Sales Order Automation Hub (Pro Master Edition)")
 st.markdown("Upload multiple **Inbound Demand Files** to process orders, maintain unique route-agency-DR master links, and export audit reports.")
 st.markdown("---")
 
@@ -615,6 +615,11 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("---")
     st.markdown("### 📥 Bulk Download & Notifications")
     
+    # --- Advanced Email Config Expander ---
+    with st.expander("✉️ Advanced Email Dispatch Options (Custom Subject & Note)"):
+        email_subject_custom = st.text_input("Custom Email Subject Line", f"🚀 Sales Orders Batch Execution Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}")
+        email_notes_custom = st.text_area("Custom Remarks / Notes to Include in Email Body", "All routes verified and processed successfully.")
+
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for item in st.session_state.processed_files:
@@ -728,7 +733,7 @@ Status: Successfully Processed & Audited
                     excel_buffer.seek(0)
 
                     msg = EmailMessage()
-                    msg['Subject'] = f"🚀 Sales Orders Batch Execution Report & Master DB (IST) - {get_ist_now().strftime('%Y-%m-%d')}"
+                    msg['Subject'] = email_subject_custom
                     msg['From'] = email_user
                     msg['To'] = recipient_email
                     
@@ -739,6 +744,7 @@ Status: Successfully Processed & Audited
                           <h2 style="color: #10b981; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📊 Sales Order Batch Automation Hub</h2>
                           <p>Hello Team,</p>
                           <p>The daily inbound demand batch has been processed successfully on <b>{get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} IST</b>.</p>
+                          <p style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 10px; margin: 15px 0;"><b>Remarks:</b> {email_notes_custom}</p>
                           <table style="border-collapse: collapse; width: 100%; margin-top: 15px; border-radius: 6px; overflow: hidden;">
                             <tr style="background-color: #10b981; color: white;">
                               <th style="padding: 10px; text-align: left;">Metric</th>
@@ -760,10 +766,6 @@ Status: Successfully Processed & Audited
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Success Rate</td>
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{success_rate:.1f}%</b></td>
                             </tr>
-                            <tr style="background-color: #f3f4f6;">
-                              <td style="padding: 10px;">Skipped Rows</td>
-                              <td style="padding: 10px;">{kpi['skipped_count']}</td>
-                            </tr>
                           </table>
                           <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; paddingTop: 10px;">Master Route-Agency-DR Database attached herewith.</p>
                         </div>
@@ -781,7 +783,7 @@ Status: Successfully Processed & Audited
                     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                         smtp.login(email_user, email_pass)
                         smtp.send_message(msg)
-                    st.success("✅ Email dispatched with Master DB attached!")
+                    st.success("✅ Email dispatched with Custom Subject & Master DB attached!")
                 except Exception as e:
                     st.error(f"❌ Email failed: {str(e)}")
             else:
@@ -794,7 +796,7 @@ Status: Successfully Processed & Audited
             st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:50px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("##### Individual FileDownloads:")
+    st.markdown("##### Individual File Downloads:")
     for i, item in enumerate(st.session_state.processed_files):
         if st.download_button(
             label=f"📥 Download {item['name']}",
@@ -805,10 +807,10 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- UNIQUE MASTER DATABASE MANAGEMENT & ADVANCED ROLLBACK PANEL ---
+# --- UNIQUE MASTER DATABASE MANAGEMENT & ROW-BY-ROW ROLLBACK PANEL ---
 st.markdown("---")
-with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Database"):
-    st.markdown("Yahan aap master database ke records ko dekh sakte hain, search kar sakte hain, aur kisi bhi **specific input file** ya route ke data ko ek click mein delete kar sakte hain.")
+with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Database (Row-by-Row Delete)"):
+    st.markdown("Yahan aap master database ke records ko dekh sakte hain, search kar sakte hain, aur kisi bhi **specific row** ya file ke data ko delete kar sakte hain.")
     try:
         conn = sqlite3.connect("sales_history.db")
         df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
@@ -828,13 +830,24 @@ with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Da
             
             st.dataframe(filtered_master, use_container_width=True)
             
-            st.markdown("#### 🗑️ Advanced Deletion & Rollback Tools")
+            st.markdown("#### 🗑️ Advanced Deletion & Row-by-Row Rollback Tools")
             del_col1, del_col2, del_col3 = st.columns(3)
             
             with del_col1:
-                # --- NEW: Delete Entire Data of a Specific Input File ---
+                # --- NEW: Row-by-Row ID Deletion ---
+                row_id_to_del = st.number_input("Enter Record ID to Delete Single Row", min_value=1, step=1, key="row_id_input")
+                if st.button("🗑️ Delete Specific Row by ID"):
+                    conn = sqlite3.connect("sales_history.db")
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM unique_routes_master WHERE id = ?", (row_id_to_del,))
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Record ID {row_id_to_del} successfully deleted!")
+                    st.rerun()
+
+            with del_col2:
                 unique_files = df_master['file_name'].dropna().unique().tolist() if 'file_name' in df_master.columns else []
-                file_to_purge = st.selectbox("Select Input File to Purge", ["Select File..."] + unique_files, key="purge_file_select")
+                file_to_purge = st.selectbox("Select Input File to Purge Entirely", ["Select File..."] + unique_files, key="purge_file_select")
                 confirm_del_file = st.checkbox("Confirm deletion for this file", key="conf_file")
                 if st.button("🔥 Delete File's Entire Data"):
                     if file_to_purge != "Select File..." and confirm_del_file:
@@ -843,25 +856,10 @@ with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Da
                         cursor.execute("DELETE FROM unique_routes_master WHERE file_name = ?", (file_to_purge,))
                         conn.commit()
                         conn.close()
-                        st.success(f"✅ File '{file_to_purge}' ka saara data master database se hata diya gaya hai!")
+                        st.success(f"✅ File '{file_to_purge}' ka saara data hata diya gaya hai!")
                         st.rerun()
                     else:
-                        st.warning("⚠️ Kripya valid file select karein aur confirmation checkbox tick karein.")
-
-            with del_col2:
-                route_to_delete = st.text_input("Enter Route No to Purge", "", key="purge_route")
-                confirm_del_route = st.checkbox("Confirm route deletion", key="conf_route")
-                if st.button("🔥 Delete Specific Route Data"):
-                    if confirm_del_route and route_to_delete:
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM unique_routes_master WHERE route_no = ?", (route_to_delete,))
-                        conn.commit()
-                        conn.close()
-                        st.success(f"✅ Route '{route_to_delete}' ke saare records hata diye gaye hain!")
-                        st.rerun()
-                    else:
-                        st.warning("⚠️ Kripya Route No enter karein aur confirmation tick karein.")
+                        st.warning("⚠️ Kripya valid file select karein aur confirmation tick karein.")
                         
             with del_col3:
                 st.markdown("##### Emergency Master Purge")
@@ -873,7 +871,7 @@ with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Da
                         cursor.execute("DELETE FROM unique_routes_master")
                         conn.commit()
                         conn.close()
-                        st.success("✅ Master database ko puri tarah clean kar diya gaya hai!")
+                        st.success("✅ Master database clean kar diya gaya hai!")
                         st.rerun()
                     else:
                         st.warning("⚠️ Master database khali karne ke liye confirmation tick karein.")
