@@ -1143,15 +1143,19 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                 um_col1, um_col2 = st.columns(2)
                 with um_col1:
                     unmap_del_id = st.number_input("Enter Unmapped Record ID", min_value=1, step=1, key="unmap_del_id")
+                    confirm_del_unmap = st.checkbox("Confirm unmapped record deletion", key="conf_unmap_del")
                     if st.button("🗑️ Delete Unmapped Record & Reset ID"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
-                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
-                        conn.commit()
-                        conn.close()
-                        st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted & ID sequence reset!")
-                        st.rerun()
+                        if confirm_del_unmap:
+                            conn = sqlite3.connect("sales_history.db")
+                            cursor = conn.cursor()
+                            cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
+                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
+                            conn.commit()
+                            conn.close()
+                            st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted & ID sequence reset!")
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ Kripya deletion confirmation checkbox tick karein.")
                 with um_col2:
                     st.markdown("##### Wipe Unmapped Ledger")
                     conf_um_wipe = st.checkbox("Confirm unmapped wipe", key="conf_um_wipe")
