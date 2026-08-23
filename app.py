@@ -675,14 +675,15 @@ Status: Successfully Processed & Audited
             key="json_backup_download"
         )
         
-    with col_print:
-        st.markdown(f"""
-            <a href="javascript:window.print()" style="text-decoration:none;">
-                <button style="width:100%; height:50px; background:#3b82f6; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">
-                    🖨️ Print
-                </button>
-            </a>
-        """, unsafe_allow_html=True)
+        with col_print:
+        print_html = """
+        <div style="width:100%; margin:0; padding:0;">
+            <button onclick="parent.window.print()" style="width:100%; height:50px; background:#3b82f6; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-family:sans-serif; display:flex; align-items:center; justify-content:center;">
+                🖨️ Print
+            </button>
+        </div>
+        """
+        components.html(print_html, height=60)
     
     with col_email:
         if st.button("📧 Email"):
