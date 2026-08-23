@@ -28,7 +28,6 @@ st.markdown("""
         .stAppHeader { background-color: transparent !important; }
         header[data-testid="stHeader"] { display: none !important; }
         
-        /* Uniform button sizing and layout stabilization to prevent vertical stretching */
         .stButton>button {
             width: 100%;
             height: 50px;
@@ -54,7 +53,7 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# SQLite Database Initialization with Unique Linked Constraints (Route, Agency, DR Code)
+# SQLite Database Initialization with Unique Linked Constraints & File Tracking
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
@@ -67,10 +66,10 @@ def init_db():
             status TEXT
         )
     """)
-    # Unique Linked Master Table ensuring no duplicate if all three match
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS unique_routes_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT,
             route_no TEXT,
             agency_no TEXT,
             dr_code TEXT,
@@ -421,8 +420,8 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
 
                         final_dr = clean_dr if has_dr_code else f"NEW_CUST_{agency_val}"
                         
-                        # Collect linked unique data (Route, Agency, DR Code) for Master Database
-                        db_records_to_insert.append((str(route_num), str(agency_val), str(final_dr), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
+                        # Collect linked data with File Name tracking for Master DB
+                        db_records_to_insert.append((short_filename, str(route_num), str(agency_val), str(final_dr), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
 
                         # Quantities Check
                         row_has_items = False
@@ -546,12 +545,12 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
 
-                # --- Update Unique Master Database (No Duplicates on Route + Agency + DR) ---
+                # --- Update Unique Master Database with File Tracking ---
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
                 cursor.executemany("""
-                    INSERT OR IGNORE INTO unique_routes_master (route_no, agency_no, dr_code, created_at)
-                    VALUES (?, ?, ?, ?)
+                    INSERT OR IGNORE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
+                    VALUES (?, ?, ?, ?, ?)
                 """, db_records_to_insert)
                 
                 cursor.execute(
@@ -714,7 +713,6 @@ Status: Successfully Processed & Audited
         if st.button("📧 Email"):
             if email_user and email_pass and recipient_email:
                 try:
-                    # Fetch Unique Master DB for Email Attachment
                     conn = sqlite3.connect("sales_history.db")
                     df_master_email = pd.read_sql("SELECT * FROM unique_routes_master", conn)
                     conn.close()
@@ -728,7 +726,6 @@ Status: Successfully Processed & Audited
                     msg['From'] = email_user
                     msg['To'] = recipient_email
                     
-                    # --- Enhanced Modern Rich HTML Email Table ---
                     html_content = f"""
                     <html>
                       <body style="font-family: Arial, sans-serif; color: #333; background-color: #f9fafb; padding: 20px;">
@@ -773,7 +770,6 @@ Status: Successfully Processed & Audited
                     for item in st.session_state.processed_files:
                         msg.add_attachment(item['data'], maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=item['filename'])
                     
-                    # Attach Master Database Excel to Email
                     msg.add_attachment(excel_buffer.getvalue(), maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx")
                     
                     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -792,7 +788,7 @@ Status: Successfully Processed & Audited
             st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:50px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("##### Individual File Downloads:")
+    st.markdown("##### Individual FileDownloads:")
     for i, item in enumerate(st.session_state.processed_files):
         if st.download_button(
             label=f"📥 Download {item['name']}",
@@ -803,21 +799,22 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- UNIQUE MASTER DATABASE MANAGEMENT VIEW ---
+# --- UNIQUE MASTER DATABASE MANAGEMENT & ADVANCED ROLLBACK PANEL ---
 st.markdown("---")
-with st.expander("🗄️ View & Export Unique Route-Agency-DR Master Database"):
-    st.markdown("Yeh table Route No, Agency No, aur DR Code ko aapas mein link karti hai aur unique constraint ki wajah se duplicate entries ko automatically block karti hai.")
+with st.expander("🗄️ View, Export & Manage Unique Route-Agency-DR Master Database"):
+    st.markdown("Yahan aap master database ke records ko dekh sakte hain, search kar sakte hain, aur kisi bhi **specific input file** ya route ke data ko ek click mein delete kar sakte hain.")
     try:
         conn = sqlite3.connect("sales_history.db")
         df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
         conn.close()
         
         if not df_master.empty:
-            db_search = st.text_input("🔍 Search Master Database (Filter by Route, Agency or DR)", "", key="db_search")
+            db_search = st.text_input("🔍 Search Master Database (Filter by File, Route, Agency or DR)", "", key="db_search")
             filtered_master = df_master
             if db_search:
                 q = db_search.lower()
                 filtered_master = df_master[
+                    df_master['file_name'].astype(str).str.lower().str.contains(q) |
                     df_master['route_no'].astype(str).str.lower().str.contains(q) |
                     df_master['agency_no'].astype(str).str.lower().str.contains(q) |
                     df_master['dr_code'].astype(str).str.lower().str.contains(q)
@@ -825,6 +822,57 @@ with st.expander("🗄️ View & Export Unique Route-Agency-DR Master Database")
             
             st.dataframe(filtered_master, use_container_width=True)
             
+            st.markdown("#### 🗑️ Advanced Deletion & Rollback Tools")
+            del_col1, del_col2, del_col3 = st.columns(3)
+            
+            with del_col1:
+                # --- NEW: Delete Entire Data of a Specific Input File ---
+                unique_files = df_master['file_name'].dropna().unique().tolist() if 'file_name' in df_master.columns else []
+                file_to_purge = st.selectbox("Select Input File to Purge", ["Select File..."] + unique_files, key="purge_file_select")
+                confirm_del_file = st.checkbox("Confirm deletion for this file", key="conf_file")
+                if st.button("🔥 Delete File's Entire Data"):
+                    if file_to_purge != "Select File..." and confirm_del_file:
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM unique_routes_master WHERE file_name = ?", (file_to_purge,))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ File '{file_to_purge}' ka saara data master database se hata diya gaya hai!")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Kripya valid file select karein aur confirmation checkbox tick karein.")
+
+            with del_col2:
+                route_to_delete = st.text_input("Enter Route No to Purge", "", key="purge_route")
+                confirm_del_route = st.checkbox("Confirm route deletion", key="conf_route")
+                if st.button("🔥 Delete Specific Route Data"):
+                    if confirm_del_route and route_to_delete:
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM unique_routes_master WHERE route_no = ?", (route_to_delete,))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Route '{route_to_delete}' ke saare records hata diye gaye hain!")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Kripya Route No enter karein aur confirmation tick karein.")
+                        
+            with del_col3:
+                st.markdown("##### Emergency Master Purge")
+                confirm_all = st.checkbox("Confirm complete database wipe", key="conf_all")
+                if st.button("🚨 Purge Entire Master Database", type="secondary"):
+                    if confirm_all:
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM unique_routes_master")
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Master database ko puri tarah clean kar diya gaya hai!")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Master database khali karne ke liye confirmation tick karein.")
+
+            st.markdown("---")
             master_excel_buf = io.BytesIO()
             df_master.to_excel(master_excel_buf, index=False, sheet_name="Master Routes")
             master_excel_buf.seek(0)
