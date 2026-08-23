@@ -129,7 +129,7 @@ if not is_healthy:
     st.error(f"❌ **System Integrity Warning:** {health_msg}")
     st.stop()
 
-# --- Session State Defaults for Reset/Clear/Restore ---
+# --- Session State Defaults for Reset/Clear/Restore & Checkboxes ---
 DEFAULTS = {
     "fg_code": "FG500014",
     "col_map": "36:FG500014AJ\n37:FG500014AK",
@@ -138,7 +138,15 @@ DEFAULTS = {
     "email_user": st.secrets.get("email", {}).get("sender_email", ""),
     "email_pass": st.secrets.get("email", {}).get("app_password", ""),
     "recipient": st.secrets.get("email", {}).get("recipient_email", ""),
-    "whatsapp": ""
+    "whatsapp": "",
+    "conf_master_del": False,
+    "conf_file": False,
+    "conf_route": False,
+    "conf_all": False,
+    "conf_unmap_del": False,
+    "conf_um_wipe": False,
+    "conf_arch_del": False,
+    "conf_out_wipe": False
 }
 
 for key, val in DEFAULTS.items():
@@ -247,20 +255,6 @@ for line in agency_fg_override.split('\n'):
 st.title("🚀 Enterprise Sales Order Automation Hub (Pro Master Edition)")
 st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs, log valid unmapped entries, and archive outputs.")
 st.markdown("---")
-
-# Session State Initialization
-if 'processed_files' not in st.session_state:
-    st.session_state.processed_files = []
-if 'comparison_summary' not in st.session_state:
-    st.session_state.comparison_summary = []
-if 'skipped_rows_log' not in st.session_state:
-    st.session_state.skipped_rows_log = []
-if 'anomaly_logs' not in st.session_state:
-    st.session_state.anomaly_logs = []
-if 'unmapped_current_batch' not in st.session_state:
-    st.session_state.unmapped_current_batch = []
-if 'kpi_data' not in st.session_state:
-    st.session_state.kpi_data = {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0, "skipped_count": 0}
 
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
 
@@ -936,7 +930,7 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- ALL THREE DATABASES MANAGEMENT PANEL WITH FULL DELETION, ID RESET & DR UPLOAD TOOLS ---
+# --- ALL THREE DATABASES MANAGEMENT PANEL WITH SESSION STATE CHECKBOXES ---
 st.markdown("---")
 with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs) & Upload DR Codes"):
     st.markdown("Yahan aap teeno databases ke records dekh sakte hain, manual/bulk DR code upload kar sakte hain, aur record delete karne par ID auto-reset kar sakte hain.")
@@ -1037,9 +1031,9 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                 
                 with del_col1:
                     row_id_to_del = st.number_input("Enter Master Record ID", min_value=1, step=1, key="row_id_input")
-                    confirm_del_master = st.checkbox("Confirm master row deletion", key="conf_master_del")
+                    st.session_state.conf_master_del = st.checkbox("Confirm master row deletion", key="cb_conf_master_del")
                     if st.button("🗑️ Delete Master Row & Reset ID"):
-                        if confirm_del_master:
+                        if st.session_state.conf_master_del:
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM unique_routes_master WHERE id = ?", (row_id_to_del,))
@@ -1054,9 +1048,9 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                 with del_col2:
                     unique_files = df_master['file_name'].dropna().unique().tolist() if 'file_name' in df_master.columns else []
                     file_to_purge = st.selectbox("Select File to Purge", ["Select..."] + unique_files, key="purge_file_select")
-                    confirm_del_file = st.checkbox("Confirm file deletion", key="conf_file")
+                    st.session_state.conf_file = st.checkbox("Confirm file deletion", key="cb_conf_file")
                     if st.button("🔥 Delete Master File Data"):
-                        if file_to_purge != "Select..." and confirm_del_file:
+                        if file_to_purge != "Select..." and st.session_state.conf_file:
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM unique_routes_master WHERE file_name = ?", (file_to_purge,))
@@ -1070,9 +1064,9 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
 
                 with del_col3:
                     route_to_delete = st.text_input("Enter Route No to Purge", "", key="purge_route")
-                    confirm_del_route = st.checkbox("Confirm route deletion", key="conf_route")
+                    st.session_state.conf_route = st.checkbox("Confirm route deletion", key="cb_conf_route")
                     if st.button("🔥 Delete Master Route Data"):
-                        if confirm_del_route and route_to_delete:
+                        if st.session_state.conf_route and route_to_delete:
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM unique_routes_master WHERE route_no = ?", (route_to_delete,))
@@ -1086,9 +1080,9 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                             
                 with del_col4:
                     st.markdown("##### Master Wipe")
-                    confirm_all = st.checkbox("Confirm wipe", key="conf_all")
+                    st.session_state.conf_all = st.checkbox("Confirm wipe", key="cb_conf_all")
                     if st.button("🚨 Wipe Master DB & Reset IDs", type="secondary"):
-                        if confirm_all:
+                        if st.session_state.conf_all:
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM unique_routes_master")
@@ -1137,7 +1131,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
             else:
                 st.info("No master records found yet.")
 
-        # --- TAB 2: UNMAPPED LEDGER MANAGEMENT WITH FULL TOOLS & ID RESET ---
+        # --- TAB 2: UNMAPPED LEDGER MANAGEMENT WITH SESSION STATE CHECKBOXES ---
         with tab_m2:
             st.markdown("#### 🚨 Unmapped Missing DR Ledger (Generated via Fallback)")
             if not df_unmapped.empty:
@@ -1147,9 +1141,9 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                 um_col1, um_col2 = st.columns(2)
                 with um_col1:
                     unmap_del_id = st.number_input("Enter Unmapped Record ID", min_value=1, step=1, key="unmap_del_id")
-                    confirm_del_unmap = st.checkbox("Confirm unmapped record deletion", key="conf_unmap_del")
+                    st.session_state.conf_unmap_del = st.checkbox("Confirm unmapped record deletion", key="cb_conf_unmap_del")
                     if st.button("🗑️ Delete Unmapped Record & Reset ID"):
-                        if confirm_del_unmap:
+                        if st.session_state.conf_unmap_del:
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
@@ -1162,9 +1156,9 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                             st.warning("⚠️ Kripya deletion confirmation checkbox tick karein.")
                 with um_col2:
                     st.markdown("##### Wipe Unmapped Ledger")
-                    conf_um_wipe = st.checkbox("Confirm unmapped wipe", key="conf_um_wipe")
+                    st.session_state.conf_um_wipe = st.checkbox("Confirm unmapped wipe", key="cb_conf_um_wipe")
                     if st.button("🚨 Wipe Unmapped Ledger & Reset IDs"):
-                        if conf_um_wipe:
+                        if st.session_state.conf_um_wipe:
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM unmapped_missing_dr_ledger")
@@ -1189,7 +1183,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
             else:
                 st.info("No unmapped missing DR records logged yet.")
 
-        # --- TAB 3: ARCHIVED OUTPUT FILES MANAGEMENT WITH FULL TOOLS & ID RESET ---
+        # --- TAB 3: ARCHIVED OUTPUT FILES MANAGEMENT WITH SESSION STATE CHECKBOXES ---
         with tab_m3:
             st.markdown("#### 📦 Archived Output Files (Saved per file without duplication)")
             if not df_outputs.empty:
@@ -1218,9 +1212,9 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                             st.warning("⚠️ Invalid ID or File not found.")
                     
                     delete_arch_id = st.number_input("Enter Archived File ID to Delete", min_value=1, step=1, key="del_arch_id_input")
-                    confirm_del_arch = st.checkbox("Confirm archived file deletion", key="conf_arch_del")
+                    st.session_state.conf_arch_del = st.checkbox("Confirm archived file deletion", key="cb_conf_arch_del")
                     if st.button("🗑️ Delete Archived File & Reset ID"):
-                        if confirm_del_arch:
+                        if st.session_state.conf_arch_del:
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM output_files_ledger WHERE id = ?", (delete_arch_id,))
@@ -1234,9 +1228,9 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
 
                 with out_col2:
                     st.markdown("##### Wipe Output Ledger")
-                    conf_out_wipe = st.checkbox("Confirm output wipe", key="conf_out_wipe")
+                    st.session_state.conf_out_wipe = st.checkbox("Confirm output wipe", key="cb_conf_out_wipe")
                     if st.button("🚨 Wipe Output Ledger & Reset IDs"):
-                        if conf_out_wipe:
+                        if st.session_state.conf_out_wipe:
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM output_files_ledger")
