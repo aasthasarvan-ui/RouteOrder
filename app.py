@@ -53,7 +53,7 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# --- CORE INTEGRITY CHECK ---
+# --- UNIQUE CHECKPOINT: Core Logic & Integrity Verification Guard ---
 def verify_core_integrity():
     try:
         conn = sqlite3.connect("sales_history.db")
@@ -70,7 +70,7 @@ def verify_core_integrity():
     except Exception as e:
         return False, str(e)
 
-# SQLite Database Initialization
+# SQLite Database Initialization with Master, Output Ledger & Unmapped Missing DR Ledger
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
@@ -129,7 +129,7 @@ if not is_healthy:
     st.error(f"❌ **System Integrity Warning:** {health_msg}")
     st.stop()
 
-# --- Session State Defaults ---
+# --- Session State Defaults for Reset/Clear/Restore ---
 DEFAULTS = {
     "fg_code": "FG500014",
     "col_map": "36:FG500014AJ\n37:FG500014AK",
@@ -145,7 +145,7 @@ for key, val in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
-# Sidebar Settings & Dynamic Mapping
+# Sidebar Settings & Dynamic Mapping with Clear/Restore
 st.sidebar.title("⚙️ System Settings")
 
 if st.sidebar.button("🔄 Reset All to Defaults"):
@@ -452,7 +452,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
 
                         agency_val = int(agency_str)
                         
-                        # --- 1. STRICT QUANTITY CHECK FIRST (Pehle quantities check hongi) ---
+                        # --- STRICT QUANTITY CHECK FIRST ---
                         row_has_items = False
                         valid_row_quantities = []
                         row_total_qty = 0
@@ -470,7 +470,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 except ValueError:
                                     pass
 
-                        # --- 2. AGAR QUANTITY ZERO YA BLANK HAI TO YAHIN SKIP KAREIN (No Unmapped Entry) ---
+                        # --- AGAR QUANTITY ZERO/BLANK HAI TO YAHIN SKIP KAREIN (No Unmapped Entry) ---
                         if not row_has_items:
                             st.session_state.skipped_rows_log.append({
                                 "File Name": short_filename,
@@ -518,7 +518,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 has_dr_code = True
                                 clean_dr = db_match[0]
 
-                        # If quantity is valid (>0) but STILL no DR Code in file or DB, log into Unmapped Ledger
                         if not has_dr_code:
                             unmapped_records_to_insert.append((short_filename, str(route_num), str(agency_val), f"NEW_CUST_{agency_val}", ist_now.strftime("%Y-%m-%d %H:%M:%S")))
                             st.session_state.unmapped_current_batch.append({
@@ -832,7 +831,6 @@ Status: Successfully Processed & Audited
                         df_unmapped_email.to_excel(writer, index=False, sheet_name="Unmapped Missing DRs")
                     excel_buffer.seek(0)
 
-                    # Build Unmapped HTML Table for Email Body
                     unmapped_rows_html = ""
                     if st.session_state.unmapped_current_batch:
                         for um in st.session_state.unmapped_current_batch:
@@ -945,7 +943,6 @@ with st.expander("🗄️ View, Export & Manage Databases & Upload DR Master Cod
         with tab_m1:
             st.markdown("#### 📋 Route-Agency-DR Master Database")
             if not df_master.empty:
-                # --- KPI SUMMARY METRICS FOR MASTER DATABASE ---
                 total_records_count = len(df_master)
                 total_routes_count = df_master['route_no'].nunique()
                 total_agencies_count = df_master['agency_no'].nunique()
