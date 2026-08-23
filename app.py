@@ -640,7 +640,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
 
-                # --- Update Master DB, Unmapped Ledger & Output Files Ledger ---
+                # --- Update Master DB, Unmapped Ledger & Output Files Ledger with ID Reset Support ---
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
                 cursor.executemany("""
@@ -845,13 +845,6 @@ Status: Successfully Processed & Audited
                     df_master_email.to_excel(excel_buffer, index=False, sheet_name="Master Routes")
                     excel_buffer.seek(0)
 
-                    unmapped_email_html = ""
-                    if st.session_state.unmapped_current_batch:
-                        unmapped_email_html = "<h3 style='color: #dc2626;'>⚠️ Unmapped Missing DRs (Fallback Generated):</h3><ul>"
-                        for item in st.session_state.unmapped_current_batch:
-                            unmapped_email_html += f"<li>File: {item['File Name']} | Route: {item['Route']} | Agency: {item['Agency']}</li>"
-                        unmapped_email_html += "</ul>"
-
                     msg = EmailMessage()
                     msg['Subject'] = email_subject_custom
                     msg['From'] = email_user
@@ -887,7 +880,6 @@ Status: Successfully Processed & Audited
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{success_rate:.1f}%</b></td>
                             </tr>
                           </table>
-                          {unmapped_email_html}
                           <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; paddingTop: 10px;">Master Route-Agency-DR Database attached herewith.</p>
                         </div>
                       </body>
@@ -928,10 +920,9 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- UNIQUE MASTER DATABASE MANAGEMENT, UNMAPPED LEDGER & OUTPUT ARCHIVE PANEL ---
+# --- UNIQUE MASTER DATABASE MANAGEMENT, UNMAPPED LEDGER & OUTPUT ARCHIVE PANEL (Clean Screenshot Style) ---
 st.markdown("---")
-with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped Ledger & Output Archive"):
-    st.markdown("Yahan aap master database records dekh sakte hain, unmapped missing DRs ki ledger check kar sakte hain, archived files download/delete kar sakte hain, aur bulk DR codes upload kar sakte hain.")
+with st.expander("🗄️ View, Export & Manage Databases & Archives"):
     try:
         conn = sqlite3.connect("sales_history.db")
         df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
@@ -942,46 +933,8 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped
         tab_m1, tab_m2, tab_m3 = st.tabs(["📋 Route-Agency-DR Master", "🚨 Unmapped Missing DR Ledger", "📦 Archived Output Files"])
         
         with tab_m1:
+            st.markdown("#### 📋 Route-Agency-DR Master Database")
             if not df_master.empty:
-                st.markdown("#### 📊 Master Database Health & Analytics")
-                h_col1, h_col2, h_col3, h_col4 = st.columns(4)
-                h_col1.metric("Total Master Records", len(df_master))
-                h_col2.metric("Unique Routes", df_master['route_no'].nunique() if 'route_no' in df_master.columns else 0)
-                h_col3.metric("Unique Agencies", df_master['agency_no'].nunique() if 'agency_no' in df_master.columns else 0)
-                h_col4.metric("Tracked Files", df_master['file_name'].nunique() if 'file_name' in df_master.columns else 0)
-                
-                st.markdown("---")
-
-                with st.expander("📤 Bulk Upload / Import DR Codes into Master Database"):
-                    st.markdown("Aap ek Excel ya CSV file upload kar sakte hain jismein columns hone chahiye: `route_no`, `agency_no`, `dr_code`.")
-                    bulk_upload_file = st.file_uploader("Upload Master DR CSV/Excel", type=["csv", "xlsx"], key="bulk_dr_up")
-                    if bulk_upload_file:
-                        try:
-                            if bulk_upload_file.name.endswith('.csv'):
-                                df_bulk = pd.read_csv(bulk_upload_file)
-                            else:
-                                df_bulk = pd.read_excel(bulk_upload_file)
-                            
-                            if all(col in df_bulk.columns for col in ['route_no', 'agency_no', 'dr_code']):
-                                bulk_records = []
-                                for _, row in df_bulk.iterrows():
-                                    bulk_records.append((str(row.get('file_name', 'Manual_Upload')), str(row['route_no']), str(row['agency_no']), str(row['dr_code']), get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
-                                
-                                conn_b = sqlite3.connect("sales_history.db")
-                                cur_b = conn_b.cursor()
-                                cur_b.executemany("""
-                                    INSERT OR IGNORE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
-                                    VALUES (?, ?, ?, ?, ?)
-                                """, bulk_records)
-                                conn_b.commit()
-                                conn_b.close()
-                                st.success(f"✅ Successfully imported {len(bulk_records)} records into Master Database!")
-                                st.rerun()
-                            else:
-                                st.error("❌ File columns must contain: 'route_no', 'agency_no', 'dr_code'.")
-                        except Exception as ex:
-                            st.error(f"Error importing file: {str(ex)}")
-
                 db_search = st.text_input("🔍 Search Master Database (Filter by File, Route, Agency or DR)", "", key="db_search")
                 filtered_master = df_master
                 if db_search:
@@ -992,7 +945,6 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped
                         df_master['agency_no'].astype(str).str.lower().str.contains(q) |
                         df_master['dr_code'].astype(str).str.lower().str.contains(q)
                     ]
-                
                 st.dataframe(filtered_master, use_container_width=True)
                 
                 st.markdown("#### 🗑️ Advanced Deletion & Rollback Tools")
@@ -1004,9 +956,10 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped
                         conn = sqlite3.connect("sales_history.db")
                         cursor = conn.cursor()
                         cursor.execute("DELETE FROM unique_routes_master WHERE id = ?", (row_id_to_del,))
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
                         conn.commit()
                         conn.close()
-                        st.success(f"✅ Record ID {row_id_to_del} deleted!")
+                        st.success(f"✅ Record ID {row_id_to_del} deleted & ID reset!")
                         st.rerun()
 
                 with del_col2:
@@ -1018,9 +971,10 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM unique_routes_master WHERE file_name = ?", (file_to_purge,))
+                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
                             conn.commit()
                             conn.close()
-                            st.success(f"✅ File '{file_to_purge}' data deleted!")
+                            st.success(f"✅ File '{file_to_purge}' data deleted & ID reset!")
                             st.rerun()
                         else:
                             st.warning("⚠️ Select file & tick checkbox.")
@@ -1033,9 +987,10 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM unique_routes_master WHERE route_no = ?", (route_to_delete,))
+                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
                             conn.commit()
                             conn.close()
-                            st.success(f"✅ Route '{route_to_delete}' data deleted!")
+                            st.success(f"✅ Route '{route_to_delete}' data deleted & ID reset!")
                             st.rerun()
                         else:
                             st.warning("⚠️ Enter route & tick checkbox.")
@@ -1048,80 +1003,48 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM unique_routes_master")
+                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
                             conn.commit()
                             conn.close()
-                            st.success("✅ Master DB wiped!")
+                            st.success("✅ Master DB wiped & ID reset!")
                             st.rerun()
                         else:
                             st.warning("⚠️ Tick checkbox to wipe.")
-
-                st.markdown("---")
-                master_excel_buf = io.BytesIO()
-                df_master.to_excel(master_excel_buf, index=False, sheet_name="Master Routes")
-                master_excel_buf.seek(0)
-                
-                dl_col1, dl_col2 = st.columns(2)
-                with dl_col1:
-                    st.download_button(
-                        label="📥 Export Master Database to Excel (.xlsx)",
-                        data=master_excel_buf.getvalue(),
-                        file_name=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="export_master_excel"
-                    )
-                with dl_col2:
-                    if st.button("📧 Send Master DB via Email"):
-                        if email_user and email_pass and recipient_email:
-                            try:
-                                msg = EmailMessage()
-                                msg['Subject'] = f"📊 Master Database Export Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}"
-                                msg['From'] = email_user
-                                msg['To'] = recipient_email
-                                
-                                msg.set_content("Hello Team,\n\nPlease find attached the latest Unique Route-Agency-DR Master Database export.\n\nAutomated via Sales Order Hub (IST)")
-                                msg.add_attachment(master_excel_buf.getvalue(), maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx")
-                                
-                                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-                                    smtp.login(email_user, email_pass)
-                                    smtp.send_message(msg)
-                                st.success("✅ Master Database successfully emailed to recipient!")
-                            except Exception as e:
-                                st.error(f"❌ Email failed: {str(e)}")
-                        else:
-                            st.warning("⚠️ Kripya sidebar mein Email credentials enter karein!")
             else:
                 st.info("No master records found yet.")
 
         with tab_m2:
-            st.markdown("#### 🚨 Unmapped Missing DR Ledger (Generated via Fallback)")
+            st.markdown("#### 🚨 Unmapped Missing DR Ledger")
             if not df_unmapped.empty:
                 st.dataframe(df_unmapped, use_container_width=True)
                 
-                unmap_del_id = st.number_input("Enter Unmapped Record ID to Delete", min_value=1, step=1, key="unmap_del_id")
-                if st.button("🗑️ Delete Unmapped Record"):
-                    conn = sqlite3.connect("sales_history.db")
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
-                    conn.commit()
-                    conn.close()
-                    st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted!")
-                    st.rerun()
-
-                unmapped_buf = io.BytesIO()
-                df_unmapped.to_excel(unmapped_buf, index=False, sheet_name="Unmapped DR Ledger")
-                unmapped_buf.seek(0)
-                st.download_button(
-                    label="📥 Export Unmapped Ledger to Excel (.xlsx)",
-                    data=unmapped_buf.getvalue(),
-                    file_name=f"Unmapped_Missing_DR_Ledger_{get_ist_now().strftime('%Y-%m-%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="export_unmapped_excel"
-                )
+                unmap_del_col1, unmap_del_col2 = st.columns(2)
+                with unmap_del_col1:
+                    unmap_del_id = st.number_input("Enter Unmapped Record ID to Delete", min_value=1, step=1, key="unmap_del_id")
+                    if st.button("🗑️ Delete Unmapped Record"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted & ID reset!")
+                        st.rerun()
+                with unmap_del_col2:
+                    if st.button("🚨 Purge All Unmapped"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM unmapped_missing_dr_ledger")
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Unmapped Ledger wiped & ID reset!")
+                        st.rerun()
             else:
                 st.info("No unmapped missing DR records logged yet.")
 
         with tab_m3:
-            st.markdown("#### 📦 Archived Output Files (Saved per file without duplication)")
+            st.markdown("#### 📦 Archived Output Files Ledger")
             if not df_outputs.empty:
                 st.dataframe(df_outputs, use_container_width=True)
                 
@@ -1154,9 +1077,10 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM output_files_ledger WHERE id = ?", (delete_arch_id,))
+                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='output_files_ledger'")
                             conn.commit()
                             conn.close()
-                            st.success(f"✅ Archived File ID {delete_arch_id} successfully deleted from ledger!")
+                            st.success(f"✅ Archived File ID {delete_arch_id} deleted & ID reset!")
                             st.rerun()
                         else:
                             st.warning("⚠️ Kripya deletion confirmation checkbox tick karein.")
