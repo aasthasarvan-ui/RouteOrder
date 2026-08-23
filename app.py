@@ -452,7 +452,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
 
                         agency_val = int(agency_str)
                         
-                        # Quantities Check First
+                        # --- 1. STRICT QUANTITY CHECK FIRST (Pehle quantities check hongi) ---
                         row_has_items = False
                         valid_row_quantities = []
                         row_total_qty = 0
@@ -470,6 +470,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 except ValueError:
                                     pass
 
+                        # --- 2. AGAR QUANTITY ZERO YA BLANK HAI TO YAHIN SKIP KAREIN (No Unmapped Entry) ---
                         if not row_has_items:
                             st.session_state.skipped_rows_log.append({
                                 "File Name": short_filename,
@@ -916,7 +917,7 @@ Status: Successfully Processed & Audited
             wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
             st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:50px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
 
-    # --- RESTORED: INDIVIDUAL FILE DOWNLOADS SECTION ---
+    # --- INDIVIDUAL FILE DOWNLOADS SECTION ---
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("##### Individual File Downloads:")
     for i, item in enumerate(st.session_state.processed_files):
