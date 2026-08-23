@@ -517,12 +517,12 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 has_dr_code = True
                                 clean_dr = db_match[0]
 
-                        # If quantity is valid (>0) but STILL no DR Code in file or DB, log into Unmapped Ledger AND generate using NEW_CUST fallback so output file is created!
+                        # If quantity is valid (>0) but STILL no DR Code in file or DB, log into Unmapped Ledger AND generate using NEW_CUST fallback (Row will NOT be skipped!)
                         if not has_dr_code:
                             unmapped_records_to_insert.append((short_filename, str(route_num), str(agency_val), f"NEW_CUST_{agency_val}", ist_now.strftime("%Y-%m-%d %H:%M:%S")))
                             st.session_state.unmapped_current_batch.append({
                                 "File Name": short_filename,
-                                "Route": route_num,
+                                "Route": str(route_num),
                                 "Agency": agency_val,
                                 "Status": "Generated via NEW_CUST (Missing DR in File and Master DB)"
                             })
@@ -709,8 +709,8 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
 
     if st.session_state.unmapped_current_batch:
         st.markdown("---")
-        st.markdown("### 🚨 Unmapped Missing DR Alerts (Logged & Generated via Fallback)")
-        st.error("⚠️ The following agencies had valid quantity but no DR code in file or Master DB. They were logged into the Unmapped Ledger and generated via `NEW_CUST` fallback:")
+        st.markdown("### 🚨 Unmapped Missing DRs Alert List")
+        st.error("⚠️ The following agencies had valid quantity but no DR code in file or Master DB. They were successfully processed using `NEW_CUST` fallback and logged into the Unmapped Ledger:")
         st.dataframe(pd.DataFrame(st.session_state.unmapped_current_batch), use_container_width=True)
 
     # --- ADVANCED TABBED VISUAL ANALYTICS ---
@@ -1199,7 +1199,7 @@ if st.session_state.skipped_rows_log:
             df_skipped['File Name'].astype(str).str.lower().str.contains(sq) |
             df_skipped['Agency Value'].astype(str).str.lower().str.contains(sq)
         ]
-    st.dataframe(df_skipped, use_container_width=True)
+    st.st.dataframe(df_skipped, use_container_width=True) if hasattr(st, 'dataframe') else None
 
 if st.session_state.comparison_summary:
     st.markdown("---")
