@@ -12,7 +12,7 @@ import urllib.parse
 from email.message import EmailMessage
 from fpdf import FPDF
 
-# Page Configuration & Styling (GitHub Icon & Header Hidden Completely)
+# Page Configuration & Styling
 st.set_page_config(
     page_title="Sales Order Automation Hub", 
     page_icon="🚀", 
@@ -23,20 +23,7 @@ st.markdown("""
     <style>
         #GithubIcon { visibility: hidden !important; display: none !important; }
         .stAppHeader { background-color: transparent !important; }
-        header[data-testid="stHeader"] { display: flex !important; }
-        
-        /* GitHub icon aur Streamlit branding ko puri tarah hide karne ke liye */
-        [data-testid="stStatusWidget"], .stDeployButton, footer, #stDecoration, a[href*="github.com"] {
-            visibility: hidden !important;
-            display: none !important;
-        }
-        
-        /* Mobile par sidebar toggle button visible rakhne ke liye */
-        [data-testid="collapsedControl"] {
-            display: block !important;
-            z-index: 999999;
-            color: #10b981 !important;
-        }
+        header[data-testid="stHeader"] { display: none !important; }
         
         .stButton>button {
             width: 100%;
@@ -295,7 +282,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Route Number Finding Logic
+                    # 3. Restored Original Route Number Finding Logic (File scan first, fallback to sidebar)
                     route_num = default_fallback_route if default_fallback_route != "" else "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
                     
@@ -315,6 +302,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         if route_num != (default_fallback_route if default_fallback_route != "" else "22"):
                             break
 
+                    # Agar sidebar mein user ne explicitly kuch dala hai aur file me nahi mila, toh sidebar wala use hoga
                     if default_fallback_route != "" and default_fallback_route != "22":
                         route_num = default_fallback_route
 
