@@ -23,7 +23,13 @@ st.markdown("""
     <style>
         #GithubIcon { visibility: hidden !important; display: none !important; }
         .stAppHeader { background-color: transparent !important; }
-        header[data-testid="stHeader"] { display: none !important; }
+        header[data-testid="stHeader"] { display: flex !important; }
+        
+        /* GitHub icon aur branding hide karne ke liye */
+        [data-testid="stStatusWidget"], .stDeployButton, footer, #stDecoration, a[href*="github.com"] {
+            visibility: hidden !important;
+            display: none !important;
+        }
         
         .stButton>button {
             width: 100%;
@@ -180,7 +186,15 @@ for line in agency_fg_override.split('\n'):
         if ag.isdigit() and col_idx.isdigit():
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
-st.title("📊 Enterprise Sales Order Automation Hub (IST & PDF)")
+# --- Extra Show Settings Button for Mobile/Desktop convenience ---
+col_title, col_btn = st.columns([4, 1])
+with col_title:
+    st.title("📊 Enterprise Sales Order Automation Hub (IST & PDF)")
+with col_btn:
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("⚙️ Show Settings"):
+        st.info("💡 Sidebar ko kholne ke liye upar diye gaye arrow (< / >) par click karein.")
+
 st.markdown("Upload multiple **Inbound Demand Files** to process orders, apply direct column mappings, view KPIs, and export audit reports.")
 st.markdown("---")
 
@@ -282,7 +296,7 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                             total_col = cSearch
                             break
 
-                    # 3. Restored Original Route Number Finding Logic (File scan first, fallback to sidebar)
+                    # 3. Route Number Finding Logic
                     route_num = default_fallback_route if default_fallback_route != "" else "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
                     
@@ -302,7 +316,6 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         if route_num != (default_fallback_route if default_fallback_route != "" else "22"):
                             break
 
-                    # Agar sidebar mein user ne explicitly kuch dala hai aur file me nahi mila, toh sidebar wala use hoga
                     if default_fallback_route != "" and default_fallback_route != "22":
                         route_num = default_fallback_route
 
