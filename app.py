@@ -53,7 +53,7 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# SQLite Database Initialization with Unique Linked Constraints & File Tracking
+# SQLite Database Initialization with Auto-Migration for File Tracking
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
@@ -77,11 +77,17 @@ def init_db():
             UNIQUE(route_no, agency_no, dr_code)
         )
     """)
+    
+    # Auto-migration check: agar purani table me file_name column nahi hai toh add kar do
+    cursor.execute("PRAGMA table_info(unique_routes_master)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "file_name" not in columns:
+        cursor.execute("ALTER TABLE unique_routes_master ADD COLUMN file_name TEXT")
+        
     conn.commit()
     conn.close()
 
 init_db()
-
 # --- Session State Defaults for Reset/Clear/Restore ---
 DEFAULTS = {
     "fg_code": "FG500014",
