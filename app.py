@@ -18,7 +18,8 @@ import streamlit.components.v1 as components
 st.set_page_config(
     page_title="Sales Order Automation Hub", 
     page_icon="🚀", 
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 st.markdown("""
@@ -53,7 +54,7 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# SQLite Database Initialization for Historical Trends (IST Timestamp)
+# SQLite Database Initialization with Unique Linked Constraints (Route, Agency, DR Code)
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
@@ -64,6 +65,17 @@ def init_db():
             files_count INTEGER,
             total_qty REAL,
             status TEXT
+        )
+    """)
+    # Unique Linked Master Table ensuring no duplicate if all three match
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS unique_routes_master (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            route_no TEXT,
+            agency_no TEXT,
+            dr_code TEXT,
+            created_at TEXT,
+            UNIQUE(route_no, agency_no, dr_code)
         )
     """)
     conn.commit()
@@ -186,8 +198,8 @@ for line in agency_fg_override.split('\n'):
         if ag.isdigit() and col_idx.isdigit():
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
-st.title("🚀 Enterprise Sales Order Automation Hub (Pro Edition)")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, track advanced KPIs, run smart anomaly detection, and export audit reports.")
+st.title("🚀 Enterprise Sales Order Automation Hub (Master Database Edition)")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, maintain unique route-agency-DR master links, and export audit reports.")
 st.markdown("---")
 
 # Session State Initialization
@@ -224,7 +236,7 @@ if uploaded_inputs:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
+if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
     if uploaded_inputs:
         st.session_state.processed_files = []
         st.session_state.comparison_summary = []
@@ -236,7 +248,9 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
         total_missing_orders = 0
         total_skipped_rows = 0
         
-        with st.spinner("⚡ Reading files, processing orders, and checking for exceptions... Please wait."):
+        db_records_to_insert = []
+        
+        with st.spinner("⚡ Reading files, processing orders, and updating unique master database... Please wait."):
             try:
                 try:
                     with open("Output.xlsx", "rb") as f:
@@ -405,6 +419,11 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                                         clean_dr = val_str
                                         break
 
+                        final_dr = clean_dr if has_dr_code else f"NEW_CUST_{agency_val}"
+                        
+                        # Collect linked unique data (Route, Agency, DR Code) for Master Database
+                        db_records_to_insert.append((str(route_num), str(agency_val), str(final_dr), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
+
                         # Quantities Check
                         row_has_items = False
                         valid_row_quantities = []
@@ -527,17 +546,14 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
 
-                # Store KPI metrics & Save to SQLite Database (IST Timestamp)
-                st.session_state.kpi_data = {
-                    "input_qty": total_input_qty,
-                    "gen_qty": total_gen_qty,
-                    "valid_count": total_valid_orders,
-                    "missing_count": total_missing_orders,
-                    "skipped_count": total_skipped_rows
-                }
-                
+                # --- Update Unique Master Database (No Duplicates on Route + Agency + DR) ---
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
+                cursor.executemany("""
+                    INSERT OR IGNORE INTO unique_routes_master (route_no, agency_no, dr_code, created_at)
+                    VALUES (?, ?, ?, ?)
+                """, db_records_to_insert)
+                
                 cursor.execute(
                     "INSERT INTO history_logs (timestamp, files_count, total_qty, status) VALUES (?, ?, ?, ?)",
                     (get_ist_now().strftime("%Y-%m-%d %H:%M:%S"), len(uploaded_inputs), total_input_qty, "Success")
@@ -545,7 +561,15 @@ if st.button("🚀 Process Batch Orders & Audit Logs", type="primary"):
                 conn.commit()
                 conn.close()
 
-                st.success("✅ Batch Processing & Advanced Audit Complete!")
+                st.session_state.kpi_data = {
+                    "input_qty": total_input_qty,
+                    "gen_qty": total_gen_qty,
+                    "valid_count": total_valid_orders,
+                    "missing_count": total_missing_orders,
+                    "skipped_count": total_skipped_rows
+                }
+
+                st.success("✅ Batch Processing & Unique Master Database Updated Successfully!")
 
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
@@ -690,8 +714,17 @@ Status: Successfully Processed & Audited
         if st.button("📧 Email"):
             if email_user and email_pass and recipient_email:
                 try:
+                    # Fetch Unique Master DB for Email Attachment
+                    conn = sqlite3.connect("sales_history.db")
+                    df_master_email = pd.read_sql("SELECT * FROM unique_routes_master", conn)
+                    conn.close()
+                    
+                    excel_buffer = io.BytesIO()
+                    df_master_email.to_excel(excel_buffer, index=False, sheet_name="Master Routes")
+                    excel_buffer.seek(0)
+
                     msg = EmailMessage()
-                    msg['Subject'] = f"🚀 Sales Orders Batch Execution Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}"
+                    msg['Subject'] = f"🚀 Sales Orders Batch Execution Report & Master DB (IST) - {get_ist_now().strftime('%Y-%m-%d')}"
                     msg['From'] = email_user
                     msg['To'] = recipient_email
                     
@@ -729,7 +762,7 @@ Status: Successfully Processed & Audited
                               <td style="padding: 10px;">{kpi['skipped_count']}</td>
                             </tr>
                           </table>
-                          <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; paddingTop: 10px;">Automated via Sales Order Hub (IST)</p>
+                          <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; paddingTop: 10px;">Master Route-Agency-DR Database attached herewith.</p>
                         </div>
                       </body>
                     </html>
@@ -740,10 +773,13 @@ Status: Successfully Processed & Audited
                     for item in st.session_state.processed_files:
                         msg.add_attachment(item['data'], maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=item['filename'])
                     
+                    # Attach Master Database Excel to Email
+                    msg.add_attachment(excel_buffer.getvalue(), maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx")
+                    
                     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                         smtp.login(email_user, email_pass)
                         smtp.send_message(msg)
-                    st.success("✅ Email dispatched!")
+                    st.success("✅ Email dispatched with Master DB attached!")
                 except Exception as e:
                     st.error(f"❌ Email failed: {str(e)}")
             else:
@@ -766,6 +802,44 @@ Status: Successfully Processed & Audited
             key=f"dl_file_{i}_{item['filename']}"
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
+
+# --- UNIQUE MASTER DATABASE MANAGEMENT VIEW ---
+st.markdown("---")
+with st.expander("🗄️ View & Export Unique Route-Agency-DR Master Database"):
+    st.markdown("Yeh table Route No, Agency No, aur DR Code ko aapas mein link karti hai aur unique constraint ki wajah se duplicate entries ko automatically block karti hai.")
+    try:
+        conn = sqlite3.connect("sales_history.db")
+        df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
+        conn.close()
+        
+        if not df_master.empty:
+            db_search = st.text_input("🔍 Search Master Database (Filter by Route, Agency or DR)", "", key="db_search")
+            filtered_master = df_master
+            if db_search:
+                q = db_search.lower()
+                filtered_master = df_master[
+                    df_master['route_no'].astype(str).str.lower().str.contains(q) |
+                    df_master['agency_no'].astype(str).str.lower().str.contains(q) |
+                    df_master['dr_code'].astype(str).str.lower().str.contains(q)
+                ]
+            
+            st.dataframe(filtered_master, use_container_width=True)
+            
+            master_excel_buf = io.BytesIO()
+            df_master.to_excel(master_excel_buf, index=False, sheet_name="Master Routes")
+            master_excel_buf.seek(0)
+            
+            st.download_button(
+                label="📥 Export Master Database to Excel (.xlsx)",
+                data=master_excel_buf.getvalue(),
+                file_name=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="export_master_excel"
+            )
+        else:
+            st.info("No master records found yet. Process a batch file to populate data.")
+    except Exception as e:
+        st.error(f"Error loading database: {str(e)}")
 
 # Tables and Logs with Search & Filter Feature
 if st.session_state.comparison_summary:
