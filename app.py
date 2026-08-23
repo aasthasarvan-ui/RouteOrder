@@ -53,7 +53,7 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# SQLite Database Initialization with Auto-Migration for File Tracking & Output Ledger
+# SQLite Database Initialization with Master, Output Ledger & Unmapped Missing DR Ledger
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
@@ -84,6 +84,18 @@ def init_db():
             file_type TEXT,
             file_data BLOB,
             created_at TEXT
+        )
+    """)
+    # --- NEW TABLE: Dedicated Unmapped / Missing DR Ledger (Exact Master Copy Style) ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT,
+            route_no TEXT,
+            agency_no TEXT,
+            dr_code TEXT,
+            created_at TEXT,
+            UNIQUE(route_no, agency_no, dr_code)
         )
     """)
     cursor.execute("PRAGMA table_info(unique_routes_master)")
@@ -212,7 +224,7 @@ for line in agency_fg_override.split('\n'):
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
 st.title("🚀 Enterprise Sales Order Automation Hub (Pro Master Edition)")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs from Master DB, and archive outputs.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs, log unmapped entries, and archive outputs.")
 st.markdown("---")
 
 # Session State Initialization
@@ -224,6 +236,8 @@ if 'skipped_rows_log' not in st.session_state:
     st.session_state.skipped_rows_log = []
 if 'anomaly_logs' not in st.session_state:
     st.session_state.anomaly_logs = []
+if 'unmapped_current_batch' not in st.session_state:
+    st.session_state.unmapped_current_batch = []
 if 'kpi_data' not in st.session_state:
     st.session_state.kpi_data = {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0, "skipped_count": 0}
 
@@ -257,6 +271,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
         st.session_state.comparison_summary = []
         st.session_state.skipped_rows_log = []
         st.session_state.anomaly_logs = []
+        st.session_state.unmapped_current_batch = []
         
         total_input_qty = 0
         total_gen_qty = 0
@@ -265,9 +280,10 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
         total_skipped_rows = 0
         
         db_records_to_insert = []
+        unmapped_records_to_insert = []
         output_files_to_store = []
         
-        with st.spinner("⚡ Reading files, auto-looking up missing DRs from Master DB, and archiving outputs... Please wait."):
+        with st.spinner("⚡ Reading files, auto-looking up missing DRs, logging unmapped entries... Please wait."):
             try:
                 try:
                     with open("Output.xlsx", "rb") as f:
@@ -452,9 +468,18 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 has_dr_code = True
                                 clean_dr = db_match[0]
 
+                        # If completely unmapped (neither in file nor in DB), log into Unmapped Missing Ledger
+                        if not has_dr_code:
+                            unmapped_records_to_insert.append((short_filename, str(route_num), str(agency_val), f"NEW_CUST_{agency_val}", ist_now.strftime("%Y-%m-%d %H:%M:%S")))
+                            st.session_state.unmapped_current_batch.append({
+                                "File Name": short_filename,
+                                "Route": route_num,
+                                "Agency": agency_val,
+                                "Assigned Dummy": f"NEW_CUST_{agency_val}"
+                            })
+
                         final_dr = clean_dr if has_dr_code else f"NEW_CUST_{agency_val}"
                         
-                        # Collect linked data with File Name tracking for Master DB
                         db_records_to_insert.append((short_filename, str(route_num), str(agency_val), str(final_dr), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
 
                         # Quantities Check & AI Anomaly Detection
@@ -594,13 +619,18 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
 
-                # --- Update Master DB & Output Files Ledger (No Duplicates) ---
+                # --- Update Master DB, Unmapped Ledger & Output Files Ledger ---
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
                 cursor.executemany("""
                     INSERT OR IGNORE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
                     VALUES (?, ?, ?, ?, ?)
                 """, db_records_to_insert)
+
+                cursor.executemany("""
+                    INSERT OR IGNORE INTO unmapped_missing_dr_ledger (file_name, route_no, agency_no, dr_code, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, unmapped_records_to_insert)
                 
                 for fname, ftype, fdata, fdate in output_files_to_store:
                     cursor.execute("""
@@ -623,7 +653,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     "skipped_count": total_skipped_rows
                 }
 
-                st.success("✅ Batch Processing, Master DB Auto-Lookup & Output Archive Updated Successfully!")
+                st.success("✅ Batch Processing, Auto-Lookup, Unmapped Ledger & Output Archive Updated Successfully!")
 
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
@@ -649,12 +679,18 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     if kpi['skipped_count'] > 5:
         st.warning(f"⚠️ **Smart Audit Alert:** {kpi['skipped_count']} rows skipped check exception logs.")
 
-    # --- AI Anomaly / Spike Alert View ---
+    # --- AI Anomaly & Unmapped Missing DR Alerts ---
     if st.session_state.anomaly_logs:
         st.markdown("---")
         st.markdown("### 🤖 AI Demand Spike & Anomaly Detector Alerts")
         st.warning("⚠️ System detected high-volume demand spikes (>500 units) in the following agencies:")
         st.dataframe(pd.DataFrame(st.session_state.anomaly_logs), use_container_width=True)
+
+    if st.session_state.unmapped_current_batch:
+        st.markdown("---")
+        st.markdown("### 🚨 Unmapped Missing DR Alerts (Logged into Separate DB)")
+        st.error("⚠️ The following agencies had no DR code in file or Master DB, and were logged into the Unmapped Ledger:")
+        st.dataframe(pd.DataFrame(st.session_state.unmapped_current_batch), use_container_width=True)
 
     # --- ADVANCED TABBED VISUAL ANALYTICS ---
     if st.session_state.comparison_summary:
@@ -788,6 +824,14 @@ Status: Successfully Processed & Audited
                     df_master_email.to_excel(excel_buffer, index=False, sheet_name="Master Routes")
                     excel_buffer.seek(0)
 
+                    # Build Missing DR warning section for email if any unmapped occurred in this batch
+                    unmapped_email_html = ""
+                    if st.session_state.unmapped_current_batch:
+                        unmapped_email_html = "<h3>⚠️ Unmapped Missing DRs Logged:</h3><ul>"
+                        for item in st.session_state.unmapped_current_batch:
+                            unmapped_email_html += f"<li>File: {item['File Name']} | Route: {item['Route']} | Agency: {item['Agency']}</li>"
+                        unmapped_email_html += "</ul>"
+
                     msg = EmailMessage()
                     msg['Subject'] = email_subject_custom
                     msg['From'] = email_user
@@ -823,6 +867,7 @@ Status: Successfully Processed & Audited
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{success_rate:.1f}%</b></td>
                             </tr>
                           </table>
+                          {unmapped_email_html}
                           <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; paddingTop: 10px;">Master Route-Agency-DR Database attached herewith.</p>
                         </div>
                       </body>
@@ -839,7 +884,7 @@ Status: Successfully Processed & Audited
                     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                         smtp.login(email_user, email_pass)
                         smtp.send_message(msg)
-                    st.success("✅ Email dispatched with Custom Subject & Master DB attached!")
+                    st.success("✅ Email dispatched with Missing DR alerts & Master DB attached!")
                 except Exception as e:
                     st.error(f"❌ Email failed: {str(e)}")
             else:
@@ -863,17 +908,18 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- UNIQUE MASTER DATABASE MANAGEMENT & OUTPUT ARCHIVE PANEL ---
+# --- UNIQUE MASTER DATABASE, UNMAPPED LEDGER & OUTPUT ARCHIVE PANEL ---
 st.markdown("---")
-with st.expander("🗄️ View, Export & Manage Unique Master Database & Output File Archive"):
-    st.markdown("Yahan aap master database records dekh sakte hain, archived output files ko download kar sakte hain, aur file-wise, route-wise ya row-wise data delete kar sakte hain.")
+with st.expander("🗄️ View, Export & Manage Unique Master Database, Unmapped Ledger & Output Archive"):
+    st.markdown("Yahan aap master records dekh sakte hain, unmapped missing DRs ki separate ledger check kar sakte hain, archived files download/delete kar sakte hain, aur **bulk DR codes upload** kar sakte hain.")
     try:
         conn = sqlite3.connect("sales_history.db")
         df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
+        df_unmapped = pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger ORDER BY id DESC", conn)
         df_outputs = pd.read_sql("SELECT id, file_name, file_type, created_at FROM output_files_ledger ORDER BY id DESC", conn)
         conn.close()
         
-        tab_m1, tab_m2 = st.tabs(["📋 Route-Agency-DR Master Links", "📦 Archived Output Files Ledger"])
+        tab_m1, tab_m2, tab_m3 = st.tabs(["📋 Route-Agency-DR Master", "🚨 Unmapped Missing DR Ledger", "📦 Archived Output Files"])
         
         with tab_m1:
             if not df_master.empty:
@@ -885,6 +931,37 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database & Output 
                 h_col4.metric("Tracked Files", df_master['file_name'].nunique() if 'file_name' in df_master.columns else 0)
                 
                 st.markdown("---")
+
+                # --- UNIQUE FEATURE: Bulk DR Code Upload / Import ---
+                with st.expander("📤 Bulk Upload / Import DR Codes into Master Database"):
+                    st.markdown("Aap ek Excel ya CSV file upload kar sakte hain jismein columns hone chahiye: `route_no`, `agency_no`, `dr_code`.")
+                    bulk_upload_file = st.file_uploader("Upload Master DR CSV/Excel", type=["csv", "xlsx"], key="bulk_dr_up")
+                    if bulk_upload_file:
+                        try:
+                            if bulk_upload_file.name.endswith('.csv'):
+                                df_bulk = pd.read_csv(bulk_upload_file)
+                            else:
+                                df_bulk = pd.read_excel(bulk_upload_file)
+                            
+                            if all(col in df_bulk.columns for col in ['route_no', 'agency_no', 'dr_code']):
+                                bulk_records = []
+                                for _, row in df_bulk.iterrows():
+                                    bulk_records.append((str(row.get('file_name', 'Manual_Upload')), str(row['route_no']), str(row['agency_no']), str(row['dr_code']), get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
+                                
+                                conn_b = sqlite3.connect("sales_history.db")
+                                cur_b = conn_b.cursor()
+                                cur_b.executemany("""
+                                    INSERT OR IGNORE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
+                                    VALUES (?, ?, ?, ?, ?)
+                                """, bulk_records)
+                                conn_b.commit()
+                                conn_b.close()
+                                st.success(f"✅ Successfully imported {len(bulk_records)} records into Master Database!")
+                                st.rerun()
+                            else:
+                                st.error("❌ File columns must contain: 'route_no', 'agency_no', 'dr_code'.")
+                        except Exception as ex:
+                            st.error(f"Error importing file: {str(ex)}")
 
                 db_search = st.text_input("🔍 Search Master Database (Filter by File, Route, Agency or DR)", "", key="db_search")
                 filtered_master = df_master
@@ -997,28 +1074,62 @@ with st.expander("🗄️ View, Export & Manage Unique Master Database & Output 
                 st.info("No master records found yet.")
 
         with tab_m2:
+            st.markdown("#### 🚨 Unmapped Missing DR Ledger (Exact Master Copy Structure)")
+            if not df_unmapped.empty:
+                st.dataframe(df_unmapped, use_container_width=True)
+                unmapped_buf = io.BytesIO()
+                df_unmapped.to_excel(unmapped_buf, index=False, sheet_name="Unmapped DR Ledger")
+                unmapped_buf.seek(0)
+                st.download_button(
+                    label="📥 Export Unmapped Ledger to Excel (.xlsx)",
+                    data=unmapped_buf.getvalue(),
+                    file_name=f"Unmapped_Missing_DR_Ledger_{get_ist_now().strftime('%Y-%m-%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="export_unmapped_excel"
+                )
+            else:
+                st.info("No unmapped missing DR records logged yet.")
+
+        with tab_m3:
             st.markdown("#### 📦 Archived Output Files (Saved per file without duplication)")
             if not df_outputs.empty:
                 st.dataframe(df_outputs, use_container_width=True)
                 
-                selected_output_id = st.number_input("Enter Output File ID to Download from Archive", min_value=1, step=1, key="out_file_id")
-                if st.button("📥 Download Archived File"):
-                    conn = sqlite3.connect("sales_history.db")
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT file_name, file_data FROM output_files_ledger WHERE id = ?", (selected_output_id,))
-                    row_res = cursor.fetchone()
-                    conn.close()
-                    if row_res:
-                        fname_res, fdata_res = row_res[0], row_res[1]
-                        st.download_button(
-                            label=f"💾 Click here to download '{fname_res}'",
-                            data=fdata_res,
-                            file_name=fname_res,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key=f"dl_archived_{selected_output_id}"
-                        )
-                    else:
-                        st.warning("⚠️ Invalid ID or File not found in archive.")
+                arch_col1, arch_col2 = st.columns(2)
+                with arch_col1:
+                    selected_output_id = st.number_input("Enter Archived File ID", min_value=1, step=1, key="out_file_id")
+                    if st.button("📥 Download Archived File"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT file_name, file_data FROM output_files_ledger WHERE id = ?", (selected_output_id,))
+                        row_res = cursor.fetchone()
+                        conn.close()
+                        if row_res:
+                            fname_res, fdata_res = row_res[0], row_res[1]
+                            st.download_button(
+                                label=f"💾 Click to save '{fname_res}'",
+                                data=fdata_res,
+                                file_name=fname_res,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key=f"dl_archived_{selected_output_id}"
+                            )
+                        else:
+                            st.warning("⚠️ Invalid ID or File not found.")
+                
+                with arch_col2:
+                    delete_arch_id = st.number_input("Enter Archived File ID to Delete", min_value=1, step=1, key="del_arch_id_input")
+                    confirm_del_arch = st.checkbox("Confirm archived file deletion", key="conf_arch_del")
+                    if st.button("🗑️ Delete Archived File"):
+                        if confirm_del_arch:
+                            conn = sqlite3.connect("sales_history.db")
+                            cursor = conn.cursor()
+                            cursor.execute("DELETE FROM output_files_ledger WHERE id = ?", (delete_arch_id,))
+                            conn.commit()
+                            conn.close()
+                            st.success(f"✅ Archived File ID {delete_arch_id} successfully deleted from ledger!")
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ Kripya deletion confirmation checkbox tick karein.")
             else:
                 st.info("No output files archived yet.")
 
