@@ -12,7 +12,7 @@ import urllib.parse
 from email.message import EmailMessage
 from fpdf import FPDF
 
-# Page Configuration & Styling (Mobile Sidebar Toggle Fix Included)
+# Page Configuration & Styling (GitHub Icon & Header Hidden Completely)
 st.set_page_config(
     page_title="Sales Order Automation Hub", 
     page_icon="🚀", 
@@ -25,7 +25,13 @@ st.markdown("""
         .stAppHeader { background-color: transparent !important; }
         header[data-testid="stHeader"] { display: flex !important; }
         
-        /* Mobile par sidebar toggle button ko hamesha visible rakhne ke liye */
+        /* GitHub icon aur Streamlit branding ko puri tarah hide karne ke liye */
+        [data-testid="stStatusWidget"], .stDeployButton, footer, #stDecoration, a[href*="github.com"] {
+            visibility: hidden !important;
+            display: none !important;
+        }
+        
+        /* Mobile par sidebar toggle button visible rakhne ke liye */
         [data-testid="collapsedControl"] {
             display: block !important;
             z-index: 999999;
