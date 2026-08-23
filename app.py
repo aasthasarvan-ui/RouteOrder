@@ -936,10 +936,10 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- UNIQUE MASTER DATABASE MANAGEMENT, UNMAPPED LEDGER & OUTPUT ARCHIVE PANEL WITH ID RESET LOGIC ---
+# --- ALL THREE DATABASES MANAGEMENT PANEL WITH FULL DELETION, ID RESET & DR UPLOAD TOOLS ---
 st.markdown("---")
-with st.expander("🗄️ View, Export & Manage Databases (Master, Unmapped & Outputs) & Upload DR Codes"):
-    st.markdown("Yahan aap teeno databases (Master, Unmapped Ledger, Output Ledger) manage kar sakte hain, manual DR code add/upload kar sakte hain, aur record delete karne par auto-increment ID reset kar sakte hain.")
+with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs) & Upload DR Codes"):
+    st.markdown("Yahan aap teeno databases ke records dekh sakte hain, manual/bulk DR code upload kar sakte hain, aur record delete karne par ID auto-reset kar sakte hain.")
     try:
         conn = sqlite3.connect("sales_history.db")
         df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
@@ -949,7 +949,7 @@ with st.expander("🗄️ View, Export & Manage Databases (Master, Unmapped & Ou
         
         tab_m1, tab_m2, tab_m3 = st.tabs(["📋 Route-Agency-DR Master", "🚨 Unmapped Missing DR Ledger", "📦 Archived Output Files"])
         
-        # --- TAB 1: MASTER DATABASE MANAGEMENT & DR CODE UPLOAD ---
+        # --- TAB 1: MASTER DATABASE MANAGEMENT & MANUAL/BULK DR UPLOAD ---
         with tab_m1:
             if not df_master.empty:
                 st.markdown("#### 📊 Master Database Health & Analytics")
@@ -1036,7 +1036,7 @@ with st.expander("🗄️ View, Export & Manage Databases (Master, Unmapped & Ou
                 del_col1, del_col2, del_col3, del_col4 = st.columns(4)
                 
                 with del_col1:
-                    row_id_to_del = st.number_input("Enter Record ID", min_value=1, step=1, key="row_id_input")
+                    row_id_to_del = st.number_input("Enter Master Record ID", min_value=1, step=1, key="row_id_input")
                     if st.button("🗑️ Delete Master Row & Reset ID"):
                         conn = sqlite3.connect("sales_history.db")
                         cursor = conn.cursor()
@@ -1133,22 +1133,40 @@ with st.expander("🗄️ View, Export & Manage Databases (Master, Unmapped & Ou
             else:
                 st.info("No master records found yet.")
 
-        # --- TAB 2: UNMAPPED LEDGER MANAGEMENT WITH ID RESET ---
+        # --- TAB 2: UNMAPPED LEDGER MANAGEMENT WITH FULL TOOLS & ID RESET ---
         with tab_m2:
             st.markdown("#### 🚨 Unmapped Missing DR Ledger (Generated via Fallback)")
             if not df_unmapped.empty:
                 st.dataframe(df_unmapped, use_container_width=True)
                 
-                unmap_del_id = st.number_input("Enter Unmapped Record ID to Delete", min_value=1, step=1, key="unmap_del_id")
-                if st.button("🗑️ Delete Unmapped Record & Reset ID"):
-                    conn = sqlite3.connect("sales_history.db")
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
-                    cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
-                    conn.commit()
-                    conn.close()
-                    st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted & ID sequence reset!")
-                    st.rerun()
+                st.markdown("##### 🗑️ Unmapped Ledger Deletion & ID Reset Tools")
+                um_col1, um_col2 = st.columns(2)
+                with um_col1:
+                    unmap_del_id = st.number_input("Enter Unmapped Record ID", min_value=1, step=1, key="unmap_del_id")
+                    if st.button("🗑️ Delete Unmapped Record & Reset ID"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted & ID sequence reset!")
+                        st.rerun()
+                with um_col2:
+                    st.markdown("##### Wipe Unmapped Ledger")
+                    conf_um_wipe = st.checkbox("Confirm unmapped wipe", key="conf_um_wipe")
+                    if st.button("🚨 Wipe Unmapped Ledger & Reset IDs"):
+                        if conf_um_wipe:
+                            conn = sqlite3.connect("sales_history.db")
+                            cursor = conn.cursor()
+                            cursor.execute("DELETE FROM unmapped_missing_dr_ledger")
+                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
+                            conn.commit()
+                            conn.close()
+                            st.success("✅ Unmapped Ledger wiped & IDs reset!")
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ Tick checkbox to wipe.")
 
                 unmapped_buf = io.BytesIO()
                 df_unmapped.to_excel(unmapped_buf, index=False, sheet_name="Unmapped DR Ledger")
@@ -1163,14 +1181,15 @@ with st.expander("🗄️ View, Export & Manage Databases (Master, Unmapped & Ou
             else:
                 st.info("No unmapped missing DR records logged yet.")
 
-        # --- TAB 3: ARCHIVED OUTPUT FILES MANAGEMENT WITH ID RESET ---
+        # --- TAB 3: ARCHIVED OUTPUT FILES MANAGEMENT WITH FULL TOOLS & ID RESET ---
         with tab_m3:
             st.markdown("#### 📦 Archived Output Files (Saved per file without duplication)")
             if not df_outputs.empty:
                 st.dataframe(df_outputs, use_container_width=True)
                 
-                arch_col1, arch_col2 = st.columns(2)
-                with arch_col1:
+                st.markdown("##### 🗑️ Output Ledger Deletion & ID Reset Tools")
+                out_col1, out_col2 = st.columns(2)
+                with out_col1:
                     selected_output_id = st.number_input("Enter Archived File ID", min_value=1, step=1, key="out_file_id")
                     if st.button("📥 Download Archived File"):
                         conn = sqlite3.connect("sales_history.db")
@@ -1189,8 +1208,7 @@ with st.expander("🗄️ View, Export & Manage Databases (Master, Unmapped & Ou
                             )
                         else:
                             st.warning("⚠️ Invalid ID or File not found.")
-                
-                with arch_col2:
+                    
                     delete_arch_id = st.number_input("Enter Archived File ID to Delete", min_value=1, step=1, key="del_arch_id_input")
                     confirm_del_arch = st.checkbox("Confirm archived file deletion", key="conf_arch_del")
                     if st.button("🗑️ Delete Archived File & Reset ID"):
@@ -1205,6 +1223,22 @@ with st.expander("🗄️ View, Export & Manage Databases (Master, Unmapped & Ou
                             st.rerun()
                         else:
                             st.warning("⚠️ Kripya deletion confirmation checkbox tick karein.")
+
+                with out_col2:
+                    st.markdown("##### Wipe Output Ledger")
+                    conf_out_wipe = st.checkbox("Confirm output wipe", key="conf_out_wipe")
+                    if st.button("🚨 Wipe Output Ledger & Reset IDs"):
+                        if conf_out_wipe:
+                            conn = sqlite3.connect("sales_history.db")
+                            cursor = conn.cursor()
+                            cursor.execute("DELETE FROM output_files_ledger")
+                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='output_files_ledger'")
+                            conn.commit()
+                            conn.close()
+                            st.success("✅ Output Ledger wiped & IDs reset!")
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ Tick checkbox to wipe.")
             else:
                 st.info("No output files archived yet.")
 
