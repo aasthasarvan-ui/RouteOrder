@@ -100,21 +100,16 @@ def init_db():
     cursor.execute("CREATE TABLE IF NOT EXISTS inventory_stock_table (id INTEGER PRIMARY KEY AUTOINCREMENT, fg_code TEXT UNIQUE, available_qty REAL, updated_at TEXT)")
     
     # Safe Column Migrations
-    try:
-        cursor.execute("PRAGMA table_info(unique_routes_master)")
-        columns_master = [col[1] for col in cursor.fetchall()]
-        if "file_name" not in columns_master:
-            cursor.execute("ALTER TABLE unique_routes_master ADD COLUMN file_name TEXT")
-    except Exception:
-        pass
-
-    try:
-        cursor.execute("PRAGMA table_info(dispatch_planning_ledger)")
-        columns_dispatch = [col[1] for col in cursor.fetchall()]
-        if "fg_code" not in columns_dispatch:
-            cursor.execute("ALTER TABLE dispatch_planning_ledger ADD COLUMN fg_code TEXT")
-    except Exception:
-        pass
+    for tbl in ['unique_routes_master', 'dispatch_planning_ledger', 'inventory_stock_table', 'discrepancy_audit_ledger']:
+        try:
+            cursor.execute(f"PRAGMA table_info({tbl})")
+            cols = [col[1] for col in cursor.fetchall()]
+            if tbl == 'unique_routes_master' and "file_name" not in cols:
+                cursor.execute("ALTER TABLE unique_routes_master ADD COLUMN file_name TEXT")
+            if tbl == 'dispatch_planning_ledger' and "fg_code" not in cols:
+                cursor.execute("ALTER TABLE dispatch_planning_ledger ADD COLUMN fg_code TEXT")
+        except Exception:
+            pass
         
     conn.commit()
     conn.close()
@@ -549,7 +544,10 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                                         row_total_qty += qty_val
                                         file_input_qty += qty_val
                                         
-                                        current_fg_code = agency_col_override_map.get((agency_val, c), direct_col_mapping.get(c, default_fg_code))
+                                        current_fg_code = agency_col_override_map.get((agency_val, c), direct_col_mapping.get(c, fg_code if fg_code else default_fg_code))
+                                        if not current_fg_code or str(current_fg_code).strip() == "":
+                                            current_fg_code = default_fg_code
+
                                         avail_stock = stock_inventory_dict.get(current_fg_code, 99999.0)
                                         
                                         if avail_stock >= qty_val:
@@ -1073,11 +1071,11 @@ Status: Successfully Processed & Audited
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
 # ==========================================
-# 7. MULTI-DATABASE MANAGEMENT & MASTER FILES
+# 7. MULTI-DATABASE MANAGEMENT & UNIVERSAL COLUMN/ROW MODIFIER
 # ==========================================
 st.markdown("---")
-with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs, Dispatch & Audit)"):
-    st.markdown("Yahan aap saare databases, vehicle dispatch planning schedules, pending deliverables aur audit ledgers ko manage kar sakte hain.")
+with st.expander("🗄️ View, Export & Manage All Databases (Add/Delete Columns & Rows)"):
+    st.markdown("Yahan aap saare databases ke records dekh sakte hain, naye columns add kar sakte hain, rows delete kar sakte hain, aur tables wipe kar sakte hain.")
     try:
         conn = sqlite3.connect("sales_history.db")
         df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
@@ -1086,383 +1084,120 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
         df_trace = pd.read_sql("SELECT id, batch_timestamp, input_file_name, total_input_qty, generated_output_file, output_type, version_no FROM input_output_traceability ORDER BY id DESC", conn)
         df_audit = pd.read_sql("SELECT * FROM discrepancy_audit_ledger ORDER BY id DESC", conn)
         df_dispatch = pd.read_sql("SELECT * FROM dispatch_planning_ledger ORDER BY id DESC", conn)
+        df_stock = pd.read_sql("SELECT * FROM inventory_stock_table ORDER BY id DESC", conn)
         conn.close()
         
-        tab_m1, tab_m2, tab_m3, tab_m4, tab_m5, tab_m6, tab_m7, tab_m8 = st.tabs([
-            "📋 Route-Agency-DR Master", 
-            "🚨 Unmapped Missing DR", 
-            "📦 Archived Outputs", 
-            "🚚 Dispatch Plan & Pending",
-            "🔗 Traceability Ledger", 
-            "🔍 Discrepancy Audit",
-            "📅 Monthly Dispatch Masterfile",
-            "⏳ Master Pending File"
+        tab_m1, tab_m2, tab_m3, tab_m4, tab_m5, tab_m6, tab_m7, tab_m8, tab_m9 = st.tabs([
+            "📋 Master", "🚨 Unmapped", "📦 Outputs", "🚚 Dispatch", "🔗 Trace", "🔍 Audit", "📅 Monthly", "⏳ Pending", "🛠️ DB Schema Editor"
         ])
         
-        # --- TAB 1: MASTER DATABASE MANAGEMENT ---
-        with tab_m1:
-            if not df_master.empty:
-                st.markdown("#### 📊 Master Database Health & Analytics")
-                h_col1, h_col2, h_col3, h_col4 = st.columns(4)
-                h_col1.metric("Total Master Records", len(df_master))
-                h_col2.metric("Unique Routes", df_master['route_no'].nunique() if 'route_no' in df_master.columns else 0)
-                h_col3.metric("Unique Agencies", df_master['agency_no'].nunique() if 'agency_no' in df_master.columns else 0)
-                h_col4.metric("Tracked Files", df_master['file_name'].nunique() if 'file_name' in df_master.columns else 0)
-                
-                st.markdown("---")
-
-                with st.expander("📤 Manual Entry / Bulk Upload DR Codes into Master Database"):
-                    col_man1, col_man2, col_man3 = st.columns(3)
-                    with col_man1:
-                        manual_route = st.text_input("Route No", "10", key="man_route")
-                    with col_man2:
-                        manual_agency = st.text_input("Agency No", "", key="man_agency")
-                    with col_man3:
-                        manual_dr = st.text_input("DR Code (e.g., DR12345)", "", key="man_dr")
-                    
-                    if st.button("➕ Add Single DR Code to Master DB"):
-                        if manual_route and manual_agency and manual_dr:
-                            try:
-                                conn_add = sqlite3.connect("sales_history.db")
-                                cur_add = conn_add.cursor()
-                                cur_add.execute("""
-                                    INSERT OR REPLACE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
-                                    VALUES (?, ?, ?, ?, ?)
-                                """, ("Manual_Entry", manual_route, manual_agency, manual_dr, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
-                                conn_add.commit()
-                                conn_add.close()
-                                st.success(f"✅ Successfully added Route: {manual_route}, Agency: {manual_agency}, DR: {manual_dr}!")
-                                st.rerun()
-                            except Exception as ex:
-                                st.error(f"Error adding record: {str(ex)}")
-                        else:
-                            st.warning("⚠️ Kripya Route, Agency aur DR Code sabhi enter karein.")
-
-                    st.markdown("---")
-                    st.markdown("##### Or Bulk Upload CSV / Excel")
-                    bulk_upload_file = st.file_uploader("Upload Master DR CSV/Excel", type=["csv", "xlsx"], key="bulk_dr_up")
-                    if bulk_upload_file:
+        # Helper function for universal table manager inside each tab
+        def render_table_manager(table_name, df_data):
+            st.dataframe(df_data, use_container_width=True)
+            col_ed1, col_ed2, col_ed3 = st.columns(3)
+            with col_ed1:
+                new_col_name = st.text_input(f"New Column Name ({table_name})", key=f"col_name_{table_name}")
+                if st.button(f"➕ Add Column to {table_name}", key=f"btn_add_col_{table_name}"):
+                    if new_col_name:
                         try:
-                            if bulk_upload_file.name.endswith('.csv'):
-                                df_bulk = pd.read_csv(bulk_upload_file)
-                            else:
-                                df_bulk = pd.read_excel(bulk_upload_file)
-                            
-                            if all(col in df_bulk.columns for col in ['route_no', 'agency_no', 'dr_code']):
-                                bulk_records = []
-                                for _, row in df_bulk.iterrows():
-                                    bulk_records.append((str(row.get('file_name', 'Manual_Upload')), str(row['route_no']), str(row['agency_no']), str(row['dr_code']), get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
-                                
-                                conn_b = sqlite3.connect("sales_history.db")
-                                cur_b = conn_b.cursor()
-                                cur_b.executemany("""
-                                    INSERT OR REPLACE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
-                                    VALUES (?, ?, ?, ?, ?)
-                                """, bulk_records)
-                                conn_b.commit()
-                                conn_b.close()
-                                st.success(f"✅ Successfully imported {len(bulk_records)} records into Master Database!")
-                                st.rerun()
-                            else:
-                                st.error("❌ File columns must contain: 'route_no', 'agency_no', 'dr_code'.")
+                            conn_c = sqlite3.connect("sales_history.db")
+                            cur_c = conn_c.cursor()
+                            cur_c.execute(f"ALTER TABLE {table_name} ADD COLUMN {new_col_name} TEXT")
+                            conn_c.commit()
+                            conn_c.close()
+                            st.success(f"✅ Column '{new_col_name}' added successfully to {table_name}!")
+                            st.rerun()
                         except Exception as ex:
-                            st.error(f"Error importing file: {str(ex)}")
-
-                db_search = st.text_input("🔍 Search Master Database (Filter by File, Route, Agency or DR)", "", key="db_search")
-                filtered_master = df_master
-                if db_search:
-                    q = db_search.lower()
-                    filtered_master = df_master[
-                        df_master['file_name'].astype(str).str.lower().str.contains(q) |
-                        df_master['route_no'].astype(str).str.lower().str.contains(q) |
-                        df_master['agency_no'].astype(str).str.lower().str.contains(q) |
-                        df_master['dr_code'].astype(str).str.lower().str.contains(q)
-                    ]
-                
-                st.dataframe(filtered_master, use_container_width=True)
-                
-                st.markdown("#### 🗑️ Advanced Deletion, Rollback & ID Reset Tools")
-                del_col1, del_col2, del_col3, del_col4 = st.columns(4)
-                
-                with del_col1:
-                    row_id_to_del = st.number_input("Enter Master Record ID", min_value=1, step=1, key="row_id_input")
-                    if st.button("🗑️ Delete Master Row & Reset ID"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM unique_routes_master WHERE id = ?", (row_id_to_del,))
-                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
-                        conn.commit()
-                        conn.close()
-                        st.success(f"✅ Master Record ID {row_id_to_del} deleted & ID sequence reset!")
+                            st.error(f"Error: {str(ex)}")
+            with col_ed2:
+                row_id_rem = st.number_input(f"Record ID to Delete ({table_name})", min_value=1, step=1, key=f"del_id_{table_name}")
+                if st.button(f"🗑️ Delete Row & Reset ID", key=f"btn_del_row_{table_name}"):
+                    try:
+                        conn_r = sqlite3.connect("sales_history.db")
+                        cur_r = conn_r.cursor()
+                        cur_r.execute(f"DELETE FROM {table_name} WHERE id = ?", (row_id_rem,))
+                        cur_r.execute(f"DELETE FROM sqlite_sequence WHERE name='{table_name}'")
+                        conn_r.commit()
+                        conn_r.close()
+                        st.success(f"✅ Record ID {row_id_rem} deleted from {table_name}!")
                         st.rerun()
-
-                with del_col2:
-                    unique_files = df_master['file_name'].dropna().unique().tolist() if 'file_name' in df_master.columns else []
-                    file_to_purge = st.selectbox("Select File to Purge", ["Select..."] + unique_files, key="purge_file_select")
-                    if st.button("🔥 Delete Master File Data"):
-                        if file_to_purge != "Select...":
-                            conn = sqlite3.connect("sales_history.db")
-                            cursor = conn.cursor()
-                            cursor.execute("DELETE FROM unique_routes_master WHERE file_name = ?", (file_to_purge,))
-                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
-                            conn.commit()
-                            conn.close()
-                            st.success(f"✅ File '{file_to_purge}' data deleted & ID sequence reset!")
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Kripya purge karne ke liye file select karein.")
-
-                with del_col3:
-                    route_to_delete = st.text_input("Enter Route No to Purge", "", key="purge_route")
-                    if st.button("🔥 Delete Master Route Data"):
-                        if route_to_delete:
-                            conn = sqlite3.connect("sales_history.db")
-                            cursor = conn.cursor()
-                            cursor.execute("DELETE FROM unique_routes_master WHERE route_no = ?", (route_to_delete,))
-                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
-                            conn.commit()
-                            conn.close()
-                            st.success(f"✅ Route '{route_to_delete}' data deleted & ID sequence reset!")
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Kripya delete karne ke liye Route No enter karein.")
-                            
-                with del_col4:
-                    st.markdown("##### Master Wipe")
-                    if st.button("🚨 Wipe Master DB & Reset IDs", type="secondary"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM unique_routes_master")
-                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
-                        conn.commit()
-                        conn.close()
-                        st.success("✅ Master DB wiped & IDs reset!")
+                    except Exception as ex:
+                        st.error(f"Error: {str(ex)}")
+            with col_ed3:
+                if st.button(f"🚨 Wipe Entire {table_name}", key=f"btn_wipe_{table_name}", type="secondary"):
+                    try:
+                        conn_w = sqlite3.connect("sales_history.db")
+                        cur_w = conn_w.cursor()
+                        cur_w.execute(f"DELETE FROM {table_name}")
+                        cur_w.execute(f"DELETE FROM sqlite_sequence WHERE name='{table_name}'")
+                        conn_w.commit()
+                        conn_w.close()
+                        st.success(f"✅ Table {table_name} wiped successfully!")
                         st.rerun()
+                    except Exception as ex:
+                        st.error(f"Error: {str(ex)}")
 
-                st.markdown("---")
-                master_excel_buf = io.BytesIO()
-                df_master.to_excel(master_excel_buf, index=False, sheet_name="Master Routes")
-                master_excel_buf.seek(0)
-                
-                dl_col1, dl_col2 = st.columns(2)
-                with dl_col1:
-                    st.download_button(
-                        label="📥 Export Master Database to Excel (.xlsx)",
-                        data=master_excel_buf.getvalue(),
-                        file_name=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="export_master_excel"
-                    )
-                with dl_col2:
-                    if st.button("📧 Send Master DB via Email"):
-                        if email_user and email_pass and recipient_email:
-                            try:
-                                msg = EmailMessage()
-                                msg['Subject'] = f"📊 Master Database Export Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}"
-                                msg['From'] = email_user
-                                msg['To'] = recipient_email
-                                
-                                msg.set_content("Hello Team,\n\nPlease find attached the latest Unique Route-Agency-DR Master Database export.\n\nAutomated via Sales Order Hub (IST)")
-                                msg.add_attachment(master_excel_buf.getvalue(), maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx")
-                                
-                                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-                                    smtp.login(email_user, email_pass)
-                                    smtp.send_message(msg)
-                                st.success("✅ Master Database successfully emailed to recipient!")
-                            except Exception as e:
-                                st.error(f"❌ Email failed: {str(e)}")
-                        else:
-                            st.warning("⚠️ Kripya sidebar mein Email credentials enter karein!")
-            else:
-                st.info("No master records found yet.")
-
-        # --- TAB 2: UNMAPPED LEDGER MANAGEMENT ---
+        with tab_m1:
+            render_table_manager("unique_routes_master", df_master)
         with tab_m2:
-            st.markdown("#### 🚨 Unmapped Missing DR Ledger (Generated via Fallback)")
-            if not df_unmapped.empty:
-                st.dataframe(df_unmapped, use_container_width=True)
-                
-                st.markdown("##### 🗑️ Unmapped Ledger Deletion & ID Reset Tools")
-                um_col1, um_col2 = st.columns(2)
-                with um_col1:
-                    unmap_del_id = st.number_input("Enter Unmapped Record ID", min_value=1, step=1, key="unmap_del_id")
-                    if st.button("🗑️ Delete Unmapped Record & Reset ID"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
-                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
-                        conn.commit()
-                        conn.close()
-                        st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted & ID sequence reset!")
-                        st.rerun()
-                with um_col2:
-                    st.markdown("##### Wipe Unmapped Ledger")
-                    if st.button("🚨 Wipe Unmapped Ledger & Reset IDs"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM unmapped_missing_dr_ledger")
-                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
-                        conn.commit()
-                        conn.close()
-                        st.success("✅ Unmapped Ledger wiped & IDs reset!")
-                        st.rerun()
-
-                unmapped_buf = io.BytesIO()
-                df_unmapped.to_excel(unmapped_buf, index=False, sheet_name="Unmapped DR Ledger")
-                unmapped_buf.seek(0)
-                st.download_button(
-                    label="📥 Export Unmapped Ledger to Excel (.xlsx)",
-                    data=unmapped_buf.getvalue(),
-                    file_name=f"Unmapped_Missing_DR_Ledger_{get_ist_now().strftime('%Y-%m-%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="export_unmapped_excel"
-                )
-            else:
-                st.info("No unmapped missing DR records logged yet.")
-
-        # --- TAB 3: ARCHIVED OUTPUT FILES MANAGEMENT ---
+            render_table_manager("unmapped_missing_dr_ledger", df_unmapped)
         with tab_m3:
-            st.markdown("#### 📦 Archived Output Files (Saved per file without duplication)")
-            if not df_outputs.empty:
-                st.dataframe(df_outputs, use_container_width=True)
-                
-                st.markdown("##### 🗑️ Output Ledger Deletion & ID Reset Tools")
-                out_col1, out_col2 = st.columns(2)
-                with out_col1:
-                    selected_output_id = st.number_input("Enter Archived File ID", min_value=1, step=1, key="out_file_id")
-                    if st.button("📥 Download Archived File"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT file_name, file_data FROM output_files_ledger WHERE id = ?", (selected_output_id,))
-                        row_res = cursor.fetchone()
-                        conn.close()
-                        if row_res:
-                            fname_res, fdata_res = row_res[0], row_res[1]
-                            st.download_button(
-                                label=f"💾 Click to save '{fname_res}'",
-                                data=fdata_res,
-                                file_name=fname_res,
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                key=f"dl_archived_{selected_output_id}"
-                            )
-                        else:
-                            st.warning("⚠️ Invalid ID or File not found.")
-                    
-                    delete_arch_id = st.number_input("Enter Archived File ID to Delete", min_value=1, step=1, key="del_arch_id_input")
-                    if st.button("🗑️ Delete Archived File & Reset ID"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM output_files_ledger WHERE id = ?", (delete_arch_id,))
-                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='output_files_ledger'")
-                        conn.commit()
-                        conn.close()
-                        st.success(f"✅ Archived File ID {delete_arch_id} deleted & ID sequence reset!")
-                        st.rerun()
-
-                with out_col2:
-                    st.markdown("##### Wipe Output Ledger")
-                    if st.button("🚨 Wipe Output Ledger & Reset IDs"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM output_files_ledger")
-                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='output_files_ledger'")
-                        conn.commit()
-                        conn.close()
-                        st.success("✅ Output Ledger wiped & IDs reset!")
-                        st.rerun()
-            else:
-                st.info("No output files archived yet.")
-
-        # --- TAB 4: DISPATCH PLANNING & PENDING TRACKER ---
+            render_table_manager("output_files_ledger", df_outputs)
         with tab_m4:
-            st.markdown("#### 🚚 Daily Vehicle Dispatch Plan & Shortfall / Pending Tracker")
-            if not df_dispatch.empty:
-                st.dataframe(df_dispatch, use_container_width=True)
-                
-                st.markdown("##### 🗑️ Dispatch Ledger Deletion & ID Reset Tools")
-                dsp_col1, dsp_col2 = st.columns(2)
-                with dsp_col1:
-                    dispatch_del_id = st.number_input("Enter Dispatch Record ID", min_value=1, step=1, key="dispatch_del_id")
-                    if st.button("🗑️ Delete Dispatch Record & Reset ID"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM dispatch_planning_ledger WHERE id = ?", (dispatch_del_id,))
-                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='dispatch_planning_ledger'")
-                        conn.commit()
-                        conn.close()
-                        st.success(f"✅ Dispatch Record ID {dispatch_del_id} deleted & ID sequence reset!")
-                        st.rerun()
-                with dsp_col2:
-                    st.markdown("##### Wipe Dispatch Ledger")
-                    if st.button("🚨 Wipe Dispatch Planning Ledger & Reset IDs"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM dispatch_planning_ledger")
-                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='dispatch_planning_ledger'")
-                        conn.commit()
-                        conn.close()
-                        st.success("✅ Dispatch Planning Ledger wiped & IDs reset!")
-                        st.rerun()
-            else:
-                st.info("No dispatch plans generated in this session yet.")
-
-        # --- TAB 5: TRACEABILITY LEDGER ---
+            render_table_manager("dispatch_planning_ledger", df_dispatch)
         with tab_m5:
-            st.markdown("#### 🔗 Input File to Output File Traceability & Version History")
-            if not df_trace.empty:
-                st.dataframe(df_trace, use_container_width=True)
-            else:
-                st.info("No traceability mapping records found yet.")
-
-        # --- TAB 6: DISCREPANCY AUDIT LEDGER ---
+            render_table_manager("input_output_traceability", df_trace)
         with tab_m6:
-            st.markdown("#### 🔍 Discrepancy & Variance Audit Ledger")
-            if not df_audit.empty:
-                st.dataframe(df_audit, use_container_width=True)
-            else:
-                st.success("🟢 No discrepancies or variances logged in current batch cycles!")
-
-        # --- TAB 7: MONTHLY DISPATCH MASTERFILE ---
+            render_table_manager("discrepancy_audit_ledger", df_audit)
         with tab_m7:
-            st.markdown("#### 📅 Monthly Dispatch Masterfile (All Dispatched Details)")
             if not df_dispatch.empty:
                 st.dataframe(df_dispatch, use_container_width=True)
-                
                 monthly_buf = io.BytesIO()
                 df_dispatch.to_excel(monthly_buf, index=False, sheet_name="Monthly Dispatch Master")
                 monthly_buf.seek(0)
-                st.download_button(
-                    label="📥 Export Monthly Dispatch Masterfile (.xlsx)",
-                    data=monthly_buf.getvalue(),
-                    file_name=f"Monthly_Dispatch_Masterfile_{get_ist_now().strftime('%Y-%m')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="export_monthly_master_tab"
-                )
+                st.download_button("📥 Export Monthly Dispatch Masterfile (.xlsx)", monthly_buf.getvalue(), f"Monthly_Dispatch_{get_ist_now().strftime('%Y-%m')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_monthly")
             else:
-                st.info("No dispatch records available.")
-
-        # --- TAB 8: MASTER PENDING FILE ---
+                st.info("No records.")
         with tab_m8:
-            st.markdown("#### ⏳ Master Pending File (Shortfall / Pending Items for Next Day)")
             if not df_dispatch.empty:
-                df_pending_only = df_dispatch[df_dispatch['pending_qty'] > 0]
-                if not df_pending_only.empty:
-                    st.dataframe(df_pending_only, use_container_width=True)
-                    
-                    pending_buf = io.BytesIO()
-                    df_pending_only.to_excel(pending_buf, index=False, sheet_name="Master Pending")
-                    pending_buf.seek(0)
-                    st.download_button(
-                        label="📥 Export Master Pending File (.xlsx)",
-                        data=pending_buf.getvalue(),
-                        file_name=f"Master_Pending_File_{get_ist_now().strftime('%Y-%m-%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="export_master_pending_tab"
-                    )
+                df_pend = df_dispatch[df_dispatch['pending_qty'] > 0]
+                if not df_pend.empty:
+                    st.dataframe(df_pend, use_container_width=True)
+                    pend_buf = io.BytesIO()
+                    df_pend.to_excel(pend_buf, index=False, sheet_name="Master Pending")
+                    pend_buf.seek(0)
+                    st.download_button("📥 Export Master Pending File (.xlsx)", pend_buf.getvalue(), f"Master_Pending_{get_ist_now().strftime('%Y-%m-%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_pending")
                 else:
-                    st.success("🟢 No pending items! All demand fully dispatched.")
+                    st.success("🟢 No pending items.")
             else:
-                st.info("No data available.")
+                st.info("No records.")
+        with tab_m9:
+            st.markdown("#### 🛠️ Universal Schema Modifier (Drop Column Tool)")
+            sel_table_drop = st.selectbox("Select Table", ['unique_routes_master', 'unmapped_missing_dr_ledger', 'output_files_ledger', 'input_output_traceability', 'discrepancy_audit_ledger', 'dispatch_planning_ledger', 'inventory_stock_table'])
+            conn_schema = sqlite3.connect("sales_history.db")
+            cur_schema = conn_schema.cursor()
+            cur_schema.execute(f"PRAGMA table_info({sel_table_drop})")
+            table_cols = [col[1] for col in cur_schema.fetchall()]
+            conn_schema.close()
+            
+            col_to_drop = st.selectbox("Select Column to Drop", table_cols)
+            if st.button("🗑️ Drop Selected Column"):
+                try:
+                    conn_d = sqlite3.connect("sales_history.db")
+                    cur_d = conn_d.cursor()
+                    remaining_cols = [c for c in table_cols if c != col_to_drop and c != 'id']
+                    col_str = ", ".join(remaining_cols)
+                    
+                    # SQLite does not support direct DROP COLUMN in older versions easily without table recreation, so we perform safe table rebuilding
+                    cur_d.execute(f"CREATE TABLE {sel_table_drop}_temp AS SELECT id, {col_str} FROM {sel_table_drop}")
+                    cur_d.execute(f"DROP TABLE {sel_table_drop}")
+                    cur_d.execute(f"ALTER TABLE {sel_table_drop}_temp RENAME TO {sel_table_drop}")
+                    conn_d.commit()
+                    conn_d.close()
+                    st.success(f"✅ Column '{col_to_drop}' dropped successfully from {sel_table_drop}!")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Error dropping column: {str(ex)}")
 
     except Exception as e:
         st.error(f"Error loading databases: {str(e)}")
@@ -1471,13 +1206,10 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
 if st.session_state.comparison_summary:
     st.markdown("---")
     st.markdown("### 📋 Agency-wise Material & Input Comparison")
-    
     search_query = st.text_input("🔍 Search Table (Filter by Agency, DR Code, or FG Code)", "", key="table_search")
-    
     combined_df = pd.concat(st.session_state.comparison_summary, ignore_index=True)
     summary_table = combined_df.groupby(["Agency", "DR Code", "FG Code"], as_index=False).agg({"Input Qty": "sum", "Generated Qty": "sum"})
     summary_table["Difference"] = summary_table["Input Qty"] - summary_table["Generated Qty"]
-    
     if search_query:
         q = search_query.lower()
         summary_table = summary_table[
@@ -1485,36 +1217,17 @@ if st.session_state.comparison_summary:
             summary_table['DR Code'].astype(str).str.lower().str.contains(q) |
             summary_table['FG Code'].astype(str).str.lower().str.contains(q)
         ]
-        
     st.dataframe(summary_table, use_container_width=True)
 
 if st.session_state.skipped_rows_log:
     st.markdown("---")
     st.markdown("### ⚠️ Skipped / Invalid Rows Exception Log")
     df_skipped = pd.DataFrame(st.session_state.skipped_rows_log)
-    
     skip_search = st.text_input("🔍 Search Skipped Log (Filter by File Name or Agency)", "", key="skip_search")
     if skip_search:
         sq = skip_search.lower()
-        df_skipped = df_skipped[
-            df_skipped['File Name'].astype(str).str.lower().str.contains(sq) |
-            df_skipped['Agency Value'].astype(str).str.lower().str.contains(sq)
-        ]
+        df_skipped = df_skipped[df_skipped['File Name'].astype(str).str.lower().str.contains(sq) | df_skipped['Agency Value'].astype(str).str.lower().str.contains(sq)]
     st.dataframe(df_skipped, use_container_width=True)
-
-if st.session_state.comparison_summary:
-    st.markdown("---")
-    st.markdown("### 📊 Audit Reconciliation & Comparison Pivot")
-    combined_pivot = pd.concat(st.session_state.comparison_summary, ignore_index=True)
-    st.dataframe(combined_pivot, use_container_width=True)
-    audit_csv = combined_pivot.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Download Audit Reconciliation Report (CSV)",
-        data=audit_csv,
-        file_name=f"Audit_Reconciliation_Report_{get_ist_now().strftime('%Y-%m-%d')}.csv",
-        mime="text/csv",
-        key="audit_csv_download"
-    )
 
 # --- Historical Trend Analysis View ---
 st.markdown("---")
