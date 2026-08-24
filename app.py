@@ -1241,7 +1241,7 @@ if st.session_state.comparison_summary:
     st.markdown("---")
     st.markdown("### 📋 Agency-wise Material & Input Comparison")
     
-    search_query = st.text_input("🔍 Search Table (Filter by Agency, DR Code, or FG Code)", "", key="table_search") गलती 
+    search_query = st.text_input("🔍 Search Table (Filter by Agency, DR Code, or FG Code)", "", key="table_search")
     
     combined_df = pd.concat(st.session_state.comparison_summary, ignore_index=True)
     summary_table = combined_df.groupby(["Agency", "DR Code", "FG Code"], as_index=False).agg({"Input Qty": "sum", "Generated Qty": "sum"})
@@ -1300,4 +1300,3 @@ with st.expander("🕒 View Historical Trend Analysis (SQLite Database - IST)"):
             st.info("No historical logs available yet.")
     except Exception as e:
         st.error(f"Error loading history: {str(e)}")
-
