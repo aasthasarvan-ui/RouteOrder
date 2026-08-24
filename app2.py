@@ -46,6 +46,8 @@ def get_ist_now():
 # Default Session State
 if "selected_theme" not in st.session_state:
     st.session_state.selected_theme = "💼 Enterprise Navy"
+if "df_demand" not in st.session_state:
+    st.session_state.df_demand = pd.DataFrame()
 
 t = THEMES[st.session_state.selected_theme]
 
@@ -71,7 +73,6 @@ def init_dispatch_db():
     conn = sqlite3.connect("dispatch_logistics.db")
     cursor = conn.cursor()
     
-    # 1. Fleet Master
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS fleet_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,7 +87,6 @@ def init_dispatch_db():
         )
     """)
     
-    # 2. Loading Bays Master
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS loading_bays (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,7 +96,6 @@ def init_dispatch_db():
         )
     """)
     
-    # 3. Dispatch Trips Master
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS dispatch_trips (
             trip_id TEXT PRIMARY KEY,
@@ -115,7 +114,6 @@ def init_dispatch_db():
         )
     """)
     
-    # 4. Trip Line Items (Agency & SKU Allocation)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS trip_order_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,7 +132,6 @@ def init_dispatch_db():
         )
     """)
     
-    # 5. Seed default fleet if empty
     cursor.execute("SELECT COUNT(*) FROM fleet_master")
     if cursor.fetchone()[0] == 0:
         default_fleet = [
@@ -148,7 +145,6 @@ def init_dispatch_db():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, default_fleet)
 
-    # 6. Seed loading bays if empty
     cursor.execute("SELECT COUNT(*) FROM loading_bays")
     if cursor.fetchone()[0] == 0:
         default_bays = [
@@ -167,7 +163,6 @@ init_dispatch_db()
 # HELPER FUNCTIONS: DEMAND EXTRACTION
 # ==========================================
 def extract_pending_demand_from_sales_db():
-    """Extracts processed orders from sales_history.db output_files_ledger"""
     pending_rows = []
     try:
         conn = sqlite3.connect("sales_history.db")
@@ -196,25 +191,24 @@ def extract_pending_demand_from_sales_db():
                                 pending_rows.append({
                                     "Source File": fname,
                                     "File Type": ftype,
-                                    "Order No": str(order_no),
-                                    "Route No": str(route),
-                                    "Agency No": str(agency),
-                                    "DR Code": str(dr_code),
-                                    "FG Code": str(fg_code),
+                                    "Order No": str(order_no) if order_no else "N/A",
+                                    "Route No": str(route).strip() if route else "Unassigned",
+                                    "Agency No": str(agency).strip() if agency else "N/A",
+                                    "DR Code": str(dr_code) if dr_code else "N/A",
+                                    "FG Code": str(fg_code) if fg_code else "N/A",
                                     "Bags Qty": f_qty,
-                                    "Weight (MT)": f_qty * 0.05, # Assuming 50 kg bag standard = 0.05 MT
-                                    "Order Ref": str(ref_no)
+                                    "Weight (MT)": round(f_qty * 0.05, 2),
+                                    "Order Ref": str(ref_no) if ref_no else "N/A"
                                 })
                         except ValueError:
                             pass
             except Exception:
                 pass
-    except Exception as e:
+    except Exception:
         pass
     return pd.DataFrame(pending_rows)
 
 def extract_demand_from_uploaded_excel(files):
-    """Directly extracts demand from uploaded output or raw excel files"""
     rows = []
     for f in files:
         fbytes = f.getvalue()
@@ -236,14 +230,14 @@ def extract_demand_from_uploaded_excel(files):
                         rows.append({
                             "Source File": f.name,
                             "File Type": "Direct Upload",
-                            "Order No": str(order_no),
-                            "Route No": str(route),
-                            "Agency No": str(agency),
-                            "DR Code": str(dr_code),
-                            "FG Code": str(fg_code),
+                            "Order No": str(order_no) if order_no else "N/A",
+                            "Route No": str(route).strip() if route else "Unassigned",
+                            "Agency No": str(agency).strip() if agency else "N/A",
+                            "DR Code": str(dr_code) if dr_code else "N/A",
+                            "FG Code": str(fg_code) if fg_code else "N/A",
                             "Bags Qty": f_qty,
-                            "Weight (MT)": f_qty * 0.05,
-                            "Order Ref": str(ref_no)
+                            "Weight (MT)": round(f_qty * 0.05, 2),
+                            "Order Ref": str(ref_no) if ref_no else "N/A"
                         })
                 except ValueError:
                     pass
@@ -277,25 +271,37 @@ if app_mode == "🚚 Dispatch Trip Planner":
     st.title("🚚 Real-Time Dispatch Planning & Vehicle Allocation")
     st.markdown("Sales orders ke processed data ko select karke Route-wise truck capacity optimize kijiye aur Loading Slips generate karein.")
     
-    # 1. Choose Data Source
-    src_choice = st.radio("Select Inbound Demand Source:", ["📂 Load from Sales Order Automation Database (sales_history.db)", "📤 Upload Output/Demand Excel Files Manually"], horizontal=True)
+    st.markdown("---")
+    st.subheader("📥 Inbound Demand Data Sources")
     
-    df_demand = pd.DataFrame()
-    if "Load from Sales" in src_choice:
-        df_demand = extract_pending_demand_from_sales_db()
-        if df_demand.empty:
-            st.info("ℹ️ `sales_history.db` mein koi output files nahi mili. Kripya pehle Sales Order Hub run karein ya manual Excel upload karein.")
-    else:
-        uploaded_outputs = st.file_uploader("Upload Generated Output Excel Files (*_Valid.xlsx / Output.xlsx)", type=["xlsx"], accept_multiple_files=True)
+    col_s1, col_s2 = st.columns([1, 1])
+    
+    with col_s1:
+        st.markdown("**Option A: Manual Excel Upload**")
+        uploaded_outputs = st.file_uploader(
+            "Upload Output Excel (*_Valid.xlsx / Output.xlsx)", 
+            type=["xlsx"], 
+            accept_multiple_files=True,
+            key="direct_file_uploader"
+        )
         if uploaded_outputs:
-            df_demand = extract_demand_from_uploaded_excel(uploaded_outputs)
+            st.session_state.df_demand = extract_demand_from_uploaded_excel(uploaded_outputs)
+            st.success(f"✅ {len(st.session_state.df_demand)} demand records uploaded successfully!")
+
+    with col_s2:
+        st.markdown("**Option B: Database Sync**")
+        st.write("Fetch processed demand records directly from `sales_history.db`.")
+        if st.button("🔄 Fetch from Sales Automation DB"):
+            db_demand = extract_pending_demand_from_sales_db()
+            if db_demand.empty:
+                st.warning("⚠️ `sales_history.db` mein koi data nahi mila.")
+            else:
+                st.session_state.df_demand = db_demand
+                st.success(f"✅ {len(db_demand)} records loaded from database!")
+
+    df_demand = st.session_state.df_demand
 
     if not df_demand.empty:
-        # Check already allocated items
-        conn = sqlite3.connect("dispatch_logistics.db")
-        df_allocated = pd.read_sql("SELECT DISTINCT order_no, agency_no, route_no, fg_code FROM trip_order_items", conn)
-        conn.close()
-
         st.markdown("---")
         st.subheader("📦 Inbound Demand Overview & Route Clustering")
         
@@ -310,7 +316,6 @@ if app_mode == "🚚 Dispatch Trip Planner":
         col_m3.metric("Routes in Demand", unique_routes)
         col_m4.metric("Total Agencies", unique_agencies)
         
-        # Route-wise group table
         route_summary = df_demand.groupby("Route No").agg({
             "Agency No": "nunique",
             "Bags Qty": "sum",
@@ -326,11 +331,9 @@ if app_mode == "🚚 Dispatch Trip Planner":
         with col_p1:
             selected_route = st.selectbox("1. Select Route for Dispatch Trip", route_summary["Route No"].tolist())
             
-            # Filter demand for selected route
             route_df = df_demand[df_demand["Route No"] == str(selected_route)].copy()
             st.markdown(f"**Total Bags on Route {selected_route}:** `{route_df['Bags Qty'].sum():,.0f}` | **Weight:** `{route_df['Weight (MT)'].sum():,.2f} MT`")
             
-            # Fetch Available Vehicles
             conn_fl = sqlite3.connect("dispatch_logistics.db")
             available_vehicles = pd.read_sql("SELECT vehicle_no, vehicle_type, capacity_bags, capacity_mt, transporter_name, driver_name, driver_phone FROM fleet_master WHERE status='Available'", conn_fl)
             available_bays = pd.read_sql("SELECT bay_no, bay_name FROM loading_bays WHERE status='Open'", conn_fl)
@@ -342,7 +345,8 @@ if app_mode == "🚚 Dispatch Trip Planner":
 
         with col_p2:
             st.markdown("#### 📋 Order Selection & Sequence")
-            selected_agencies = st.multiselect("Filter Agencies to Load in this Trip:", route_df["Agency No"].unique().tolist(), default=route_df["Agency No"].unique().tolist())
+            agency_list = route_df["Agency No"].unique().tolist()
+            selected_agencies = st.multiselect("Filter Agencies to Load in this Trip:", agency_list, default=agency_list)
             
             filtered_trip_demand = route_df[route_df["Agency No"].isin(selected_agencies)]
             trip_bags = filtered_trip_demand["Bags Qty"].sum()
@@ -379,7 +383,6 @@ if app_mode == "🚚 Dispatch Trip Planner":
                 conn = sqlite3.connect("dispatch_logistics.db")
                 cursor = conn.cursor()
                 
-                # Insert trip master
                 cursor.execute("""
                     INSERT INTO dispatch_trips (trip_id, trip_date, route_no, vehicle_no, transporter_name, driver_name, driver_phone, loading_bay, total_bags, total_weight_mt, capacity_utilization_pct, status, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -399,7 +402,6 @@ if app_mode == "🚚 Dispatch Trip Planner":
                     ist_now.strftime("%Y-%m-%d %H:%M:%S")
                 ))
                 
-                # Insert trip items
                 items_to_insert = []
                 for seq, (_, row) in enumerate(filtered_trip_demand.iterrows(), 1):
                     items_to_insert.append((
@@ -421,7 +423,6 @@ if app_mode == "🚚 Dispatch Trip Planner":
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, items_to_insert)
                 
-                # Update vehicle status
                 cursor.execute("UPDATE fleet_master SET status='Assigned to Trip' WHERE vehicle_no=?", (veh_no,))
                 
                 conn.commit()
@@ -462,11 +463,9 @@ elif app_mode == "📋 Active & Completed Trips":
         st.markdown("##### 📦 Material Loading Manifest (Agency-wise Sequence):")
         st.dataframe(df_trip_items, use_container_width=True)
         
-        # Action Buttons
         col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
         
         with col_btn1:
-            # Generate Loading Slip PDF
             try:
                 pdf = FPDF()
                 pdf.add_page()
@@ -526,13 +525,11 @@ elif app_mode == "📋 Active & Completed Trips":
                 st.error(f"PDF error: {str(e)}")
 
         with col_btn2:
-            # WhatsApp dispatch alert
             wa_text = f"🚛 Enterprise Dispatch Alert!\nTrip ID: {trip_row['trip_id']}\nVehicle: {trip_row['vehicle_no']}\nDriver: {trip_row['driver_name']} ({trip_row['driver_phone']})\nRoute: {trip_row['route_no']}\nTotal Bags: {trip_row['total_bags']} ({trip_row['total_weight_mt']} MT)\nBay: {trip_row['loading_bay']}"
             wa_url = f"https://wa.me/{logistics_whatsapp}?text={urllib.parse.quote(wa_text)}"
             st.markdown(f'<a href="{wa_url}" target="_blank"><button style="width:100%; height:38px; background:#25D366; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">📱 WhatsApp Driver & Gate</button></a>', unsafe_allow_html=True)
 
         with col_btn3:
-            # Status update dropdown
             new_status = st.selectbox("Update Trip Status:", ["Planned", "Loading in Progress", "Gate Out / Dispatched", "Delivered"], index=["Planned", "Loading in Progress", "Gate Out / Dispatched", "Delivered"].index(trip_row["status"]))
             if st.button("🔄 Update Status"):
                 conn = sqlite3.connect("dispatch_logistics.db")
