@@ -514,6 +514,7 @@ with st.sidebar:
             "🔍 Traceability & Audit Ledgers",
             "📊 Executive KPI & Visual Analytics",
             "🗄️ In-App Database Builder & Dynamic Linker" # NEW MODULE ADDED
+            "🎯 Universal Date & Multi-Field Filter Center"
         ]
     )
     st.markdown("---")
