@@ -14,9 +14,9 @@ from email.message import EmailMessage
 from fpdf import FPDF
 import streamlit.components.v1 as components
 
-# Page Configuration & Styling (Stretch & Alignment Fixed)
+# Page Configuration & Styling (Professional Dashboard Look)
 st.set_page_config(
-    page_title="Sales Order Automation Hub", 
+    page_title="Enterprise Sales Order Automation Hub", 
     page_icon="🚀", 
     layout="wide",
     initial_sidebar_state="expanded"
@@ -40,9 +40,12 @@ st.markdown("""
             display: flex;
             align-items: center;
             justify-content: center;
+            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);
+            transition: all 0.3s ease;
         }
         .stButton>button:hover {
             background-color: #059669 !important;
+            box-shadow: 0 6px 8px rgba(5, 150, 105, 0.3);
         }
     </style>
 """, unsafe_allow_html=True)
