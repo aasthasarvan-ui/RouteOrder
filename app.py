@@ -510,7 +510,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 has_dr_code = True
                                 clean_dr = db_match[0]
 
-                        # --- STRICT SINGLE UNIQUE ENTRY FOR MISSING DR ---
+                        # --- STRICT SINGLE UNIQUE ENTRY FOR UNMAPPED MISSING DR ---
                         if not has_dr_code:
                             unmapped_record = (short_filename, str(route_num), str(agency_val), f"NEW_CUST_{agency_val}", ist_now.strftime("%Y-%m-%d %H:%M:%S"))
                             if unmapped_record not in unmapped_records_to_insert:
@@ -527,9 +527,11 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
 
                         final_dr = clean_dr if has_dr_code else f"NEW_CUST_{agency_val}"
                         
-                        db_record = (short_filename, str(route_num), str(agency_val), str(final_dr), ist_now.strftime("%Y-%m-%d %H:%M:%S"))
-                        if db_record not in db_records_to_insert:
-                            db_records_to_insert.append(db_record)
+                        # Only insert into Route-Agency-DR Master if it is a genuine valid DR code starting with 'DR'
+                        if has_dr_code and clean_dr.startswith("DR"):
+                            db_record = (short_filename, str(route_num), str(agency_val), str(clean_dr), ist_now.strftime("%Y-%m-%d %H:%M:%S"))
+                            if db_record not in db_records_to_insert:
+                                db_records_to_insert.append(db_record)
 
                         if row_total_qty > 500:
                             st.session_state.anomaly_logs.append({
@@ -700,11 +702,10 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     if kpi['skipped_count'] > 5:
         st.warning(f"⚠️ **Smart Audit Alert:** {kpi['skipped_count']} rows skipped check exception logs.")
 
-    # --- NEW FEATURE: AI Sales Demand Forecasting & Velocity Health Scorecard ---
+    # --- AI Sales Demand Forecasting & Velocity Health Scorecard ---
     st.markdown("---")
     st.markdown("### 🤖 AI Sales Demand Forecasting & Velocity Health Scorecard")
     
-    # Calculate health score based on success rate and missing order ratio
     demand_health_score = success_rate
     forecast_confidence = "🟢 High Confidence (Stable Batch Flow)" if demand_health_score >= 90 else ("🟡 Moderate Risk (Unmapped Fallbacks Detected)" if demand_health_score >= 70 else "🔴 Critical Review Needed (High Missing DR Ratio)")
     
@@ -944,7 +945,7 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- ALL THREE DATABASES MANAGEMENT PANEL (CHECKBOXES REMOVED) ---
+# --- ALL THREE DATABASES MANAGEMENT PANEL (DIRECT DELETION) ---
 st.markdown("---")
 with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs) & Upload DR Codes"):
     st.markdown("Yahan aap teeno databases ke records dekh sakte hain, manual/bulk DR code upload kar sakte hain, aur record delete karne par ID auto-reset kar sakte hain.")
@@ -1240,7 +1241,7 @@ if st.session_state.comparison_summary:
     st.markdown("---")
     st.markdown("### 📋 Agency-wise Material & Input Comparison")
     
-    search_query = st.text_input("🔍 Search Table (Filter by Agency, DR Code, or FG Code)", "", key="table_search")
+    search_query = st.text_input("🔍 Search Table (Filter by Agency, DR Code, or FG Code)", "", key="table_search") गलती 
     
     combined_df = pd.concat(st.session_state.comparison_summary, ignore_index=True)
     summary_table = combined_df.groupby(["Agency", "DR Code", "FG Code"], as_index=False).agg({"Input Qty": "sum", "Generated Qty": "sum"})
