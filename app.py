@@ -47,61 +47,65 @@ st.sidebar.title("🎨 ERP Theme Engine")
 selected_theme_name = st.sidebar.selectbox("Choose Interface Theme", list(THEMES.keys()), label_visibility="collapsed")
 t = THEMES[selected_theme_name]
 
-st.markdown(f"""
+# Fixed CSS injection without f-string syntax conflict
+st.markdown(
+    """
     <style>
         #GithubIcon { visibility: hidden !important; display: none !important; }
         .stAppHeader { background-color: transparent !important; }
         header[data-testid="stHeader"] { display: none !important; }
         
-        .stApp {{
-            background-color: {t['bg']};
-            color: {t['text']};
+        .stApp {
+            background-color: """ + t['bg'] + """;
+            color: """ + t['text'] + """;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         
-        section[data-testid="stSidebar"] {{
-            background-color: {t['sidebar_bg']};
-            color: {t['sidebar_text']};
+        section[data-testid="stSidebar"] {
+            background-color: """ + t['sidebar_bg'] + """;
+            color: """ + t['sidebar_text'] + """;
         }
-        section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] label {{
-            color: {t['sidebar_text']} !important;
+        section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] label {
+            color: """ + t['sidebar_text'] + """ !important;
         }
         
-        .stButton>button {{
+        .stButton>button {
             width: 100%;
             height: 38px;
-            background-color: {t['btn_bg']} !important;
+            background-color: """ + t['btn_bg'] + """ !important;
             color: #ffffff !important;
             font-size: 13px;
             font-weight: 600;
             border-radius: 4px;
-            border: 1px solid {t['border']};
+            border: 1px solid """ + t['border'] + """;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.2s ease;
         }
-        .stButton>button:hover {{
-            background-color: {t['btn_hover']} !important;
-        }}
+        .stButton>button:hover {
+            background-color: """ + t['btn_hover'] + """ !important;
+        }
         
-        button[kind="primary"] {{
-            background-color: {t['primary']} !important;
-        }}
+        button[kind="primary"] {
+            background-color: """ + t['primary'] + """ !important;
+        }
         
-        div[data-testid="stExpander"] {{
-            background-color: {t['card_bg']};
-            border: 1px solid {t['border']};
+        div[data-testid="stExpander"] {
+            background-color: """ + t['card_bg'] + """;
+            border: 1px solid """ + t['border'] + """;
             border-radius: 4px;
         }
         
-        div[data-testid="stDataFrame"] {{
-            border: 1px solid {t['border']};
+        div[data-testid="stDataFrame"] {
+            border: 1px solid """ + t['border'] + """;
             border-radius: 4px;
-            background-color: {t['card_bg']};
+            background-color: """ + t['card_bg'] + """;
         }
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
 
 # IST Timezone Helper via pytz
 IST = pytz.timezone('Asia/Kolkata')
