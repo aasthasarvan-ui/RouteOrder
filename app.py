@@ -14,10 +14,10 @@ from email.message import EmailMessage
 from fpdf import FPDF
 import streamlit.components.v1 as components
 
-# Page Configuration & Styling (Professional Dashboard Look)
+# Page Configuration & Styling (SAP / Enterprise ERP Look & Feel)
 st.set_page_config(
-    page_title="Enterprise Sales Order Automation Hub", 
-    page_icon="🚀", 
+    page_title="Enterprise Sales Order Automation Hub (SAP ERP Edition)", 
+    page_icon="💼", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -28,24 +28,65 @@ st.markdown("""
         .stAppHeader { background-color: transparent !important; }
         header[data-testid="stHeader"] { display: none !important; }
         
+        /* SAP / Enterprise ERP Theme Styling */
+        .stApp {
+            background-color: #f4f6f9;
+            color: #1f2937;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        /* Sidebar styling */
+        section[data-testid="stSidebar"] {
+            background-color: #1e293b;
+            color: #f8fafc;
+        }
+        section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] label {
+            color: #cbd5e1 !important;
+        }
+        
+        /* Enterprise Buttons (SAP Corporate Blue / Slate) */
         .stButton>button {
             width: 100%;
-            height: 50px;
-            background-color: #10b981 !important;
+            height: 42px;
+            background-color: #0f172a !important;
             color: #ffffff !important;
-            font-size: 15px;
-            font-weight: 700;
-            border-radius: 8px;
-            border: none;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 4px;
+            border: 1px solid #334155;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);
-            transition: all 0.3s ease;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
         }
         .stButton>button:hover {
-            background-color: #059669 !important;
-            box-shadow: 0 6px 8px rgba(5, 150, 105, 0.3);
+            background-color: #1e293b !important;
+            border-color: #475569 !important;
+        }
+        
+        /* Primary Action Button (SAP Success / Action Green/Blue) */
+        button[kind="primary"] {
+            background-color: #2563eb !important;
+            border-color: #1d4ed8 !important;
+        }
+        button[kind="primary"]:hover {
+            background-color: #1d4ed8 !important;
+        }
+        
+        /* Card & Expander containers */
+        div[data-testid="stExpander"] {
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+        }
+        
+        /* Dataframes */
+        div[data-testid="stDataFrame"] {
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background-color: #ffffff;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -155,7 +196,7 @@ for key, val in DEFAULTS.items():
         st.session_state[key] = val
 
 # Sidebar Settings & Dynamic Mapping with Clear/Restore
-st.sidebar.title("⚙️ System Settings")
+st.sidebar.title("⚙️ ERP Control Panel")
 
 if st.sidebar.button("🔄 Reset All to Defaults"):
     for k, v in DEFAULTS.items():
@@ -253,7 +294,7 @@ for line in agency_fg_override.split('\n'):
         if ag.isdigit() and col_idx.isdigit():
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
-st.title("🚀 Enterprise Sales Order Automation Hub (Pro Master Edition)")
+st.title("💼 Enterprise Sales Order Automation Hub (SAP ERP Edition)")
 st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs, log valid unmapped entries, and archive outputs.")
 st.markdown("---")
 
