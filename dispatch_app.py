@@ -2,11 +2,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 import pytz
-import io
 import sqlite3
-import urllib.parse
-from email.message import EmailMessage
-import smtplib
 
 # Page Configuration & Styling
 st.set_page_config(
@@ -16,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 8 Professional Enterprise Themes (Matching app.py)
+# 8 Professional Enterprise Themes
 THEMES = {
     "💼 Classic Enterprise Navy": {
         "icon": "💼", "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
@@ -56,10 +52,28 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# --- Initialize Dispatch Specific Tables in Shared Database ---
+# --- Ensure All Tables Exist to Prevent Errors ---
 def init_dispatch_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS history_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            files_count INTEGER,
+            total_qty REAL,
+            status TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS output_files_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT UNIQUE,
+            file_type TEXT,
+            file_data BLOB,
+            created_at TEXT
+        )
+    """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS dispatch_manifests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,13 +93,11 @@ def init_dispatch_db():
 
 init_dispatch_db()
 
-# Session State Defaults for Dispatch App
 if "dispatch_theme" not in st.session_state:
     st.session_state.dispatch_theme = "💼 Classic Enterprise Navy"
 
 t = THEMES[st.session_state.dispatch_theme]
 
-# Professional CSS Injection
 st.markdown(f"""
     <style>
         .stApp {{ background-color: {t['bg']}; color: {t['text']}; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }}
@@ -97,15 +109,13 @@ st.markdown(f"""
     </style>
 """, unsafe_allow_html=True)
 
-# Top Control Panel for Theme & Settings
 with st.expander("⚙️ Dispatch Control Panel & Theme Selection", expanded=False):
     st.selectbox("Select Theme", list(THEMES.keys()), key="dispatch_theme", index=list(THEMES.keys()).index(st.session_state.dispatch_theme))
 
 st.title(f"🚚 Enterprise Plan, Demand & Dispatch Hub ({st.session_state.dispatch_theme})")
-st.markdown("Demand app (`app.py`) ke generated outputs aur database (`sales_history.db`) ke sath seamlessly linked.")
+st.markdown("Demand app ke generated outputs aur database ke sath linked.")
 st.markdown("---")
 
-# Fetch Data from Shared Database
 try:
     conn = sqlite3.connect("sales_history.db")
     df_outputs = pd.read_sql("SELECT * FROM output_files_ledger ORDER BY id DESC", conn)
@@ -118,7 +128,6 @@ except Exception as e:
     df_history = pd.DataFrame()
     df_manifests = pd.DataFrame()
 
-# Tabs for Plan, Demand & Dispatch Operations
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Demand & Plan Overview", 
     "📋 Dispatch Manifest & Vehicle Allocation", 
@@ -126,113 +135,56 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "🗄️ Dispatch History & Audit"
 ])
 
-# --- TAB 1: DEMAND & PLAN OVERVIEW ---
 with tab1:
-    st.subheader("📈 Demand Summary from app.py")
+    st.subheader("📈 Demand Summary")
     if not df_history.empty:
-        total_batches = len(df_history)
-        total_qty_sum = df_history['total_qty'].sum()
-        
         col1, col2, col3 = st.columns(3)
-        col1.metric("Total Batches Processed", total_batches)
-        col2.metric("Cumulative Demand Qty", f"{total_qty_sum:,.0f} Units")
-        col3.metric("System Status", "🟢 Connected to app.py DB")
-        
-        st.markdown("---")
-        st.markdown("##### Recent Demand Execution Logs")
+        col1.metric("Total Batches", len(df_history))
+        col2.metric("Cumulative Qty", f"{df_history['total_qty'].sum():,.0f} Units")
+        col3.metric("System Status", "🟢 Connected")
         st.dataframe(df_history, use_container_width=True)
     else:
-        st.warning("⚠️ Abhi tak `app.py` se koi demand process nahi ki gayi hai. Kripya pehle `app.py` chala kar files process karein.")
+        st.warning("⚠️ Abhi tak koi demand process nahi ki gayi hai.")
 
-# --- TAB 2: DISPATCH MANIFEST & VEHICLE ALLOCATION ---
 with tab2:
-    st.subheader("🚚 Create Dispatch Manifest & Assign Vehicle")
+    st.subheader("🚚 Create Dispatch Manifest")
     if not df_outputs.empty:
         file_options = df_outputs['file_name'].tolist()
-        
         with st.form("dispatch_form"):
-            selected_file = st.selectbox("Select Generated Output File", file_options)
-            
+            selected_file = st.selectbox("Select Output File", file_options)
             c1, c2 = st.columns(2)
             with c1:
-                transporter = st.text_input("Transporter Name (e.g., VRL Logistics, Blue Dart)")
-                vehicle_no = st.text_input("Vehicle Number (e.g., PB08AB1234)")
+                transporter = st.text_input("Transporter Name")
+                vehicle_no = st.text_input("Vehicle Number")
             with c2:
                 driver_name = st.text_input("Driver Name")
-                driver_phone = st.text_input("Driver Phone Number")
-            
-            status = st.selectbox("Initial Dispatch Status", ["Scheduled", "Loading", "Dispatched", "In Transit", "Delivered"])
-            remarks = st.text_area("Dispatch Remarks / Notes")
-            
-            submitted = st.form_submit_button("💾 Save Dispatch Manifest")
-            if submitted:
-                if selected_file and vehicle_no:
-                    try:
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("""
-                            INSERT INTO dispatch_manifests (batch_date, file_name, transporter_name, vehicle_no, driver_name, driver_phone, dispatch_status, remarks, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (get_ist_now().strftime("%Y-%m-%d"), selected_file, transporter, vehicle_no, driver_name, driver_phone, status, remarks, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
-                        conn.commit()
-                        conn.close()
-                        st.success(f"✅ Manifest successfully created for file: {selected_file}!")
-                        st.rerun()
-                    except Exception as ex:
-                        st.error(f"Error saving manifest: {str(ex)}")
-                else:
-                    st.warning("⚠️ Kripya File aur Vehicle Number zaroor bharein.")
-    else:
-        st.info("No generated files found in `output_files_ledger`. Process files in `app.py` first.")
-
-# --- TAB 3: LIVE DISPATCH TRACKING & DOWNLOAD ---
-with tab3:
-    st.subheader("📍 Active Dispatches & Document Downloads")
-    if not df_manifests.empty:
-        st.dataframe(df_manifests, use_container_width=True)
-        
-        st.markdown("---")
-        st.markdown("##### Quick Download Output File for Specific Manifest")
-        manifest_id = st.number_input("Enter Manifest ID to Download File", min_value=1, step=1, key="man_dl_id")
-        if st.button("📥 Fetch & Download Linked Excel"):
-            try:
+                driver_phone = st.text_input("Driver Phone")
+            status = st.selectbox("Status", ["Scheduled", "Loading", "Dispatched", "In Transit", "Delivered"])
+            remarks = st.text_area("Remarks")
+            if st.form_submit_button("💾 Save Manifest"):
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
-                cursor.execute("SELECT file_name FROM dispatch_manifests WHERE id = ?", (manifest_id,))
-                m_row = cursor.fetchone()
-                if m_row:
-                    f_name = m_row[0]
-                    cursor.execute("SELECT file_data FROM output_files_ledger WHERE file_name = ?", (f_name,))
-                    f_data_row = cursor.fetchone()
-                    if f_data_row:
-                        st.download_button(
-                            label=f"💾 Save {f_name}",
-                            data=f_data_row[0],
-                            file_name=f_name,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                    else:
-                        st.error("Linked file binary data not found in ledger.")
-                else:
-                    st.warning("Invalid Manifest ID.")
+                cursor.execute("""
+                    INSERT INTO dispatch_manifests (batch_date, file_name, transporter_name, vehicle_no, driver_name, driver_phone, dispatch_status, remarks, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (get_ist_now().strftime("%Y-%m-%d"), selected_file, transporter, vehicle_no, driver_name, driver_phone, status, remarks, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
+                conn.commit()
                 conn.close()
-            except Exception as e:
-                st.error(f"Error fetching file: {str(e)}")
+                st.success("✅ Manifest saved successfully!")
+                st.rerun()
     else:
-        st.info("No dispatch manifests created yet.")
+        st.info("No generated output files available yet.")
 
-# --- TAB 4: DISPATCH HISTORY & AUDIT ---
+with tab3:
+    st.subheader("📍 Active Dispatches")
+    if not df_manifests.empty:
+        st.dataframe(df_manifests, use_category_width=True if 'use_category_width' in dir(st) else True)
+    else:
+        st.info("No manifests created yet.")
+
 with tab4:
-    st.subheader("🗄️ Full Dispatch Audit Logs")
+    st.subheader("🗄️ Dispatch Audit Logs")
     if not df_manifests.empty:
         st.dataframe(df_manifests, use_container_width=True)
-        
-        csv_bytes = df_manifests.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Export Dispatch Audit to CSV",
-            data=csv_bytes,
-            file_name=f"Dispatch_Audit_Report_{get_ist_now().strftime('%Y-%m-%d')}.csv",
-            mime="text/csv"
-        )
     else:
-        st.info("No logs to display.")
+        st.info("No logs available.")
