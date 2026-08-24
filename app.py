@@ -129,7 +129,7 @@ if not is_healthy:
     st.error(f"❌ **System Integrity Warning:** {health_msg}")
     st.stop()
 
-# --- Session State Defaults for Reset/Clear/Restore & Checkboxes ---
+# --- Session State Defaults for Reset/Clear/Restore ---
 DEFAULTS = {
     "fg_code": "FG500014",
     "col_map": "36:FG500014AJ\n37:FG500014AK",
@@ -144,15 +144,7 @@ DEFAULTS = {
     "skipped_rows_log": [],
     "anomaly_logs": [],
     "unmapped_current_batch": [],
-    "kpi_data": {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0, "skipped_count": 0},
-    "cb_conf_master_del": False,
-    "cb_conf_file": False,
-    "cb_conf_route": False,
-    "cb_conf_all": False,
-    "cb_conf_unmap_del": False,
-    "cb_conf_um_wipe": False,
-    "cb_conf_arch_del": False,
-    "cb_conf_out_wipe": False
+    "kpi_data": {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0, "skipped_count": 0}
 }
 
 for key, val in DEFAULTS.items():
@@ -936,7 +928,7 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- ALL THREE DATABASES MANAGEMENT PANEL WITH STABLE SESSION STATE CHECKBOXES ---
+# --- ALL THREE DATABASES MANAGEMENT PANEL (CHECKBOXES REMOVED FOR DIRECT DELETION) ---
 st.markdown("---")
 with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs) & Upload DR Codes"):
     st.markdown("Yahan aap teeno databases ke records dekh sakte hain, manual/bulk DR code upload kar sakte hain, aur record delete karne par ID auto-reset kar sakte hain.")
@@ -1002,7 +994,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                             if all(col in df_bulk.columns for col in ['route_no', 'agency_no', 'dr_code']):
                                 bulk_records = []
                                 for _, row in df_bulk.iterrows():
-                                    bulk_records.append((str(row.get('file_name', 'Manual_Upload')), str(row['route_no']), str(row['agency_no']), str(row['dr_code'], get_ist_now().strftime("%Y-%m-%d %H:%M:%S"))))
+                                    bulk_records.append((str(row.get('file_name', 'Manual_Upload')), str(row['route_no']), str(row['agency_no']), str(row['dr_code']), get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
                                 
                                 conn_b = sqlite3.connect("sales_history.db")
                                 cur_b = conn_b.cursor()
@@ -1037,72 +1029,58 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                 
                 with del_col1:
                     row_id_to_del = st.number_input("Enter Master Record ID", min_value=1, step=1, key="row_id_input")
-                    st.checkbox("Confirm master row deletion", key="cb_conf_master_del")
                     if st.button("🗑️ Delete Master Row & Reset ID"):
-                        if st.session_state.cb_conf_master_del:
-                            conn = sqlite3.connect("sales_history.db")
-                            cursor = conn.cursor()
-                            cursor.execute("DELETE FROM unique_routes_master WHERE id = ?", (row_id_to_del,))
-                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
-                            conn.commit()
-                            conn.close()
-                            st.session_state.cb_conf_master_del = False
-                            st.success(f"✅ Master Record ID {row_id_to_del} deleted & ID sequence reset!")
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Kripya deletion confirmation checkbox tick karein.")
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM unique_routes_master WHERE id = ?", (row_id_to_del,))
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Master Record ID {row_id_to_del} deleted & ID sequence reset!")
+                        st.rerun()
 
                 with del_col2:
                     unique_files = df_master['file_name'].dropna().unique().tolist() if 'file_name' in df_master.columns else []
                     file_to_purge = st.selectbox("Select File to Purge", ["Select..."] + unique_files, key="purge_file_select")
-                    st.checkbox("Confirm file deletion", key="cb_conf_file")
                     if st.button("🔥 Delete Master File Data"):
-                        if file_to_purge != "Select..." and st.session_state.cb_conf_file:
+                        if file_to_purge != "Select...":
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM unique_routes_master WHERE file_name = ?", (file_to_purge,))
                             cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
                             conn.commit()
                             conn.close()
-                            st.session_state.cb_conf_file = False
                             st.success(f"✅ File '{file_to_purge}' data deleted & ID sequence reset!")
                             st.rerun()
                         else:
-                            st.warning("⚠️ Select file & tick checkbox.")
+                            st.warning("⚠️ Kripya purge karne ke liye file select karein.")
 
                 with del_col3:
                     route_to_delete = st.text_input("Enter Route No to Purge", "", key="purge_route")
-                    st.checkbox("Confirm route deletion", key="cb_conf_route")
                     if st.button("🔥 Delete Master Route Data"):
-                        if st.session_state.cb_conf_route and route_to_delete:
+                        if route_to_delete:
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM unique_routes_master WHERE route_no = ?", (route_to_delete,))
                             cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
                             conn.commit()
                             conn.close()
-                            st.session_state.cb_conf_route = False
                             st.success(f"✅ Route '{route_to_delete}' data deleted & ID sequence reset!")
                             st.rerun()
                         else:
-                            st.warning("⚠️ Enter route & tick checkbox.")
+                            st.warning("⚠️ Kripya delete karne ke liye Route No enter karein.")
                             
                 with del_col4:
                     st.markdown("##### Master Wipe")
-                    st.checkbox("Confirm wipe", key="cb_conf_all")
                     if st.button("🚨 Wipe Master DB & Reset IDs", type="secondary"):
-                        if st.session_state.cb_conf_all:
-                            conn = sqlite3.connect("sales_history.db")
-                            cursor = conn.cursor()
-                            cursor.execute("DELETE FROM unique_routes_master")
-                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
-                            conn.commit()
-                            conn.close()
-                            st.session_state.cb_conf_all = False
-                            st.success("✅ Master DB wiped & IDs reset!")
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Tick checkbox to wipe.")
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM unique_routes_master")
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Master DB wiped & IDs reset!")
+                        st.rerun()
 
                 st.markdown("---")
                 master_excel_buf = io.BytesIO()
@@ -1141,7 +1119,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
             else:
                 st.info("No master records found yet.")
 
-        # --- TAB 2: UNMAPPED LEDGER MANAGEMENT WITH STABLE CHECKBOXES ---
+        # --- TAB 2: UNMAPPED LEDGER MANAGEMENT (DIRECT DELETION) ---
         with tab_m2:
             st.markdown("#### 🚨 Unmapped Missing DR Ledger (Generated via Fallback)")
             if not df_unmapped.empty:
@@ -1151,36 +1129,26 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                 um_col1, um_col2 = st.columns(2)
                 with um_col1:
                     unmap_del_id = st.number_input("Enter Unmapped Record ID", min_value=1, step=1, key="unmap_del_id")
-                    st.checkbox("Confirm unmapped record deletion", key="cb_conf_unmap_del")
                     if st.button("🗑️ Delete Unmapped Record & Reset ID"):
-                        if st.session_state.cb_conf_unmap_del:
-                            conn = sqlite3.connect("sales_history.db")
-                            cursor = conn.cursor()
-                            cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
-                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
-                            conn.commit()
-                            conn.close()
-                            st.session_state.cb_conf_unmap_del = False
-                            st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted & ID sequence reset!")
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Kripya deletion confirmation checkbox tick karein.")
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted & ID sequence reset!")
+                        st.rerun()
                 with um_col2:
                     st.markdown("##### Wipe Unmapped Ledger")
-                    st.checkbox("Confirm unmapped wipe", key="cb_conf_um_wipe")
                     if st.button("🚨 Wipe Unmapped Ledger & Reset IDs"):
-                        if st.session_state.cb_conf_um_wipe:
-                            conn = sqlite3.connect("sales_history.db")
-                            cursor = conn.cursor()
-                            cursor.execute("DELETE FROM unmapped_missing_dr_ledger")
-                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
-                            conn.commit()
-                            conn.close()
-                            st.session_state.cb_conf_um_wipe = False
-                            st.success("✅ Unmapped Ledger wiped & IDs reset!")
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Tick checkbox to wipe.")
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM unmapped_missing_dr_ledger")
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Unmapped Ledger wiped & IDs reset!")
+                        st.rerun()
 
                 unmapped_buf = io.BytesIO()
                 df_unmapped.to_excel(unmapped_buf, index=False, sheet_name="Unmapped DR Ledger")
@@ -1195,7 +1163,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
             else:
                 st.info("No unmapped missing DR records logged yet.")
 
-        # --- TAB 3: ARCHIVED OUTPUT FILES MANAGEMENT WITH STABLE CHECKBOXES ---
+        # --- TAB 3: ARCHIVED OUTPUT FILES MANAGEMENT (DIRECT DELETION) ---
         with tab_m3:
             st.markdown("#### 📦 Archived Output Files (Saved per file without duplication)")
             if not df_outputs.empty:
@@ -1224,37 +1192,27 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                             st.warning("⚠️ Invalid ID or File not found.")
                     
                     delete_arch_id = st.number_input("Enter Archived File ID to Delete", min_value=1, step=1, key="del_arch_id_input")
-                    st.checkbox("Confirm archived file deletion", key="cb_conf_arch_del")
                     if st.button("🗑️ Delete Archived File & Reset ID"):
-                        if st.session_state.cb_conf_arch_del:
-                            conn = sqlite3.connect("sales_history.db")
-                            cursor = conn.cursor()
-                            cursor.execute("DELETE FROM output_files_ledger WHERE id = ?", (delete_arch_id,))
-                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='output_files_ledger'")
-                            conn.commit()
-                            conn.close()
-                            st.session_state.cb_conf_arch_del = False
-                            st.success(f"✅ Archived File ID {delete_arch_id} deleted & ID sequence reset!")
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Kripya deletion confirmation checkbox tick karein.")
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM output_files_ledger WHERE id = ?", (delete_arch_id,))
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='output_files_ledger'")
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Archived File ID {delete_arch_id} deleted & ID sequence reset!")
+                        st.rerun()
 
                 with out_col2:
                     st.markdown("##### Wipe Output Ledger")
-                    st.checkbox("Confirm output wipe", key="cb_conf_out_wipe")
                     if st.button("🚨 Wipe Output Ledger & Reset IDs"):
-                        if st.session_state.cb_conf_out_wipe:
-                            conn = sqlite3.connect("sales_history.db")
-                            cursor = conn.cursor()
-                            cursor.execute("DELETE FROM output_files_ledger")
-                            cursor.execute("DELETE FROM sqlite_sequence WHERE name='output_files_ledger'")
-                            conn.commit()
-                            conn.close()
-                            st.session_state.cb_conf_out_wipe = False
-                            st.success("✅ Output Ledger wiped & IDs reset!")
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Tick checkbox to wipe.")
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM output_files_ledger")
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='output_files_ledger'")
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Output Ledger wiped & IDs reset!")
+                        st.rerun()
             else:
                 st.info("No output files archived yet.")
 
