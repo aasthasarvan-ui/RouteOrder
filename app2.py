@@ -14,450 +14,643 @@ from email.message import EmailMessage
 from fpdf import FPDF
 import streamlit.components.v1 as components
 
-# Page Configuration & Styling
+# ==========================================
+# PAGE CONFIGURATION & THEME ENGINE
+# ==========================================
 st.set_page_config(
-    page_title="Multi-Vehicle Enterprise Dispatch Plan Hub", 
+    page_title="Enterprise Dispatch Planning Hub", 
     page_icon="🚚", 
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# 8 Professional Enterprise Themes
 THEMES = {
-    "💼 Classic Enterprise Navy": {
-        "icon": "💼", "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
+    "💼 Enterprise Navy": {
+        "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
         "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
     },
-    "🌙 Modern Dark ERP": {
-        "icon": "🌙", "bg": "#0b0f19", "text": "#f3f4f6", "card_bg": "#1f2937", "border": "#374151",
+    "🌙 Modern Dark Logistics": {
+        "bg": "#0b0f19", "text": "#f3f4f6", "card_bg": "#1f2937", "border": "#374151",
         "btn_bg": "#374151", "btn_hover": "#4b5563", "primary": "#3b82f6", "input_bg": "#111827", "input_text": "#f3f4f6"
     },
-    "📊 Corporate Slate": {
-        "icon": "📊", "bg": "#eef2f5", "text": "#0f172a", "card_bg": "#ffffff", "border": "#94a3b8",
-        "btn_bg": "#475569", "btn_hover": "#334155", "primary": "#0284c7", "input_bg": "#ffffff", "input_text": "#0f172a"
-    },
-    "☀️ Clean Light Minimal": {
-        "icon": "☀️", "bg": "#ffffff", "text": "#111827", "card_bg": "#f9fafb", "border": "#d1d5db",
-        "btn_bg": "#0f172a", "btn_hover": "#1e293b", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
-    },
-    "⚡ Cyber Blue": {
-        "icon": "⚡", "bg": "#f0fdfa", "text": "#042f2e", "card_bg": "#ccfbf1", "border": "#5eead4",
-        "btn_bg": "#0d9488", "btn_hover": "#0f766e", "primary": "#14b8a6", "input_bg": "#ffffff", "input_text": "#042f2e"
-    },
-    "🌲 Emerald Corporate": {
-        "icon": "🌲", "bg": "#f0fdf4", "text": "#14532d", "card_bg": "#dcfce7", "border": "#86efac",
+    "🌲 Supply Chain Emerald": {
+        "bg": "#f0fdf4", "text": "#14532d", "card_bg": "#dcfce7", "border": "#86efac",
         "btn_bg": "#16a34a", "btn_hover": "#15803d", "primary": "#22c55e", "input_bg": "#ffffff", "input_text": "#14532d"
-    },
-    "🍇 Executive Burgundy": {
-        "icon": "🍇", "bg": "#fdf2f8", "text": "#500724", "card_bg": "#fce7f3", "border": "#f472b6",
-        "btn_bg": "#db2777", "btn_hover": "#be185d", "primary": "#ec4899", "input_bg": "#ffffff", "input_text": "#500724"
-    },
-    "🪙 Titanium Charcoal": {
-        "icon": "🪙", "bg": "#18181b", "text": "#fafafa", "card_bg": "#27272a", "border": "#52525b",
-        "btn_bg": "#52525b", "btn_hover": "#71717a", "primary": "#e4e4e7", "input_bg": "#09090b", "input_text": "#fafafa"
     }
 }
 
 IST = pytz.timezone('Asia/Kolkata')
-
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# --- SQLite Database Initialization ---
-def init_db():
-    conn = sqlite3.connect("sales_history.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS history_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            files_count INTEGER,
-            total_qty REAL,
-            status TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS unique_routes_master (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT,
-            route_no TEXT,
-            agency_no TEXT,
-            agency_name TEXT,
-            dr_code TEXT,
-            fg_code TEXT,
-            quantity REAL,
-            vehicle_no TEXT,
-            mobile_no TEXT,
-            created_at TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS dispatch_plans_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            dispatch_date TEXT,
-            route_no TEXT,
-            vehicle_no TEXT,
-            agency_no TEXT,
-            agency_name TEXT,
-            dr_code TEXT,
-            mobile_no TEXT,
-            fg_code TEXT,
-            quantity REAL,
-            status TEXT,
-            created_at TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS input_files_archive_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT,
-            file_blob BLOB,
-            file_size_kb REAL,
-            uploaded_at TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS output_files_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT UNIQUE,
-            file_type TEXT,
-            file_data BLOB,
-            created_at TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-init_db()
-
-# Session State Defaults
-DEFAULTS = {
-    "fg_code": "FG500014",
-    "route": "22",
-    "vehicle_no": "PB29AH2491",
-    "selected_theme": "💼 Classic Enterprise Navy",
-    "processed_files": [],
-    "comparison_summary": [],
-    "skipped_rows_log": []
-}
-
-for key, val in DEFAULTS.items():
-    if key not in st.session_state:
-        st.session_state[key] = val
+# Default Session State
+if "selected_theme" not in st.session_state:
+    st.session_state.selected_theme = "💼 Enterprise Navy"
 
 t = THEMES[st.session_state.selected_theme]
 
-# Professional CSS Styling
 st.markdown(
     f"""
     <style>
-        #GithubIcon {{ visibility: hidden !important; display: none !important; }}
-        .stAppHeader {{ background-color: transparent !important; }}
-        header[data-testid="stHeader"] {{ display: none !important; }}
-        
-        .stApp {{
-            background-color: {t['bg']};
-            color: {t['text']};
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }}
+        .stApp {{ background-color: {t['bg']}; color: {t['text']}; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }}
         h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{ color: {t['text']} !important; }}
-        input, textarea, select {{
-            background-color: {t['input_bg']} !important;
-            color: {t['input_text']} !important;
-            border: 1px solid {t['border']} !important;
-        }}
-        .stButton>button {{
-            width: 100%;
-            height: 38px;
-            background-color: {t['btn_bg']} !important;
-            color: #ffffff !important;
-            font-size: 13px !important;
-            font-weight: 600 !important;
-            border-radius: 4px;
-            border: 1px solid {t['border']};
-        }}
-        .stButton>button p {{ color: #ffffff !important; }}
-        .stButton>button:hover {{ background-color: {t['btn_hover']} !important; }}
-        button[kind="primary"] {{ background-color: {t['primary']} !important; }}
-        div[data-testid="stExpander"] {{
-            background-color: {t['card_bg']};
-            border: 1px solid {t['border']};
-            border-radius: 4px;
-        }}
+        input, textarea, select {{ background-color: {t['input_bg']} !important; color: {t['input_text']} !important; border: 1px solid {t['border']} !important; }}
+        .stButton>button {{ width: 100%; height: 38px; background-color: {t['btn_bg']} !important; color: #ffffff !important; font-size: 13px !important; font-weight: 600 !important; border-radius: 4px; border: 1px solid {t['border']}; }}
+        button[kind="primary"] {{ background-color: {t['primary']} !important; color: #ffffff !important; }}
+        div[data-testid="stExpander"] {{ background-color: {t['card_bg']}; border: 1px solid {t['border']}; border-radius: 4px; }}
+        div[data-testid="stDataFrame"] {{ border: 1px solid {t['border']}; border-radius: 4px; background-color: {t['card_bg']}; }}
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# --- TOP CONTROL PANEL & THEME SELECTOR ---
-with st.expander("⚙️ Enterprise Dispatch & Vehicle Settings Hub", expanded=False):
-    st.subheader("🎨 Theme Engine")
-    def on_theme_change():
-        st.session_state.selected_theme = st.session_state.theme_selectbox
-    st.selectbox("Select Theme", list(THEMES.keys()), key="theme_selectbox", index=list(THEMES.keys()).index(st.session_state.selected_theme), on_change=on_theme_change, label_visibility="collapsed")
+# ==========================================
+# DATABASE INITIALIZATION
+# ==========================================
+def init_dispatch_db():
+    conn = sqlite3.connect("dispatch_logistics.db")
+    cursor = conn.cursor()
+    
+    # 1. Fleet Master
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fleet_master (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicle_no TEXT UNIQUE,
+            vehicle_type TEXT,
+            capacity_bags INTEGER,
+            capacity_mt REAL,
+            transporter_name TEXT,
+            driver_name TEXT,
+            driver_phone TEXT,
+            status TEXT DEFAULT 'Available'
+        )
+    """)
+    
+    # 2. Loading Bays Master
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS loading_bays (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bay_no TEXT UNIQUE,
+            bay_name TEXT,
+            status TEXT DEFAULT 'Open'
+        )
+    """)
+    
+    # 3. Dispatch Trips Master
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS dispatch_trips (
+            trip_id TEXT PRIMARY KEY,
+            trip_date TEXT,
+            route_no TEXT,
+            vehicle_no TEXT,
+            transporter_name TEXT,
+            driver_name TEXT,
+            driver_phone TEXT,
+            loading_bay TEXT,
+            total_bags REAL,
+            total_weight_mt REAL,
+            capacity_utilization_pct REAL,
+            status TEXT,
+            created_at TEXT
+        )
+    """)
+    
+    # 4. Trip Line Items (Agency & SKU Allocation)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS trip_order_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id TEXT,
+            file_name TEXT,
+            order_no TEXT,
+            agency_no TEXT,
+            route_no TEXT,
+            dr_code TEXT,
+            fg_code TEXT,
+            allocated_bags REAL,
+            allocated_weight_mt REAL,
+            delivery_seq INTEGER,
+            status TEXT,
+            FOREIGN KEY (trip_id) REFERENCES dispatch_trips(trip_id)
+        )
+    """)
+    
+    # 5. Seed default fleet if empty
+    cursor.execute("SELECT COUNT(*) FROM fleet_master")
+    if cursor.fetchone()[0] == 0:
+        default_fleet = [
+            ('PB-10-AZ-1122', '10 Wheeler Truck', 400, 20.0, 'National Logistics', 'Gurpreet Singh', '9876543210', 'Available'),
+            ('PB-08-BX-4455', '12 Wheeler Multi-Axle', 600, 30.0, 'Speedway Cargo', 'Baljit Sharma', '9812345678', 'Available'),
+            ('PB-29-CD-9900', 'Canter / Eicher', 200, 10.0, 'Punjab Roadlines', 'Ramesh Kumar', '9823456789', 'Available'),
+            ('PB-11-GH-3321', '14 Wheeler Heavy', 800, 40.0, 'Apex Transporters', 'Jarnail Singh', '9834567890', 'Available')
+        ]
+        cursor.executemany("""
+            INSERT INTO fleet_master (vehicle_no, vehicle_type, capacity_bags, capacity_mt, transporter_name, driver_name, driver_phone, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, default_fleet)
+
+    # 6. Seed loading bays if empty
+    cursor.execute("SELECT COUNT(*) FROM loading_bays")
+    if cursor.fetchone()[0] == 0:
+        default_bays = [
+            ('BAY-01', 'North Plant Main Gate', 'Open'),
+            ('BAY-02', 'Storage Silo Bay 2', 'Open'),
+            ('BAY-03', 'Express Bulk Bay 3', 'Open')
+        ]
+        cursor.executemany("INSERT INTO loading_bays (bay_no, bay_name, status) VALUES (?, ?, ?)", default_bays)
+        
+    conn.commit()
+    conn.close()
+
+init_dispatch_db()
+
+# ==========================================
+# HELPER FUNCTIONS: DEMAND EXTRACTION
+# ==========================================
+def extract_pending_demand_from_sales_db():
+    """Extracts processed orders from sales_history.db output_files_ledger"""
+    pending_rows = []
+    try:
+        conn = sqlite3.connect("sales_history.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT file_name, file_type, file_data, created_at FROM output_files_ledger")
+        rows = cursor.fetchall()
+        conn.close()
+
+        for fname, ftype, fdata, fdate in rows:
+            try:
+                wb = openpyxl.load_workbook(io.BytesIO(fdata), data_only=True)
+                ws = wb["Order Data"] if "Order Data" in wb.sheetnames else wb.active
+                for r in range(6, ws.max_row + 1):
+                    order_no = ws.cell(row=r, column=2).value
+                    dr_code = ws.cell(row=r, column=7).value
+                    ref_no = ws.cell(row=r, column=9).value
+                    fg_code = ws.cell(row=r, column=16).value
+                    qty = ws.cell(row=r, column=19).value
+                    route = ws.cell(row=r, column=26).value
+                    agency = ws.cell(row=r, column=27).value
+                    
+                    if qty is not None and str(qty).strip() != "":
+                        try:
+                            f_qty = float(qty)
+                            if f_qty > 0:
+                                pending_rows.append({
+                                    "Source File": fname,
+                                    "File Type": ftype,
+                                    "Order No": str(order_no),
+                                    "Route No": str(route),
+                                    "Agency No": str(agency),
+                                    "DR Code": str(dr_code),
+                                    "FG Code": str(fg_code),
+                                    "Bags Qty": f_qty,
+                                    "Weight (MT)": f_qty * 0.05, # Assuming 50 kg bag standard = 0.05 MT
+                                    "Order Ref": str(ref_no)
+                                })
+                        except ValueError:
+                            pass
+            except Exception:
+                pass
+    except Exception as e:
+        pass
+    return pd.DataFrame(pending_rows)
+
+def extract_demand_from_uploaded_excel(files):
+    """Directly extracts demand from uploaded output or raw excel files"""
+    rows = []
+    for f in files:
+        fbytes = f.getvalue()
+        wb = openpyxl.load_workbook(io.BytesIO(fbytes), data_only=True)
+        ws = wb["Order Data"] if "Order Data" in wb.sheetnames else wb.active
+        for r in range(6, ws.max_row + 1):
+            order_no = ws.cell(row=r, column=2).value
+            dr_code = ws.cell(row=r, column=7).value
+            ref_no = ws.cell(row=r, column=9).value
+            fg_code = ws.cell(row=r, column=16).value
+            qty = ws.cell(row=r, column=19).value
+            route = ws.cell(row=r, column=26).value
+            agency = ws.cell(row=r, column=27).value
+            
+            if qty is not None and str(qty).strip() != "":
+                try:
+                    f_qty = float(qty)
+                    if f_qty > 0:
+                        rows.append({
+                            "Source File": f.name,
+                            "File Type": "Direct Upload",
+                            "Order No": str(order_no),
+                            "Route No": str(route),
+                            "Agency No": str(agency),
+                            "DR Code": str(dr_code),
+                            "FG Code": str(fg_code),
+                            "Bags Qty": f_qty,
+                            "Weight (MT)": f_qty * 0.05,
+                            "Order Ref": str(ref_no)
+                        })
+                except ValueError:
+                    pass
+    return pd.DataFrame(rows)
+
+# ==========================================
+# SIDEBAR NAVIGATION & SETTINGS
+# ==========================================
+with st.sidebar:
+    st.image("https://img.icons8.com/color/96/delivery-truck.png", width=60)
+    st.title("Logistics Command Hub")
+    
+    app_mode = st.radio(
+        "Navigation Menu",
+        ["🚚 Dispatch Trip Planner", "📋 Active & Completed Trips", "🚛 Fleet & Bay Master", "📊 Logistics KPI Analytics"]
+    )
     
     st.markdown("---")
-    col_c1, col_c2, col_c3 = st.columns(3)
-    with col_c1:
-        st.session_state.route = st.text_input("Default Route No", value=st.session_state.route)
-    with col_c2:
-        st.session_state.vehicle_no = st.text_input("Default Vehicle No (e.g. PB29AH2491)", value=st.session_state.vehicle_no)
-    with col_c3:
-        st.session_state.fg_code = st.text_input("Default FG Code", value=st.session_state.fg_code)
+    st.subheader("⚙️ Theme")
+    st.session_state.selected_theme = st.selectbox("Interface Theme", list(THEMES.keys()), index=0)
+    
+    st.markdown("---")
+    st.subheader("📬 Notifications Config")
+    transporter_email = st.text_input("Transporter Email", value="dispatch.logistics@enterprise.com")
+    logistics_whatsapp = st.text_input("Logistics Contact (WhatsApp)", value="919876543210")
 
-st.title(f"🚚 Multi-Vehicle Enterprise Dispatch Plan Hub ({st.session_state.selected_theme})")
-st.markdown("Upload demand files, assign specific **Vehicle Numbers**, **Routes**, and **Dispatch Dates**, and manage/print route-wise dispatch plans.")
-st.markdown("---")
+# ==========================================
+# MODULE 1: DISPATCH TRIP PLANNER
+# ==========================================
+if app_mode == "🚚 Dispatch Trip Planner":
+    st.title("🚚 Real-Time Dispatch Planning & Vehicle Allocation")
+    st.markdown("Sales orders ke processed data ko select karke Route-wise truck capacity optimize kijiye aur Loading Slips generate karein.")
+    
+    # 1. Choose Data Source
+    src_choice = st.radio("Select Inbound Demand Source:", ["📂 Load from Sales Order Automation Database (sales_history.db)", "📤 Upload Output/Demand Excel Files Manually"], horizontal=True)
+    
+    df_demand = pd.DataFrame()
+    if "Load from Sales" in src_choice:
+        df_demand = extract_pending_demand_from_sales_db()
+        if df_demand.empty:
+            st.info("ℹ️ `sales_history.db` mein koi output files nahi mili. Kripya pehle Sales Order Hub run karein ya manual Excel upload karein.")
+    else:
+        uploaded_outputs = st.file_uploader("Upload Generated Output Excel Files (*_Valid.xlsx / Output.xlsx)", type=["xlsx"], accept_multiple_files=True)
+        if uploaded_outputs:
+            df_demand = extract_demand_from_uploaded_excel(uploaded_outputs)
 
-uploaded_inputs = st.file_uploader("Upload Inbound Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
+    if not df_demand.empty:
+        # Check already allocated items
+        conn = sqlite3.connect("dispatch_logistics.db")
+        df_allocated = pd.read_sql("SELECT DISTINCT order_no, agency_no, route_no, fg_code FROM trip_order_items", conn)
+        conn.close()
 
-# Dispatch Planning Form
-with st.form("dispatch_plan_form"):
-    st.subheader("🚛 Assign Vehicle & Dispatch Plan Parameters")
-    f_col1, f_col2, f_col3 = st.columns(3)
-    with f_col1:
-        dispatch_date_input = st.date_input("Dispatch Date", get_ist_now().date())
-    with f_col2:
-        assigned_vehicle = st.text_input("Assigned Vehicle Number", value=st.session_state.vehicle_no)
-    with f_col3:
-        assigned_route = st.text_input("Route Number", value=st.session_state.route)
-
-    process_btn = st.form_submit_button("🚀 Generate Vehicle Dispatch Plan & Save to Database", type="primary")
-
-if process_btn:
-    if uploaded_inputs:
-        st.session_state.processed_files = []
-        st.session_state.comparison_summary = []
-        st.session_state.skipped_rows_log = []
+        st.markdown("---")
+        st.subheader("📦 Inbound Demand Overview & Route Clustering")
         
-        total_input_qty = 0
-        total_gen_qty = 0
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        total_bags_demand = df_demand["Bags Qty"].sum()
+        total_tonnage = df_demand["Weight (MT)"].sum()
+        unique_routes = df_demand["Route No"].nunique()
+        unique_agencies = df_demand["Agency No"].nunique()
         
-        dispatch_records_to_insert = []
-        input_files_archive_records = []
-        output_files_to_store = []
+        col_m1.metric("Total Order Bags", f"{total_bags_demand:,.0f} Bags")
+        col_m2.metric("Total Tonnage", f"{total_tonnage:,.2f} MT")
+        col_m3.metric("Routes in Demand", unique_routes)
+        col_m4.metric("Total Agencies", unique_agencies)
         
-        with st.spinner("⚡ Processing demand files and mapping vehicle dispatch schedules..."):
-            try:
-                try:
-                    with open("Output.xlsx", "rb") as f:
-                        template_bytes = f.read()
-                except FileNotFoundError:
-                    st.error("❌ 'Output.xlsx' template file repository mein nahi mili. Kripya upload karein.")
-                    st.stop()
+        # Route-wise group table
+        route_summary = df_demand.groupby("Route No").agg({
+            "Agency No": "nunique",
+            "Bags Qty": "sum",
+            "Weight (MT)": "sum"
+        }).reset_index().rename(columns={"Agency No": "Total Agencies"})
+        
+        st.dataframe(route_summary, use_container_width=True)
+        
+        st.markdown("---")
+        st.subheader("🚛 Intelligent Vehicle Allocation & Trip Formulation")
+        
+        col_p1, col_p2 = st.columns([1, 1])
+        with col_p1:
+            selected_route = st.selectbox("1. Select Route for Dispatch Trip", route_summary["Route No"].tolist())
+            
+            # Filter demand for selected route
+            route_df = df_demand[df_demand["Route No"] == str(selected_route)].copy()
+            st.markdown(f"**Total Bags on Route {selected_route}:** `{route_df['Bags Qty'].sum():,.0f}` | **Weight:** `{route_df['Weight (MT)'].sum():,.2f} MT`")
+            
+            # Fetch Available Vehicles
+            conn_fl = sqlite3.connect("dispatch_logistics.db")
+            available_vehicles = pd.read_sql("SELECT vehicle_no, vehicle_type, capacity_bags, capacity_mt, transporter_name, driver_name, driver_phone FROM fleet_master WHERE status='Available'", conn_fl)
+            available_bays = pd.read_sql("SELECT bay_no, bay_name FROM loading_bays WHERE status='Open'", conn_fl)
+            conn_fl.close()
+            
+            veh_options = [f"{r['vehicle_no']} | {r['vehicle_type']} (Cap: {r['capacity_bags']} Bags / {r['capacity_mt']} MT)" for _, r in available_vehicles.iterrows()]
+            selected_veh_str = st.selectbox("2. Assign Available Vehicle", veh_options if veh_options else ["No Vehicles Available"])
+            selected_bay = st.selectbox("3. Assign Loading Bay", [f"{r['bay_no']} - {r['bay_name']}" for _, r in available_bays.iterrows()])
+
+        with col_p2:
+            st.markdown("#### 📋 Order Selection & Sequence")
+            selected_agencies = st.multiselect("Filter Agencies to Load in this Trip:", route_df["Agency No"].unique().tolist(), default=route_df["Agency No"].unique().tolist())
+            
+            filtered_trip_demand = route_df[route_df["Agency No"].isin(selected_agencies)]
+            trip_bags = filtered_trip_demand["Bags Qty"].sum()
+            trip_weight = filtered_trip_demand["Weight (MT)"].sum()
+            
+            if selected_veh_str != "No Vehicles Available":
+                veh_no = selected_veh_str.split(" | ")[0]
+                veh_row = available_vehicles[available_vehicles["vehicle_no"] == veh_no].iloc[0]
+                cap_bags = veh_row["capacity_bags"]
+                utilization_pct = (trip_bags / cap_bags * 100) if cap_bags > 0 else 0
+                
+                st.metric("Allocated Trip Bags", f"{trip_bags:,.0f} / {cap_bags} Bags", f"{utilization_pct:.1f}% Utilization")
+                if utilization_pct > 100:
+                    st.error(f"🚨 **Overload Alert:** Capacity exceeded by {trip_bags - cap_bags:,.0f} bags! Please split the trip or choose a larger vehicle.")
+                elif utilization_pct < 70:
+                    st.warning("⚠️ **Low Utilization Warning:** Under 70% capacity.")
+                else:
+                    st.success("🟢 **Optimal Load Allocation!**")
+
+        st.markdown("---")
+        if st.button("🚀 Confirm & Generate Dispatch Trip (Gate Pass & Loading Slip)", type="primary"):
+            if selected_veh_str == "No Vehicles Available":
+                st.error("❌ Kripya pehle fleet master mein vehicle add ya free karein.")
+            elif filtered_trip_demand.empty:
+                st.error("❌ Is trip ke liye koi orders select nahi kiye gaye.")
+            else:
+                veh_no = selected_veh_str.split(" | ")[0]
+                veh_row = available_vehicles[available_vehicles["vehicle_no"] == veh_no].iloc[0]
+                bay_code = selected_bay.split(" - ")[0]
                 
                 ist_now = get_ist_now()
-                date_str = dispatch_date_input.strftime("%Y-%m-%d")
-                timestamp = ist_now.strftime("%H%M%S")
-                batch_ts = ist_now.strftime("%Y-%m-%d %H:%M:%S")
-
-                for uploaded_file in uploaded_inputs:
-                    short_filename = uploaded_file.name
-                    if short_filename.lower() == "output.xlsx": continue
+                trip_id = f"TRIP-{selected_route}-{ist_now.strftime('%Y%m%d%H%M%S')}"
+                
+                conn = sqlite3.connect("dispatch_logistics.db")
+                cursor = conn.cursor()
+                
+                # Insert trip master
+                cursor.execute("""
+                    INSERT INTO dispatch_trips (trip_id, trip_date, route_no, vehicle_no, transporter_name, driver_name, driver_phone, loading_bay, total_bags, total_weight_mt, capacity_utilization_pct, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    trip_id,
+                    ist_now.strftime("%Y-%m-%d"),
+                    str(selected_route),
+                    veh_no,
+                    veh_row["transporter_name"],
+                    veh_row["driver_name"],
+                    veh_row["driver_phone"],
+                    bay_code,
+                    trip_bags,
+                    trip_weight,
+                    round((trip_bags / veh_row["capacity_bags"] * 100), 2),
+                    "Planned",
+                    ist_now.strftime("%Y-%m-%d %H:%M:%S")
+                ))
+                
+                # Insert trip items
+                items_to_insert = []
+                for seq, (_, row) in enumerate(filtered_trip_demand.iterrows(), 1):
+                    items_to_insert.append((
+                        trip_id,
+                        row["Source File"],
+                        row["Order No"],
+                        str(row["Agency No"]),
+                        str(row["Route No"]),
+                        str(row["DR Code"]),
+                        str(row["FG Code"]),
+                        row["Bags Qty"],
+                        row["Weight (MT)"],
+                        seq,
+                        "Assigned"
+                    ))
                     
-                    file_bytes = uploaded_file.getvalue()
-                    input_files_archive_records.append((short_filename, file_bytes, len(file_bytes)/1024.0, batch_ts))
-                    
-                    df_input = pd.read_excel(io.BytesIO(file_bytes), header=None)
-
-                    fg_row, fg_col = -1, -1
-                    for r in range(df_input.shape[0]):
-                        for c in range(df_input.shape[1]):
-                            if "FG" in str(df_input.iloc[r, c]).strip().upper():
-                                fg_row, fg_col = r, c
-                                break
-                        if fg_row != -1: break
-
-                    if fg_row == -1: continue
-
-                    total_col = df_input.shape[1]
-                    for cSearch in range(fg_col, df_input.shape[1]):
-                        if any(kw in str(df_input.iloc[r, cSearch]).strip().upper() for r in range(max(0, fg_row-5), fg_row+2) for kw in ["TOTAL", "SUM", "TTL"]):
-                            total_col = cSearch
-                            break
-
-                    agency_col, agency_name_col, mobile_col = fg_col - 1, fg_col - 2, fg_col - 3
-                    dr_code_col = -1
-                    for cSearch in range(fg_col):
-                        for rCheck in range(max(0, fg_row-5), fg_row+1):
-                            val = str(df_input.iloc[rCheck, cSearch]).strip().upper()
-                            if "DR" in val: dr_code_col = cSearch
-
-                    valid_cols = []
-                    for c in range(fg_col, total_col):
-                        fg_code = str(df_input.iloc[fg_row, c]).strip()
-                        if not any(kw in fg_code.upper() for kw in ["TOTAL", "SUM", "TTL"]):
-                            valid_cols.append((c, fg_code))
-
-                    wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
-                    ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
-                    
-                    file_comp = []
-
-                    for r in range(fg_row + 1, df_input.shape[0]):
-                        agency = df_input.iloc[r, agency_col] if agency_col >= 0 else None
-                        if pd.isna(agency) or str(agency).strip() in ["", "nan", "None"]: continue
-                        
-                        agency_str = str(agency).replace('.0','').strip()
-                        if not agency_str.isdigit(): continue
-                        agency_val = int(agency_str)
-                        
-                        ag_name = str(df_input.iloc[r, max(0, agency_name_col)]).strip() if agency_name_col >= 0 else f"Agency_{agency_val}"
-                        mob_no = str(df_input.iloc[r, max(0, mobile_col)]).strip() if mobile_col >= 0 else "N/A"
-                        
-                        row_tot = 0
-                        row_quantities = []
-                        for c, fg_code in valid_cols:
-                            qty = df_input.iloc[r, c]
-                            if pd.notna(qty) and str(qty).strip() != "":
-                                try:
-                                    q_val = float(qty)
-                                    if q_val > 0:
-                                        row_tot += q_val
-                                        total_input_qty += q_val
-                                        total_gen_qty += q_val
-                                        row_quantities.append((fg_code, q_val))
-                                except: pass
-
-                        if row_tot == 0: continue
-
-                        final_dr = f"DR{agency_val}"
-                        if dr_code_col >= 0:
-                            d_val = str(df_input.iloc[r, dr_code_col]).strip()
-                            if "DR" in d_val.upper(): final_dr = d_val
-
-                        for fg_code, q_val in row_quantities:
-                            clean_fg = fg_code if str(fg_code).upper().startswith("FG") else st.session_state.fg_code
-                            
-                            dispatch_records_to_insert.append((
-                                date_str,
-                                str(assigned_route),
-                                str(assigned_vehicle),
-                                str(agency_val),
-                                ag_name,
-                                final_dr,
-                                mob_no,
-                                clean_fg,
-                                q_val,
-                                "Planned",
-                                batch_ts
-                            ))
-                            
-                            file_comp.append({
-                                "Vehicle No": assigned_vehicle,
-                                "Route": assigned_route,
-                                "Date": date_str,
-                                "Agency": agency_val,
-                                "Name": ag_name,
-                                "DR Code": final_dr,
-                                "FG Code": clean_fg,
-                                "Quantity": q_val,
-                                "Mobile": mob_no
-                            })
-
-                    if file_comp:
-                        st.session_state.comparison_summary.append(pd.DataFrame(file_comp))
-                        
-                # Save to SQLite Database
-                conn = sqlite3.connect("sales_history.db")
-                cur = conn.cursor()
-                cur.executemany("""
-                    INSERT INTO dispatch_plans_ledger (dispatch_date, route_no, vehicle_no, agency_no, agency_name, dr_code, mobile_no, fg_code, quantity, status, created_at)
+                cursor.executemany("""
+                    INSERT INTO trip_order_items (trip_id, file_name, order_no, agency_no, route_no, dr_code, fg_code, allocated_bags, allocated_weight_mt, delivery_seq, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, dispatch_records_to_insert)
+                """, items_to_insert)
+                
+                # Update vehicle status
+                cursor.execute("UPDATE fleet_master SET status='Assigned to Trip' WHERE vehicle_no=?", (veh_no,))
+                
                 conn.commit()
                 conn.close()
+                
+                st.success(f"🎉 **Dispatch Trip '{trip_id}' Created Successfully!** Gate Pass & Loading Slip generated.")
+                st.rerun()
 
-                st.success(f"✅ Dispatch Plan successfully generated for Vehicle **{assigned_vehicle}** (Route: {assigned_route}) & saved to Database!")
-
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
-    else:
-        st.warning("⚠️ Kripya demand files upload karein!")
-
-# --- VIEW, FILTER, DOWNLOAD & PRINT DISPATCH PLANS ---
-st.markdown("---")
-st.markdown("### 🖨️ Vehicle, Route & Date-based Dispatch Plan Reports")
-
-try:
-    conn = sqlite3.connect("sales_history.db")
-    df_dispatch_all = pd.read_sql("SELECT * FROM dispatch_plans_ledger ORDER BY id DESC", conn)
+# ==========================================
+# MODULE 2: ACTIVE & COMPLETED TRIPS
+# ==========================================
+elif app_mode == "📋 Active & Completed Trips":
+    st.title("📋 Active Trips, Loading Slips & Gate Pass Management")
+    
+    conn = sqlite3.connect("dispatch_logistics.db")
+    df_trips = pd.read_sql("SELECT * FROM dispatch_trips ORDER BY created_at DESC", conn)
     conn.close()
     
-    if not df_dispatch_all.empty:
-        f_col1, f_col2, f_col3 = st.columns(3)
-        with f_col1:
-            all_vehicles = ["All Vehicles"] + df_dispatch_all['vehicle_no'].dropna().unique().tolist()
-            sel_vehicle = st.selectbox("Filter by Vehicle Number", all_vehicles)
-        with f_col2:
-            all_routes = ["All Routes"] + df_dispatch_all['route_no'].dropna().unique().tolist()
-            sel_route = st.selectbox("Filter by Route No", all_routes)
-        with f_col3:
-            all_dates = ["All Dates"] + df_dispatch_all['dispatch_date'].dropna().unique().tolist()
-            sel_date = st.selectbox("Filter by Dispatch Date", all_dates)
-
-        filtered_df = df_dispatch_all.copy()
-        if sel_vehicle != "All Vehicles":
-            filtered_df = filtered_df[filtered_df['vehicle_no'] == sel_vehicle]
-        if sel_route != "All Routes":
-            filtered_df = filtered_df[filtered_df['route_no'] == sel_route]
-        if sel_date != "All Dates":
-            filtered_df = filtered_df[filtered_df['dispatch_date'] == sel_date]
-
-        st.markdown(f"#### Showing {len(filtered_df)} Dispatch Records")
-        st.dataframe(filtered_df, use_container_width=True)
-
-        # Download & Print Buttons for Filtered Plan
-        d_col1, d_col2 = st.columns(2)
-        with d_col1:
-            out_buf = io.BytesIO()
-            filtered_df.to_excel(out_buf, index=False, sheet_name="Dispatch Plan")
-            out_buf.seek(0)
-            st.download_button(
-                label="📥 Download Filtered Dispatch Plan (.xlsx)",
-                data=out_buf.getvalue(),
-                file_name=f"Dispatch_Plan_{sel_vehicle}_{sel_date}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        with d_col2:
-            print_html = """
-            <div style="width:100%; margin-top:5px;">
-                <button onclick="parent.window.print()" style="width:100%; height:38px; background:#1e3a8a; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center;">
-                    🖨️ Print Dispatch Plan
-                </button>
-            </div>
-            """
-            components.html(print_html, height=50)
-
-        # Database Management & Deletion Tools
+    if not df_trips.empty:
+        st.dataframe(df_trips, use_container_width=True)
+        
         st.markdown("---")
-        st.markdown("### 🗑️ Dispatch Database Management, Delete & Wipe Tools")
-        del_c1, del_c2 = st.columns(2)
-        with del_c1:
-            rec_id_del = st.number_input("Enter Dispatch Record ID to Delete", min_value=1, step=1, key="disp_del")
-            if st.button("🗑️ Delete Record & Reset IDs"):
-                conn = sqlite3.connect("sales_history.db")
+        st.subheader("🔍 Trip Details & Document Generation")
+        
+        selected_trip_id = st.selectbox("Select Trip ID to Inspect/Print:", df_trips["trip_id"].tolist())
+        trip_row = df_trips[df_trips["trip_id"] == selected_trip_id].iloc[0]
+        
+        conn = sqlite3.connect("dispatch_logistics.db")
+        df_trip_items = pd.read_sql("SELECT agency_no, dr_code, fg_code, allocated_bags, allocated_weight_mt, delivery_seq, status FROM trip_order_items WHERE trip_id=? ORDER BY delivery_seq ASC", conn, params=(selected_trip_id,))
+        conn.close()
+        
+        c_t1, c_t2, c_t3, c_t4 = st.columns(4)
+        c_t1.metric("Trip ID", trip_row["trip_id"])
+        c_t2.metric("Vehicle No", trip_row["vehicle_no"])
+        c_t3.metric("Driver", f"{trip_row['driver_name']} ({trip_row['driver_phone']})")
+        c_t4.metric("Status", trip_row["status"])
+        
+        st.markdown("##### 📦 Material Loading Manifest (Agency-wise Sequence):")
+        st.dataframe(df_trip_items, use_container_width=True)
+        
+        # Action Buttons
+        col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
+        
+        with col_btn1:
+            # Generate Loading Slip PDF
+            try:
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 16)
+                pdf.cell(190, 10, "ENTERPRISE DISPATCH & LOADING SLIP", ln=True, align="C")
+                pdf.set_font("Arial", "", 10)
+                pdf.cell(190, 6, f"Generated On (IST): {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align="C")
+                pdf.ln(5)
+                
+                pdf.set_font("Arial", "B", 11)
+                pdf.cell(95, 7, f"Trip ID: {trip_row['trip_id']}", border=1)
+                pdf.cell(95, 7, f"Date: {trip_row['trip_date']}", border=1, ln=True)
+                pdf.cell(95, 7, f"Vehicle No: {trip_row['vehicle_no']}", border=1)
+                pdf.cell(95, 7, f"Route No: {trip_row['route_no']}", border=1, ln=True)
+                pdf.cell(95, 7, f"Transporter: {trip_row['transporter_name']}", border=1)
+                pdf.cell(95, 7, f"Loading Bay: {trip_row['loading_bay']}", border=1, ln=True)
+                pdf.cell(95, 7, f"Driver Name: {trip_row['driver_name']}", border=1)
+                pdf.cell(95, 7, f"Driver Phone: {trip_row['driver_phone']}", border=1, ln=True)
+                pdf.ln(5)
+                
+                pdf.set_font("Arial", "B", 10)
+                pdf.cell(20, 8, "Seq", border=1)
+                pdf.cell(30, 8, "Agency", border=1)
+                pdf.cell(40, 8, "DR Code", border=1)
+                pdf.cell(45, 8, "FG Code", border=1)
+                pdf.cell(30, 8, "Bags Qty", border=1)
+                pdf.cell(25, 8, "Weight (MT)", border=1, ln=True)
+                
+                pdf.set_font("Arial", "", 10)
+                for _, itm in df_trip_items.iterrows():
+                    pdf.cell(20, 7, str(itm["delivery_seq"]), border=1)
+                    pdf.cell(30, 7, str(itm["agency_no"]), border=1)
+                    pdf.cell(40, 7, str(itm["dr_code"]), border=1)
+                    pdf.cell(45, 7, str(itm["fg_code"]), border=1)
+                    pdf.cell(30, 7, f"{itm['allocated_bags']:,.0f}", border=1)
+                    pdf.cell(25, 7, f"{itm['allocated_weight_mt']:,.2f}", border=1, ln=True)
+                    
+                pdf.set_font("Arial", "B", 10)
+                pdf.cell(135, 8, "TOTALS", border=1, align="R")
+                pdf.cell(30, 8, f"{trip_row['total_bags']:,.0f}", border=1)
+                pdf.cell(25, 8, f"{trip_row['total_weight_mt']:,.2f}", border=1, ln=True)
+                
+                pdf.ln(15)
+                pdf.cell(60, 6, "Driver Signature: _________", ln=False)
+                pdf.cell(65, 6, "Security Gate In: _________", ln=False)
+                pdf.cell(65, 6, "Dispatch Supervisor: _________", ln=True)
+                
+                pdf_bytes = bytes(pdf.output())
+                st.download_button(
+                    label="📄 Download Loading Slip (PDF)",
+                    data=pdf_bytes,
+                    file_name=f"Loading_Slip_{selected_trip_id}.pdf",
+                    mime="application/pdf",
+                    key="btn_pdf_trip"
+                )
+            except Exception as e:
+                st.error(f"PDF error: {str(e)}")
+
+        with col_btn2:
+            # WhatsApp dispatch alert
+            wa_text = f"🚛 Enterprise Dispatch Alert!\nTrip ID: {trip_row['trip_id']}\nVehicle: {trip_row['vehicle_no']}\nDriver: {trip_row['driver_name']} ({trip_row['driver_phone']})\nRoute: {trip_row['route_no']}\nTotal Bags: {trip_row['total_bags']} ({trip_row['total_weight_mt']} MT)\nBay: {trip_row['loading_bay']}"
+            wa_url = f"https://wa.me/{logistics_whatsapp}?text={urllib.parse.quote(wa_text)}"
+            st.markdown(f'<a href="{wa_url}" target="_blank"><button style="width:100%; height:38px; background:#25D366; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">📱 WhatsApp Driver & Gate</button></a>', unsafe_allow_html=True)
+
+        with col_btn3:
+            # Status update dropdown
+            new_status = st.selectbox("Update Trip Status:", ["Planned", "Loading in Progress", "Gate Out / Dispatched", "Delivered"], index=["Planned", "Loading in Progress", "Gate Out / Dispatched", "Delivered"].index(trip_row["status"]))
+            if st.button("🔄 Update Status"):
+                conn = sqlite3.connect("dispatch_logistics.db")
                 cur = conn.cursor()
-                cur.execute("DELETE FROM dispatch_plans_ledger WHERE id = ?", (rec_id_del,))
-                cur.execute("DELETE FROM sqlite_sequence WHERE name='dispatch_plans_ledger'")
+                cur.execute("UPDATE dispatch_trips SET status=? WHERE trip_id=?", (new_status, selected_trip_id))
+                if new_status == "Delivered":
+                    cur.execute("UPDATE fleet_master SET status='Available' WHERE vehicle_no=?", (trip_row["vehicle_no"],))
                 conn.commit()
                 conn.close()
-                st.success(f"✅ Record ID {rec_id_del} deleted & ID sequence reset!")
+                st.success("✅ Status updated!")
                 st.rerun()
-        with del_c2:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("🚨 Wipe Entire Dispatch Plan DB & Reset IDs"):
-                conn = sqlite3.connect("sales_history.db")
+
+        with col_btn4:
+            if st.button("🗑️ Cancel Trip & Release Truck"):
+                conn = sqlite3.connect("dispatch_logistics.db")
                 cur = conn.cursor()
-                cur.execute("DELETE FROM dispatch_plans_ledger")
-                cur.execute("DELETE FROM sqlite_sequence WHERE name='dispatch_plans_ledger'")
+                cur.execute("DELETE FROM trip_order_items WHERE trip_id=?", (selected_trip_id,))
+                cur.execute("DELETE FROM dispatch_trips WHERE trip_id=?", (selected_trip_id,))
+                cur.execute("UPDATE fleet_master SET status='Available' WHERE vehicle_no=?", (trip_row["vehicle_no"],))
                 conn.commit()
                 conn.close()
-                st.success("✅ Dispatch Plans Database wiped & IDs reset!")
+                st.warning(f"Trip {selected_trip_id} cancelled & vehicle released.")
                 st.rerun()
 
     else:
-        st.info("No dispatch plans created yet. Upload demand files and assign vehicles above.")
+        st.info("No dispatch trips created yet. Use 'Dispatch Trip Planner' tab to create trips.")
 
-except Exception as e:
-    st.error(f"Error loading dispatch database: {str(e)}")
+# ==========================================
+# MODULE 3: FLEET & BAY MASTER MANAGEMENT
+# ==========================================
+elif app_mode == "🚛 Fleet & Bay Master":
+    st.title("🚛 Transporter Fleet & Loading Bay Master")
+    
+    conn = sqlite3.connect("dispatch_logistics.db")
+    df_fleet = pd.read_sql("SELECT * FROM fleet_master", conn)
+    df_bays = pd.read_sql("SELECT * FROM loading_bays", conn)
+    conn.close()
+    
+    tab_f1, tab_f2 = st.tabs(["🚛 Fleet Management", "🏭 Loading Bays"])
+    
+    with tab_f1:
+        st.subheader("Active Transporter Fleet")
+        st.dataframe(df_fleet, use_container_width=True)
+        
+        with st.expander("➕ Add New Vehicle to Fleet"):
+            c_v1, c_v2, c_v3 = st.columns(3)
+            with c_v1:
+                new_v_no = st.text_input("Vehicle No (e.g., PB-10-XY-9988)")
+                new_v_type = st.selectbox("Vehicle Type", ["10 Wheeler Truck", "12 Wheeler Multi-Axle", "14 Wheeler Heavy", "Canter / Eicher", "Mini Truck"])
+            with c_v2:
+                new_v_cap_bags = st.number_input("Capacity (Bags)", min_value=50, max_value=2000, value=500, step=50)
+                new_v_cap_mt = st.number_input("Capacity (Metric Tons)", min_value=2.0, max_value=100.0, value=25.0, step=1.0)
+            with c_v3:
+                new_v_trans = st.text_input("Transporter Name", "Apex Logistics")
+                new_v_driver = st.text_input("Driver Name", "Sukhdev Singh")
+                new_v_phone = st.text_input("Driver Phone", "9876501234")
+                
+            if st.button("➕ Save Vehicle"):
+                if new_v_no:
+                    try:
+                        conn = sqlite3.connect("dispatch_logistics.db")
+                        cur = conn.cursor()
+                        cur.execute("""
+                            INSERT INTO fleet_master (vehicle_no, vehicle_type, capacity_bags, capacity_mt, transporter_name, driver_name, driver_phone, status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 'Available')
+                        """, (new_v_no, new_v_type, new_v_cap_bags, new_v_cap_mt, new_v_trans, new_v_driver, new_v_phone))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"Vehicle {new_v_no} added successfully!")
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"Error: {str(ex)}")
+
+    with tab_f2:
+        st.subheader("Plant Loading Bay Setup")
+        st.dataframe(df_bays, use_container_width=True)
+        
+        with st.expander("➕ Add Loading Bay"):
+            b1, b2 = st.columns(2)
+            with b1:
+                new_bay_no = st.text_input("Bay Code (e.g., BAY-04)")
+            with b2:
+                new_bay_name = st.text_input("Bay Location Name", "South Silo Discharge 4")
+            if st.button("➕ Add Bay"):
+                if new_bay_no:
+                    conn = sqlite3.connect("dispatch_logistics.db")
+                    cur = conn.cursor()
+                    cur.execute("INSERT OR REPLACE INTO loading_bays (bay_no, bay_name, status) VALUES (?, ?, 'Open')", (new_bay_no, new_bay_name))
+                    conn.commit()
+                    conn.close()
+                    st.success("Bay added!")
+                    st.rerun()
+
+# ==========================================
+# MODULE 4: LOGISTICS KPI ANALYTICS
+# ==========================================
+elif app_mode == "📊 Logistics KPI Analytics":
+    st.title("📊 Supply Chain & Dispatch Analytics Dashboard")
+    
+    conn = sqlite3.connect("dispatch_logistics.db")
+    df_trips = pd.read_sql("SELECT * FROM dispatch_trips", conn)
+    df_items = pd.read_sql("SELECT * FROM trip_order_items", conn)
+    conn.close()
+    
+    if not df_trips.empty:
+        col_k1, col_k2, col_k3, col_k4 = st.columns(4)
+        col_k1.metric("Total Trips Planned", len(df_trips))
+        col_k2.metric("Total Dispatched Bags", f"{df_trips['total_bags'].sum():,.0f}")
+        col_k3.metric("Average Fleet Utilization", f"{df_trips['capacity_utilization_pct'].mean():.1f}%")
+        col_k4.metric("Active Loading Trips", len(df_trips[df_trips['status'] != 'Delivered']))
+        
+        st.markdown("---")
+        t_col1, t_col2 = st.columns(2)
+        with t_col1:
+            st.markdown("##### 🚛 Route-wise Dispatched Tonnage (MT)")
+            st.bar_chart(df_trips.groupby("route_no")["total_weight_mt"].sum())
+        with t_col2:
+            st.markdown("##### 📦 Transporter-wise Bag Share")
+            st.bar_chart(df_trips.groupby("transporter_name")["total_bags"].sum())
+    else:
+        st.info("No dispatch data available to build analytics.")
