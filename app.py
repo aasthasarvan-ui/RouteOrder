@@ -402,7 +402,6 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                     file_bytes = uploaded_file.getvalue()
                     df_input = pd.read_excel(io.BytesIO(file_bytes), header=None)
 
-                    # Dynamic File-wise Vehicle No & Contact Number Extraction
                     file_vehicle_no = default_vehicle_no
                     file_contact_no = default_driver_mobile
                     
@@ -411,7 +410,6 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                             cell_str = str(df_input.iloc[rSearch, cSearch]).strip()
                             upper_cell = cell_str.upper()
                             if "CONTACT" in upper_cell or "MOBILE" in upper_cell or "PHONE" in upper_cell:
-                                # Look around for number
                                 for cOff in range(cSearch, min(df_input.shape[1], cSearch + 3)):
                                     cand = str(df_input.iloc[rSearch, cOff]).strip()
                                     if re.search(r'\d{10}', cand):
