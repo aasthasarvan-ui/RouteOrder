@@ -1261,3 +1261,281 @@ with st.expander("🕒 View Historical Trend Analysis (SQLite Database - IST)"):
             st.info("No historical logs available yet.")
     except Exception as e:
         st.error(f"Error loading history: {str(e)}")
+# ==========================================
+# 6. DASHBOARD, KPI, ANALYTICS & EXPORTS (Continuation)
+# ==========================================
+if st.session_state.processed_files or st.session_state.skipped_rows_log:
+    # --- Advanced Email Config Expander ---
+    with st.expander("✉️ Advanced Email Dispatch Options (Custom Subject & Note)"):
+        email_subject_custom = st.text_input("Custom Email Subject Line", f"🚀 Sales Orders Batch Execution Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}")
+        email_notes_custom = st.text_area("Custom Remarks / Notes to Include in Email Body", "All routes verified and processed successfully.")
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for item in st.session_state.processed_files:
+            zip_file.writestr(item['filename'], item['data'])
+    
+    col_zip, col_pdf, col_summary, col_json, col_print, col_email, col_wa = st.columns(7)
+    
+    with col_zip:
+        st.download_button(
+            label="📦 ZIP",
+            data=zip_buffer.getvalue(),
+            file_name=f"Batch_Orders_{get_ist_now().strftime('%Y-%m-%d')}.zip",
+            mime="application/zip",
+            key="zip_download"
+        )
+        
+    with col_pdf:
+        try:
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 16)
+            pdf.cell(190, 10, "Enterprise Sales Order Summary Invoice", ln=True, align="C")
+            pdf.set_font("Arial", "", 10)
+            pdf.cell(190, 6, f"Generated On (IST): {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align="C")
+            pdf.ln(10)
+            
+            pdf.set_font("Arial", "B", 11)
+            pdf.cell(100, 8, "Metric Description", border=1)
+            pdf.cell(90, 8, "Value", border=1, ln=True)
+            
+            pdf.set_font("Arial", "", 11)
+            kpi = st.session_state.kpi_data
+            total_processed_orders = kpi['valid_count'] + kpi['missing_count']
+            success_rate = (kpi['valid_count'] / total_processed_orders * 100) if total_processed_orders > 0 else 0
+            demand_health_score = success_rate
+
+            metrics_list = [
+                ("Total Input Quantity", f"{kpi['input_qty']:,.0f}"),
+                ("Total Generated Quantity", f"{kpi['gen_qty']:,.0f}"),
+                ("Valid DR Orders", str(kpi['valid_count'])),
+                ("Missing DR Orders (NEW_CUST)", str(kpi['missing_count'])),
+                ("Skipped Rows Logged", str(kpi['skipped_count'])),
+                ("Success Rate", f"{success_rate:.1f}%"),
+                ("Demand Health Score", f"{demand_health_score:.1f}%")
+            ]
+            for m_desc, m_val in metrics_list:
+                pdf.cell(100, 8, m_desc, border=1)
+                pdf.cell(90, 8, m_val, border=1, ln=True)
+                
+            pdf_bytes = bytes(pdf.output())
+            st.download_button(
+                label="📄 PDF",
+                data=pdf_bytes,
+                file_name=f"Sales_Invoice_{get_ist_now().strftime('%Y-%m-%d')}.pdf",
+                mime="application/pdf",
+                key="pdf_invoice_download"
+            )
+        except Exception as e:
+            st.error(f"PDF Error: {str(e)}")
+
+    with col_summary:
+        summary_txt = f"""=== ENTERPRISE SALES ORDER SUMMARY (IST) ===
+Date/Time: {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}
+----------------------------------------
+Total Input Quantity : {kpi['input_qty']:,.0f}
+Total Generated Qty  : {kpi['gen_qty']:,.0f}
+Valid DR Orders      : {kpi['valid_count']}
+Missing DR Orders    : {kpi['missing_count']}
+Skipped Rows Logged  : {kpi['skipped_count']}
+Success Rate         : {success_rate:.1f}%
+Demand Health Score  : {demand_health_score:.1f}%
+----------------------------------------
+Generated Files Count: {len(st.session_state.processed_files)}
+Status: Successfully Processed & Audited
+========================================"""
+        st.download_button(
+            label="📄 TXT",
+            data=summary_txt.encode('utf-8'),
+            file_name=f"Summary_Report_{get_ist_now().strftime('%Y-%m-%d')}.txt",
+            mime="text/plain",
+            key="summary_txt_download"
+        )
+        
+    with col_json:
+        json_data = json.dumps({
+            "timestamp": get_ist_now().strftime('%Y-%m-%d %H:%M:%S'),
+            "metrics": kpi,
+            "success_rate": f"{success_rate:.1f}%",
+            "demand_health_score": f"{demand_health_score:.1f}%"
+        }, indent=4)
+        st.download_button(
+            label="💾 JSON",
+            data=json_data.encode('utf-8'),
+            file_name=f"Audit_Backup_{get_ist_now().strftime('%Y-%m-%d')}.json",
+            mime="application/json",
+            key="json_backup_download"
+        )
+        
+    with col_print:
+        print_html = """
+        <div style="width:100%; margin:0; padding:0;">
+            <button onclick="parent.window.print()" style="width:100%; height:38px; background:#2563eb; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; font-family:sans-serif; display:flex; align-items:center; justify-content:center;">
+                🖨️ Print
+            </button>
+        </div>
+        """
+        components.html(print_html, height=50)
+        
+    with col_email:
+        if st.button("📧 Email"):
+            if email_user and email_pass and recipient_email:
+                try:
+                    conn = sqlite3.connect("sales_history.db")
+                    df_master_email = pd.read_sql("SELECT * FROM unique_routes_master", conn)
+                    conn.close()
+                    
+                    excel_buffer = io.BytesIO()
+                    df_master_email.to_excel(excel_buffer, index=False, sheet_name="Master Routes")
+                    excel_buffer.seek(0)
+
+                    msg = EmailMessage()
+                    msg['Subject'] = email_subject_custom
+                    msg['From'] = email_user
+                    msg['To'] = recipient_email
+                    
+                    html_content = f"""
+                    <html>
+                      <body style="font-family: Arial, sans-serif; color: #333; background-color: #f9fafb; padding: 20px;">
+                        <div style="max-width: 600px; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                          <h2 style="color: #10b981; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📊 Sales Order Batch Automation Hub</h2>
+                          <p>Hello Team,</p>
+                          <p>The daily inbound demand batch has been processed successfully on <b>{get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} IST</b>.</p>
+                          <p style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 10px; margin: 15px 0;"><b>Remarks:</b> {email_notes_custom}</p>
+                        </div>
+                      </body>
+                    </html>
+                    """
+                    msg.set_content("Please enable HTML to view this report.")
+                    msg.add_alternative(html_content, subtype='html')
+                    
+                    for item in st.session_state.processed_files:
+                        msg.add_attachment(item['data'], maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=item['filename'])
+                    
+                    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                        smtp.login(email_user, email_pass)
+                        smtp.send_message(msg)
+                    st.success("✅ Email dispatched successfully!")
+                except Exception as e:
+                    st.error(f"❌ Email failed: {str(e)}")
+            else:
+                st.warning("⚠️ Enter email credentials!")
+
+    with col_wa:
+        if whatsapp_num:
+            wa_text = f"Sales Order Batch Ready! Total Qty: {kpi['input_qty']}."
+            wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
+            st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:38px; background:#25D366; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
+
+# ==========================================
+# 7. MULTI-DATABASE MANAGEMENT & SCHEMA EDITOR
+# ==========================================
+st.markdown("---")
+with st.expander("🗄️ View, Export & Manage All Databases (Add/Delete Columns & Rows)"):
+    try:
+        conn = sqlite3.connect("sales_history.db")
+        df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
+        df_unmapped = pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger ORDER BY id DESC", conn)
+        df_outputs = pd.read_sql("SELECT id, file_name, file_type, created_at FROM output_files_ledger ORDER BY id DESC", conn)
+        df_trace = pd.read_sql("SELECT id, batch_timestamp, input_file_name, total_input_qty, generated_output_file, output_type, version_no FROM input_output_traceability ORDER BY id DESC", conn)
+        df_audit = pd.read_sql("SELECT * FROM discrepancy_audit_ledger ORDER BY id DESC", conn)
+        df_dispatch = pd.read_sql("SELECT * FROM dispatch_planning_ledger ORDER BY id DESC", conn)
+        conn.close()
+        
+        tab_m1, tab_m2, tab_m3, tab_m4, tab_m5, tab_m6, tab_m7, tab_m8, tab_m9 = st.tabs([
+            "📋 Master", "🚨 Unmapped", "📦 Outputs", "🚚 Dispatch", "🔗 Trace", "🔍 Audit", "📅 Monthly", "⏳ Pending", "🛠️ DB Schema Editor"
+        ])
+        
+        def render_table_manager(table_name, df_data):
+            st.dataframe(df_data, use_container_width=True)
+            col_ed1, col_ed2, col_ed3 = st.columns(3)
+            with col_ed1:
+                new_col_name = st.text_input(f"New Column Name ({table_name})", key=f"col_name_{table_name}")
+                if st.button(f"➕ Add Column to {table_name}", key=f"btn_add_col_{table_name}"):
+                    if new_col_name:
+                        try:
+                            conn_c = sqlite3.connect("sales_history.db")
+                            cur_c = conn_c.cursor()
+                            cur_c.execute(f"ALTER TABLE {table_name} ADD COLUMN {new_col_name} TEXT")
+                            conn_c.commit()
+                            conn_c.close()
+                            st.success(f"✅ Column '{new_col_name}' added!")
+                            st.rerun()
+                        except Exception as ex:
+                            st.error(f"Error: {str(ex)}")
+            with col_ed2:
+                row_id_rem = st.number_input(f"Record ID to Delete ({table_name})", min_value=1, step=1, key=f"del_id_{table_name}")
+                if st.button(f"🗑️ Delete Row", key=f"btn_del_row_{table_name}"):
+                    try:
+                        conn_r = sqlite3.connect("sales_history.db")
+                        cur_r = conn_r.cursor()
+                        cur_r.execute(f"DELETE FROM {table_name} WHERE id = ?", (row_id_rem,))
+                        conn_r.commit()
+                        conn_r.close()
+                        st.success(f"✅ Record ID {row_id_rem} deleted!")
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"Error: {str(ex)}")
+            with col_ed3:
+                if st.button(f"🚨 Wipe Table {table_name}", key=f"btn_wipe_{table_name}", type="secondary"):
+                    try:
+                        conn_w = sqlite3.connect("sales_history.db")
+                        cur_w = conn_w.cursor()
+                        cur_w.execute(f"DELETE FROM {table_name}")
+                        conn_w.commit()
+                        conn_w.close()
+                        st.success(f"✅ Table wiped!")
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"Error: {str(ex)}")
+
+        with tab_m1: render_table_manager("unique_routes_master", df_master)
+        with tab_m2: render_table_manager("unmapped_missing_dr_ledger", df_unmapped)
+        with tab_m3: render_table_manager("output_files_ledger", df_outputs)
+        with tab_m4: render_table_manager("dispatch_planning_ledger", df_dispatch)
+        with tab_m5: render_table_manager("input_output_traceability", df_trace)
+        with tab_m6: render_table_manager("discrepancy_audit_ledger", df_audit)
+        with tab_m7:
+            if not df_dispatch.empty:
+                st.dataframe(df_dispatch, use_container_width=True)
+                monthly_buf = io.BytesIO()
+                df_dispatch.to_excel(monthly_buf, index=False, sheet_name="Monthly Dispatch Master")
+                monthly_buf.seek(0)
+                st.download_button("📥 Export Monthly Dispatch Masterfile (.xlsx)", monthly_buf.getvalue(), f"Monthly_Dispatch_{get_ist_now().strftime('%Y-%m')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_monthly")
+        with tab_m8:
+            if not df_dispatch.empty:
+                df_pend = df_dispatch[df_dispatch['pending_qty'] > 0]
+                if not df_pend.empty:
+                    st.dataframe(df_pend, use_container_width=True)
+                    pend_buf = io.BytesIO()
+                    df_pend.to_excel(pend_buf, index=False, sheet_name="Master Pending")
+                    pend_buf.seek(0)
+                    st.download_button("📥 Export Master Pending File (.xlsx)", pend_buf.getvalue(), f"Master_Pending_{get_ist_now().strftime('%Y-%m-%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_pending")
+        with tab_m9:
+            st.markdown("#### 🛠️ Universal Schema Modifier (Drop Column Tool)")
+            sel_table_drop = st.selectbox("Select Table", ['unique_routes_master', 'unmapped_missing_dr_ledger', 'output_files_ledger', 'input_output_traceability', 'discrepancy_audit_ledger', 'dispatch_planning_ledger', 'inventory_stock_table'])
+            conn_schema = sqlite3.connect("sales_history.db")
+            cur_schema = conn_schema.cursor()
+            cur_schema.execute(f"PRAGMA table_info({sel_table_drop})")
+            table_cols = [col[1] for col in cur_schema.fetchall()]
+            conn_schema.close()
+            
+            col_to_drop = st.selectbox("Select Column to Drop", table_cols)
+            if st.button("🗑️ Drop Selected Column"):
+                try:
+                    conn_d = sqlite3.connect("sales_history.db")
+                    cur_d = conn_d.cursor()
+                    remaining_cols = [c for c in table_cols if c != col_to_drop and c != 'id']
+                    col_str = ", ".join(remaining_cols)
+                    cur_d.execute(f"CREATE TABLE {sel_table_drop}_temp AS SELECT id, {col_str} FROM {sel_table_drop}")
+                    cur_d.execute(f"DROP TABLE {sel_table_drop}")
+                    cur_d.execute(f"ALTER TABLE {sel_table_drop}_temp RENAME TO {sel_table_drop}")
+                    conn_d.commit()
+                    conn_d.close()
+                    st.success(f"✅ Column '{col_to_drop}' dropped successfully!")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Error dropping column: {str(ex)}")
+    except Exception as e:
+        st.error(f"Error loading databases: {str(e)}")
