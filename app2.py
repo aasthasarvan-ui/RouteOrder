@@ -177,7 +177,7 @@ st.markdown(
 )
 
 # ==============================================================================
-# SECTION 4: UNIFIED DATABASE ARCHITECTURE (ALL DEDICATED TABLES)
+# SECTION 4: UNIFIED DATABASE ARCHITECTURE
 # ==============================================================================
 
 def get_db_connection():
@@ -189,7 +189,6 @@ def init_all_enterprise_databases():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # 1. Route-Agency-DR Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS unique_routes_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -202,7 +201,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 2. Uploaded Input File Archive
     cur.execute("""
         CREATE TABLE IF NOT EXISTS uploaded_files_archive (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -214,7 +212,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 3. Pending Orders Database
     cur.execute("""
         CREATE TABLE IF NOT EXISTS pending_orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -228,12 +225,10 @@ def init_all_enterprise_databases():
             weight_mt REAL,
             order_ref TEXT,
             status TEXT DEFAULT 'Pending',
-            uploaded_at TEXT,
-            UNIQUE(order_no, route_no, agency_no, fg_code, bags_qty)
+            uploaded_at TEXT
         )
     """)
 
-    # 4. Transporter Fleet Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS fleet_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -248,7 +243,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 5. Plant Loading Bays Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS loading_bays (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -258,7 +252,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 6. Trip Loading Slips Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS trip_loading_slips (
             trip_id TEXT PRIMARY KEY,
@@ -277,7 +270,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 7. Trip Order Items Manifest Sequence
     cur.execute("""
         CREATE TABLE IF NOT EXISTS trip_order_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -295,7 +287,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 8. Daily Dispatch Sale Register
     cur.execute("""
         CREATE TABLE IF NOT EXISTS daily_dispatch_register (
             register_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -315,7 +306,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 9. Unmapped Missing DR Fallback Ledger
     cur.execute("""
         CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -328,7 +318,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 10. Generated Output Files Storage Ledger (BLOB Storage)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS output_files_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -339,7 +328,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 11. Traceability Ledger
     cur.execute("""
         CREATE TABLE IF NOT EXISTS input_output_traceability (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -354,7 +342,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 12. Discrepancy Audit Ledger
     cur.execute("""
         CREATE TABLE IF NOT EXISTS discrepancy_audit_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -370,7 +357,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 13. System Audit History Logs
     cur.execute("""
         CREATE TABLE IF NOT EXISTS history_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -382,7 +368,6 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # Default Fleet Seed
     cur.execute("SELECT COUNT(*) FROM fleet_master")
     if cur.fetchone()[0] == 0:
         default_fleet = [
@@ -396,7 +381,6 @@ def init_all_enterprise_databases():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, default_fleet)
 
-    # Default Bays Seed
     cur.execute("SELECT COUNT(*) FROM loading_bays")
     if cur.fetchone()[0] == 0:
         default_bays = [
@@ -517,7 +501,7 @@ with st.sidebar:
 
 if main_menu == "⚡ Inbound Demand & Sales Order Engine":
     st.title("⚡ Enterprise Inbound Demand & Sales Order Processing Engine")
-    st.markdown("Upload multiple **Demand Workbooks** to execute DR auto-lookup, eliminate summary/sum formulas, generate structured `Output.xlsx` files, and sync pending demand.")
+    st.markdown("Upload multiple **Demand Workbooks** to execute DR auto-lookup, eliminate duplicate orders, generate structured `Output.xlsx` files, and sync pending demand.")
 
     with st.expander("⚙️ SKU, Route & Multi-Channel Dispatch Settings", expanded=False):
         c1, c2, c3 = st.columns(3)
@@ -583,7 +567,6 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
         master_routes_to_insert = []
         unmapped_records_to_insert = []
         traceability_records = []
-        discrepancy_records = []
 
         batch_ts = get_ist_timestamp_full()
         today_date = get_ist_date_str()
@@ -592,6 +575,12 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
         for up_file in uploaded_files:
             short_fname = up_file.name
             if short_fname.lower() == "output.xlsx":
+                continue
+
+            # Anti-Duplicate Guard 1: Skip if file was already uploaded and archived
+            cur.execute("SELECT id FROM uploaded_files_archive WHERE file_name=?", (short_fname,))
+            if cur.fetchone():
+                st.warning(f"⚠️ '{short_fname}' pehle se process ho chuki hai. Duplicate upload skip kiya gaya.")
                 continue
 
             f_bytes = up_file.getvalue()
@@ -754,10 +743,16 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                                 if (agency_val, c_idx) in agency_override_dict:
                                     current_fg = agency_override_dict[(agency_val, c_idx)]
 
-                                pending_records_to_insert.append((
-                                    short_fname, f"ORD-{agency_val}-{r}", resolved_route, str(agency_val),
-                                    clean_dr, current_fg, f_qty, round(f_qty * 0.05, 2), ref_code, "Pending", batch_ts
-                                ))
+                                # Anti-Duplicate Guard 2: Order uniqueness check
+                                cur.execute("""
+                                    SELECT id FROM pending_orders 
+                                    WHERE route_no=? AND agency_no=? AND fg_code=? AND status='Pending' AND bags_qty=?
+                                """, (resolved_route, str(agency_val), current_fg, f_qty))
+                                if not cur.fetchone():
+                                    pending_records_to_insert.append((
+                                        short_fname, f"ORD-{agency_val}-{r}", resolved_route, str(agency_val),
+                                        clean_dr, current_fg, f_qty, round(f_qty * 0.05, 2), ref_code, "Pending", batch_ts
+                                    ))
 
                                 total_in_qty += f_qty
                                 total_gen_qty += f_qty
@@ -836,7 +831,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
         if pending_records_to_insert:
             cur.executemany(
                 """
-                INSERT OR IGNORE INTO pending_orders (source_file, order_no, route_no, agency_no, dr_code, fg_code, bags_qty, weight_mt, order_ref, status, uploaded_at)
+                INSERT INTO pending_orders (source_file, order_no, route_no, agency_no, dr_code, fg_code, bags_qty, weight_mt, order_ref, status, uploaded_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 pending_records_to_insert
@@ -955,11 +950,11 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
             st.download_button(f"📥 Download {f_itm['name']}", f_itm["data"], f_itm["filename"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_indiv_{idx_f}")
 
 # ==============================================================================
-# MODULE 2: ROUTE DISPATCH TRIP PLANNER
+# MODULE 2: ROUTE DISPATCH TRIP PLANNER (STRICT VEHICLE CAPACITY ENFORCEMENT)
 # ==============================================================================
 
 elif main_menu == "🚚 Route Dispatch Trip Planner":
-    st.title("🚚 Route Dispatch Planning & Vehicle Allocation")
+    st.title("🚚 Route Dispatch Planning & Intelligent Vehicle Allocation")
 
     conn = get_db_connection()
     df_pending = pd.read_sql("SELECT * FROM pending_orders WHERE status='Pending'", conn)
@@ -978,7 +973,7 @@ elif main_menu == "🚚 Route Dispatch Trip Planner":
         col_p1, col_p2 = st.columns(2)
         with col_p1:
             sel_route = st.selectbox("1. Select Route for Dispatch Trip", route_summary["route_no"].tolist())
-            route_df = df_pending[df_pending["route_no"] == str(sel_route)]
+            route_df = df_pending[df_pending["route_no"] == str(sel_route)].copy()
 
             avail_fleet = pd.read_sql("SELECT * FROM fleet_master WHERE status='Available'", conn)
             avail_bays = pd.read_sql("SELECT * FROM loading_bays WHERE status='Open'", conn)
@@ -996,41 +991,50 @@ elif main_menu == "🚚 Route Dispatch Trip Planner":
             trip_bags = trip_df["bags_qty"].sum()
             trip_mt = trip_df["weight_mt"].sum()
 
+            cap_bags = 0
+            is_overloaded = False
             if sel_vehicle != "No Vehicles Available":
                 v_num = sel_vehicle.split(" | ")[0]
                 v_info = avail_fleet[avail_fleet["vehicle_no"] == v_num].iloc[0]
-                cap_bags = v_info["capacity_bags"]
+                cap_bags = int(v_info["capacity_bags"])
                 util_pct = (trip_bags / cap_bags * 100) if cap_bags > 0 else 0.0
                 st.metric("Total Load Allocated", f"{trip_bags:,.0f} / {cap_bags} Bags", f"{util_pct:.1f}% Capacity Utilization")
+                
+                # STRICT OVERLOAD PREVENTION
+                if trip_bags > cap_bags:
+                    is_overloaded = True
+                    st.error(f"🚨 **OVERLOAD ALERT:** Truck capacity exceeded by {trip_bags - cap_bags:,.0f} bags! Plan confirm nahi ho sakta. Kripya agencies kam karein ya badi gadi select karein.")
+                elif util_pct < 70:
+                    st.warning("⚠️ **Low Utilization:** Truck capacity 70% se kam hai.")
+                else:
+                    st.success("🟢 **Optimal Load Allocation!**")
 
         st.markdown("---")
-        if st.button("🚀 Confirm Trip & Generate Loading Slip", type="primary"):
-            if sel_vehicle == "No Vehicles Available" or trip_df.empty:
-                st.error("❌ Valid Vehicle & Orders required.")
-            else:
-                cur = conn.cursor()
-                now_ist = get_ist_now()
-                trip_id = f"TRIP-{sel_route}-{now_ist.strftime('%Y%m%d%H%M%S')}"
-                v_num = sel_vehicle.split(" | ")[0]
-                v_info = avail_fleet[avail_fleet["vehicle_no"] == v_num].iloc[0]
-                bay_code = sel_bay.split(" - ")[0]
+        confirm_disabled = is_overloaded or (sel_vehicle == "No Vehicles Available") or trip_df.empty
+        if st.button("🚀 Confirm Trip & Generate Loading Slip", type="primary", disabled=confirm_disabled):
+            cur = conn.cursor()
+            now_ist = get_ist_now()
+            trip_id = f"TRIP-{sel_route}-{now_ist.strftime('%Y%m%d%H%M%S')}"
+            v_num = sel_vehicle.split(" | ")[0]
+            v_info = avail_fleet[avail_fleet["vehicle_no"] == v_num].iloc[0]
+            bay_code = sel_bay.split(" - ")[0]
 
+            cur.execute("""
+                INSERT INTO trip_loading_slips (trip_id, trip_date, route_no, vehicle_no, transporter_name, driver_name, driver_phone, loading_bay, total_bags, total_weight_mt, capacity_utilization_pct, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Planned', ?)
+            """, (trip_id, now_ist.strftime("%Y-%m-%d"), str(sel_route), v_num, v_info["transporter_name"], v_info["driver_name"], v_info["driver_phone"], bay_code, trip_bags, trip_mt, round((trip_bags/v_info["capacity_bags"]*100), 2), now_ist.strftime("%Y-%m-%d %H:%M:%S")))
+
+            for seq, (_, r_val) in enumerate(trip_df.iterrows(), 1):
                 cur.execute("""
-                    INSERT INTO trip_loading_slips (trip_id, trip_date, route_no, vehicle_no, transporter_name, driver_name, driver_phone, loading_bay, total_bags, total_weight_mt, capacity_utilization_pct, status, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Planned', ?)
-                """, (trip_id, now_ist.strftime("%Y-%m-%d"), str(sel_route), v_num, v_info["transporter_name"], v_info["driver_name"], v_info["driver_phone"], bay_code, trip_bags, trip_mt, round((trip_bags/v_info["capacity_bags"]*100), 2), now_ist.strftime("%Y-%m-%d %H:%M:%S")))
+                    INSERT INTO trip_order_items (trip_id, order_no, agency_no, route_no, dr_code, fg_code, allocated_bags, allocated_weight_mt, delivery_seq)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (trip_id, r_val["order_no"], r_val["agency_no"], r_val["route_no"], r_val["dr_code"], r_val["fg_code"], r_val["bags_qty"], r_val["weight_mt"], seq))
+                cur.execute("UPDATE pending_orders SET status='Assigned' WHERE id=?", (r_val["id"],))
 
-                for seq, (_, r_val) in enumerate(trip_df.iterrows(), 1):
-                    cur.execute("""
-                        INSERT INTO trip_order_items (trip_id, order_no, agency_no, route_no, dr_code, fg_code, allocated_bags, allocated_weight_mt, delivery_seq)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (trip_id, r_val["order_no"], r_val["agency_no"], r_val["route_no"], r_val["dr_code"], r_val["fg_code"], r_val["bags_qty"], r_val["weight_mt"], seq))
-                    cur.execute("UPDATE pending_orders SET status='Assigned' WHERE id=?", (r_val["id"],))
-
-                cur.execute("UPDATE fleet_master SET status='Assigned to Trip' WHERE vehicle_no=?", (v_num,))
-                conn.commit()
-                st.success(f"🎉 Trip '{trip_id}' Created Successfully!")
-                st.rerun()
+            cur.execute("UPDATE fleet_master SET status='Assigned to Trip' WHERE vehicle_no=?", (v_num,))
+            conn.commit()
+            st.success(f"🎉 Trip '{trip_id}' Created Successfully! Vehicle assigned within capacity limits.")
+            st.rerun()
     conn.close()
 
 # ==============================================================================
@@ -1100,7 +1104,7 @@ elif main_menu == "📋 Loading Slips & Active Trips":
     conn.close()
 
 # ==============================================================================
-# MODULE 4: DAILY DISPATCH SALE REGISTER
+# MODULE 4: DAILY DISPATCH SALE REGISTER (WITH INLINE EDIT & SAVE)
 # ==============================================================================
 
 elif main_menu == "📖 Daily Dispatch Sale Register":
@@ -1113,25 +1117,67 @@ elif main_menu == "📖 Daily Dispatch Sale Register":
     if search_r:
         df_reg = df_reg[df_reg.apply(lambda r: r.astype(str).str.contains(search_r, case=False).any(), axis=1)]
 
-    st.dataframe(df_reg, use_container_width=True)
+    st.markdown("##### ✏️ Cell Editing Table (Direct edit karein aur neeche Save button dabayein):")
+    edited_reg = st.data_editor(df_reg, use_container_width=True, num_rows="dynamic", key="editor_reg")
 
-    c1, c2 = st.columns([1, 2])
+    c1, c2, c3 = st.columns([1, 1, 2])
     with c1:
+        if st.button("💾 Save Register Changes", type="primary"):
+            conn = get_db_connection()
+            cur = conn.cursor()
+            for _, row in edited_reg.iterrows():
+                cur.execute("""
+                    UPDATE daily_dispatch_register 
+                    SET dispatch_date=?, trip_id=?, vehicle_no=?, transporter_name=?, route_no=?, agency_no=?, order_no=?, dr_code=?, fg_code=?, dispatched_bags=?, dispatched_weight_mt=?, bay_no=?
+                    WHERE register_id=?
+                """, (row['dispatch_date'], row['trip_id'], row['vehicle_no'], row['transporter_name'], str(row['route_no']), str(row['agency_no']), str(row['order_no']), str(row['dr_code']), str(row['fg_code']), float(row['dispatched_bags']), float(row['dispatched_weight_mt']), str(row['bay_no']), row['register_id']))
+            conn.commit()
+            conn.close()
+            st.success("✅ Register changes successfully saved!")
+            st.rerun()
+
+    with c2:
         if not df_reg.empty:
             st.download_button("📥 Export Register to Excel", to_excel_download_bytes(df_reg, "DailyRegister"), "Daily_Dispatch_Sale_Register.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    with c2:
-        with st.expander("🗑️ Multi-Select Delete Register Records"):
-            del_r_ids = st.multiselect("Select Register IDs to Delete:", df_reg["register_id"].tolist() if not df_reg.empty else [])
-            if st.button("Delete Selected Records"):
-                cur = conn.cursor()
-                cur.executemany("DELETE FROM daily_dispatch_register WHERE register_id=?", [(i,) for i in del_r_ids])
-                conn.commit()
-                st.success("Selected records deleted.")
-                st.rerun()
+    with c3:
+        with st.expander("🗑️ Delete Options (Multiple IDs / Route / Date / Purge)"):
+            del_mode = st.radio("Choose Delete Mode:", ["Select by IDs", "By Route No", "By Dispatch Date", "⚠️ Purge Complete Register"], horizontal=True)
+            if del_mode == "Select by IDs":
+                del_r_ids = st.multiselect("Select Register IDs to Delete:", df_reg["register_id"].tolist() if not df_reg.empty else [])
+                if st.button("Delete Selected IDs"):
+                    cur = conn.cursor()
+                    cur.executemany("DELETE FROM daily_dispatch_register WHERE register_id=?", [(i,) for i in del_r_ids])
+                    conn.commit()
+                    st.success("Selected records deleted.")
+                    st.rerun()
+            elif del_mode == "By Route No":
+                r_to_del = st.text_input("Enter Route No to delete from Register:")
+                if st.button("Delete by Route"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM daily_dispatch_register WHERE route_no=?", (r_to_del,))
+                    conn.commit()
+                    st.success(f"Route {r_to_del} records deleted.")
+                    st.rerun()
+            elif del_mode == "By Dispatch Date":
+                d_to_del = st.text_input("Enter Date (YYYY-MM-DD) to delete:")
+                if st.button("Delete by Date"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM daily_dispatch_register WHERE dispatch_date=?", (d_to_del,))
+                    conn.commit()
+                    st.success(f"Date {d_to_del} records deleted.")
+                    st.rerun()
+            elif del_mode == "⚠️ Purge Complete Register":
+                if st.button("🔥 Confirm Wipe Register"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM daily_dispatch_register")
+                    cur.execute("DELETE FROM sqlite_sequence WHERE name='daily_dispatch_register'")
+                    conn.commit()
+                    st.success("Register completely wiped!")
+                    st.rerun()
     conn.close()
 
 # ==============================================================================
-# MODULE 5: PENDING ORDERS LEDGER
+# MODULE 5: PENDING ORDERS LEDGER (WITH INLINE EDIT & SAVE)
 # ==============================================================================
 
 elif main_menu == "⏳ Pending Orders Ledger":
@@ -1144,21 +1190,63 @@ elif main_menu == "⏳ Pending Orders Ledger":
     if search_p:
         df_p = df_p[df_p.apply(lambda r: r.astype(str).str.contains(search_p, case=False).any(), axis=1)]
 
-    st.dataframe(df_p, use_container_width=True)
+    st.markdown("##### ✏️ Cell Editing Table (Direct edit karein aur neeche Save button dabayein):")
+    edited_p = st.data_editor(df_p, use_container_width=True, num_rows="dynamic", key="editor_pending")
 
-    c1, c2 = st.columns([1, 2])
+    c1, c2, c3 = st.columns([1, 1, 2])
     with c1:
+        if st.button("💾 Save Pending Order Changes", type="primary"):
+            conn = get_db_connection()
+            cur = conn.cursor()
+            for _, row in edited_p.iterrows():
+                cur.execute("""
+                    UPDATE pending_orders 
+                    SET order_no=?, route_no=?, agency_no=?, dr_code=?, fg_code=?, bags_qty=?, weight_mt=?, status=?
+                    WHERE id=?
+                """, (str(row['order_no']), str(row['route_no']), str(row['agency_no']), str(row['dr_code']), str(row['fg_code']), float(row['bags_qty']), float(row['weight_mt']), str(row['status']), row['id']))
+            conn.commit()
+            conn.close()
+            st.success("✅ Pending orders successfully saved!")
+            st.rerun()
+
+    with c2:
         if not df_p.empty:
             st.download_button("📥 Export Pending to Excel", to_excel_download_bytes(df_p, "PendingOrders"), "Pending_Orders.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    with c2:
-        with st.expander("🗑️ Multi-Select Delete Pending Orders"):
-            del_p_ids = st.multiselect("Select Order IDs to Delete:", df_p["id"].tolist() if not df_p.empty else [])
-            if st.button("Delete Selected Orders"):
-                cur = conn.cursor()
-                cur.executemany("DELETE FROM pending_orders WHERE id=?", [(i,) for i in del_p_ids])
-                conn.commit()
-                st.success("Selected orders deleted.")
-                st.rerun()
+    with c3:
+        with st.expander("🗑️ Delete Options (Multiple IDs / Route / Source File / Purge)"):
+            del_p_mode = st.radio("Choose Delete Mode:", ["Select by IDs", "By Route No", "By Source File", "⚠️ Purge All Pending"], horizontal=True)
+            if del_p_mode == "Select by IDs":
+                del_p_ids = st.multiselect("Select Order IDs to Delete:", df_p["id"].tolist() if not df_p.empty else [])
+                if st.button("Delete Selected Orders"):
+                    cur = conn.cursor()
+                    cur.executemany("DELETE FROM pending_orders WHERE id=?", [(i,) for i in del_p_ids])
+                    conn.commit()
+                    st.success("Selected orders deleted.")
+                    st.rerun()
+            elif del_p_mode == "By Route No":
+                r_del = st.text_input("Enter Route No to delete from Pending:")
+                if st.button("Delete Pending by Route"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM pending_orders WHERE route_no=?", (r_del,))
+                    conn.commit()
+                    st.success(f"Route {r_del} pending orders deleted.")
+                    st.rerun()
+            elif del_p_mode == "By Source File":
+                f_del = st.selectbox("Select File to purge:", df_p["source_file"].unique().tolist() if not df_p.empty else ["None"])
+                if st.button("Delete File Orders"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM pending_orders WHERE source_file=?", (f_del,))
+                    conn.commit()
+                    st.success(f"File {f_del} orders removed.")
+                    st.rerun()
+            elif del_p_mode == "⚠️ Purge All Pending":
+                if st.button("🔥 Confirm Wipe All Pending"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM pending_orders")
+                    cur.execute("DELETE FROM sqlite_sequence WHERE name='pending_orders'")
+                    conn.commit()
+                    st.success("All pending orders wiped!")
+                    st.rerun()
     conn.close()
 
 # ==============================================================================
@@ -1182,18 +1270,25 @@ elif main_menu == "🗄️ File Upload Archive":
         if not df_a.empty:
             st.download_button("📥 Export Archive to Excel", to_excel_download_bytes(df_a, "ArchiveLogs"), "Uploaded_Archive_Logs.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     with c2:
-        with st.expander("🗑️ Multi-Select Delete Archive Logs"):
-            del_a_ids = st.multiselect("Select File IDs:", df_a["id"].tolist() if not df_a.empty else [])
-            if st.button("Delete Selected Logs"):
+        with st.expander("🗑️ Delete Archive Options"):
+            del_a_ids = st.multiselect("Select File IDs to Delete:", df_a["id"].tolist() if not df_a.empty else [])
+            if st.button("Delete Selected Archive Logs"):
                 cur = conn.cursor()
                 cur.executemany("DELETE FROM uploaded_files_archive WHERE id=?", [(i,) for i in del_a_ids])
                 conn.commit()
                 st.success("Logs deleted.")
                 st.rerun()
+            if st.button("🔥 Purge All Archive"):
+                cur = conn.cursor()
+                cur.execute("DELETE FROM uploaded_files_archive")
+                cur.execute("DELETE FROM sqlite_sequence WHERE name='uploaded_files_archive'")
+                conn.commit()
+                st.success("Archive wiped.")
+                st.rerun()
     conn.close()
 
 # ==============================================================================
-# MODULE 7: MASTER DB & UNMAPPED LEDGER
+# MODULE 7: MASTER DB & UNMAPPED LEDGER (WITH INLINE EDIT & SAVE)
 # ==============================================================================
 
 elif main_menu == "📋 Master DB & Unmapped Ledger":
@@ -1209,19 +1304,42 @@ elif main_menu == "📋 Master DB & Unmapped Ledger":
         sm = st.text_input("🔍 Search Master Database:", "", key="search_m")
         if sm:
             df_m = df_m[df_m.apply(lambda r: r.astype(str).str.contains(sm, case=False).any(), axis=1)]
-        st.dataframe(df_m, use_container_width=True)
+        
+        st.markdown("##### ✏️ Cell Editing Table (Direct edit karein aur neeche Save button dabayein):")
+        edited_m = st.data_editor(df_m, use_container_width=True, num_rows="dynamic", key="editor_master")
 
-        c1, c2 = st.columns([1, 2])
+        c1, c2, c3 = st.columns([1, 1, 2])
         with c1:
-            st.download_button("📥 Export Master to Excel", to_excel_download_bytes(df_m, "MasterRoutes"), "Unique_Routes_Master.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            if st.button("💾 Save Master DB Changes", type="primary"):
+                conn = get_db_connection()
+                cur = conn.cursor()
+                for _, row in edited_m.iterrows():
+                    cur.execute("""
+                        UPDATE unique_routes_master 
+                        SET route_no=?, agency_no=?, dr_code=?
+                        WHERE id=?
+                    """, (str(row['route_no']), str(row['agency_no']), str(row['dr_code']), row['id']))
+                conn.commit()
+                conn.close()
+                st.success("✅ Master DB changes saved!")
+                st.rerun()
         with c2:
-            with st.expander("🗑️ Multi-Select Delete Master Records"):
+            st.download_button("📥 Export Master to Excel", to_excel_download_bytes(df_m, "MasterRoutes"), "Unique_Routes_Master.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        with c3:
+            with st.expander("🗑️ Delete Master Options"):
                 del_m = st.multiselect("Select IDs to Delete:", df_m["id"].tolist() if not df_m.empty else [])
                 if st.button("Delete Master Records"):
                     cur = conn.cursor()
                     cur.executemany("DELETE FROM unique_routes_master WHERE id=?", [(i,) for i in del_m])
                     conn.commit()
                     st.success("Master records deleted.")
+                    st.rerun()
+                if st.button("🔥 Purge All Master DB"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM unique_routes_master")
+                    cur.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
+                    conn.commit()
+                    st.success("Master DB wiped.")
                     st.rerun()
 
         with st.expander("➕ Add Single Record to Master DB"):
@@ -1247,18 +1365,25 @@ elif main_menu == "📋 Master DB & Unmapped Ledger":
         with c1:
             st.download_button("📥 Export Unmapped to Excel", to_excel_download_bytes(df_u, "UnmappedDR"), "Unmapped_Missing_DR.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         with c2:
-            with st.expander("🗑️ Multi-Select Delete Unmapped"):
+            with st.expander("🗑️ Delete Unmapped Options"):
                 del_u = st.multiselect("Select Unmapped IDs:", df_u["id"].tolist() if not df_u.empty else [])
                 if st.button("Delete Unmapped Records"):
                     cur = conn.cursor()
                     cur.executemany("DELETE FROM unmapped_missing_dr_ledger WHERE id=?", [(i,) for i in del_u])
                     conn.commit()
-                    st.success("Records deleted.")
+                    st.success("Unmapped records deleted.")
+                    st.rerun()
+                if st.button("🔥 Purge Unmapped Ledger"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM unmapped_missing_dr_ledger")
+                    cur.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
+                    conn.commit()
+                    st.success("Unmapped Ledger wiped.")
                     st.rerun()
     conn.close()
 
 # ==============================================================================
-# MODULE 8: FLEET & LOADING BAY MASTER
+# MODULE 8: FLEET & LOADING BAY MASTER (WITH INLINE EDIT & SAVE)
 # ==============================================================================
 
 elif main_menu == "🚛 Fleet & Loading Bay Master":
@@ -1271,11 +1396,27 @@ elif main_menu == "🚛 Fleet & Loading Bay Master":
     tab1, tab2 = st.tabs(["🚛 Fleet Master", "🏭 Loading Bays"])
 
     with tab1:
-        st.dataframe(df_f, use_container_width=True)
-        c1, c2 = st.columns([1, 2])
+        st.markdown("##### ✏️ Cell Editing Fleet Table (Direct edit karein aur neeche Save button dabayein):")
+        edited_f = st.data_editor(df_f, use_container_width=True, num_rows="dynamic", key="editor_fleet")
+
+        c1, c2, c3 = st.columns([1, 1, 2])
         with c1:
-            st.download_button("📥 Export Fleet to Excel", to_excel_download_bytes(df_f, "Fleet"), "Fleet_Master.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            if st.button("💾 Save Fleet Changes", type="primary"):
+                conn = get_db_connection()
+                cur = conn.cursor()
+                for _, row in edited_f.iterrows():
+                    cur.execute("""
+                        UPDATE fleet_master 
+                        SET vehicle_no=?, vehicle_type=?, capacity_bags=?, capacity_mt=?, transporter_name=?, driver_name=?, driver_phone=?, status=?
+                        WHERE id=?
+                    """, (str(row['vehicle_no']), str(row['vehicle_type']), int(row['capacity_bags']), float(row['capacity_mt']), str(row['transporter_name']), str(row['driver_name']), str(row['driver_phone']), str(row['status']), row['id']))
+                conn.commit()
+                conn.close()
+                st.success("✅ Fleet master changes saved!")
+                st.rerun()
         with c2:
+            st.download_button("📥 Export Fleet to Excel", to_excel_download_bytes(df_f, "Fleet"), "Fleet_Master.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        with c3:
             with st.expander("🗑️ Delete Vehicles"):
                 del_f = st.multiselect("Select Vehicle IDs:", df_f["id"].tolist() if not df_f.empty else [])
                 if st.button("Delete Vehicles"):
@@ -1304,11 +1445,27 @@ elif main_menu == "🚛 Fleet & Loading Bay Master":
                     st.rerun()
 
     with tab2:
-        st.dataframe(df_b, use_container_width=True)
-        c1, c2 = st.columns([1, 2])
+        st.markdown("##### ✏️ Cell Editing Loading Bays Table:")
+        edited_b = st.data_editor(df_b, use_container_width=True, num_rows="dynamic", key="editor_bays")
+
+        c1, c2, c3 = st.columns([1, 1, 2])
         with c1:
-            st.download_button("📥 Export Bays to Excel", to_excel_download_bytes(df_b, "Bays"), "Loading_Bays.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            if st.button("💾 Save Bays Changes", type="primary"):
+                conn = get_db_connection()
+                cur = conn.cursor()
+                for _, row in edited_b.iterrows():
+                    cur.execute("""
+                        UPDATE loading_bays 
+                        SET bay_no=?, bay_name=?, status=?
+                        WHERE id=?
+                    """, (str(row['bay_no']), str(row['bay_name']), str(row['status']), row['id']))
+                conn.commit()
+                conn.close()
+                st.success("✅ Loading bays changes saved!")
+                st.rerun()
         with c2:
+            st.download_button("📥 Export Bays to Excel", to_excel_download_bytes(df_b, "Bays"), "Loading_Bays.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        with c3:
             with st.expander("🗑️ Delete Bays"):
                 del_b = st.multiselect("Select Bay IDs:", df_b["id"].tolist() if not df_b.empty else [])
                 if st.button("Delete Bays"):
