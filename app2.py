@@ -1,6 +1,7 @@
 # ==============================================================================
 # ENTERPRISE LOGISTICS, DISPATCH ENGINE & SALES AUTOMATION SUITE
-# ENHANCED WITH SAP S/4HANA (MMBE/MB52/MD07), VBA MACRO GENERATOR & ROUTE LEDGER
+# ENHANCED DISPATCH PLANNER WITH SAP S/4HANA (MMBE/MB52/MD07), VBA GENERATOR 
+# & MOGA ROUTE LEDGER INTEGRATION (FULL COMPREHENSIVE EDITION)
 # ==============================================================================
 
 import datetime
@@ -105,7 +106,17 @@ GLOBAL_DEFAULTS = {
     "recipient": st.secrets.get("email", {}).get("recipient_email", "") if hasattr(st, "secrets") else "",
     "whatsapp_num": "919876543210",
     "processed_files": [],
-    "kpi_data": {"input_qty": 0.0, "gen_qty": 0.0, "valid_count": 0, "missing_count": 0, "skipped_count": 0}
+    "comparison_summary": [],
+    "skipped_rows_log": [],
+    "anomaly_logs": [],
+    "unmapped_current_batch": [],
+    "kpi_data": {
+        "input_qty": 0.0,
+        "gen_qty": 0.0,
+        "valid_count": 0,
+        "missing_count": 0,
+        "skipped_count": 0
+    }
 }
 
 for d_key, d_val in GLOBAL_DEFAULTS.items():
@@ -167,7 +178,7 @@ st.markdown(
 )
 
 # ==============================================================================
-# SECTION 4: UNIFIED DATABASE ARCHITECTURE (ALL TABLES + SAP & ROUTE LEDGER)
+# SECTION 4: UNIFIED DATABASE ARCHITECTURE (ALL 14+ TABLES)
 # ==============================================================================
 
 def get_db_connection():
@@ -383,7 +394,22 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 14. System Audit History Logs
+    # 14. Traceability Ledger
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS input_output_traceability (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_timestamp TEXT,
+            input_file_name TEXT,
+            input_file_blob BLOB,
+            total_input_qty REAL,
+            generated_output_file TEXT,
+            output_type TEXT,
+            version_no INTEGER,
+            created_at TEXT
+        )
+    """)
+
+    # 15. System Audit History Logs
     cur.execute("""
         CREATE TABLE IF NOT EXISTS history_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -520,6 +546,7 @@ with st.sidebar:
             "🗄️ File Upload Archive",
             "📋 Master DB & Unmapped Ledger",
             "🚛 Fleet & Loading Bay Master",
+            "🔍 Traceability & Audit Ledgers",
             "📊 Executive KPI & Visual Analytics"
         ]
     )
@@ -544,7 +571,7 @@ with st.sidebar:
 
 if main_menu == "⚡ Inbound Demand & Sales Order Engine":
     st.title("⚡ Enterprise Inbound Demand & Sales Order Processing Engine")
-    st.markdown("Upload multiple **Demand Workbooks** to execute DR auto-lookup, eliminate duplicate orders, generate structured output files, and sync pending demand.")
+    st.markdown("Upload multiple **Demand Workbooks** to execute DR auto-lookup, eliminate duplicate orders, generate structured `Output.xlsx` files, and sync pending demand.")
 
     with st.expander("⚙️ SKU, Route & Multi-Channel Dispatch Settings", expanded=False):
         c1, c2, c3 = st.columns(3)
@@ -564,7 +591,6 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
         with c5:
             st.session_state.recipient = st.text_input("Recipient Email", value=st.session_state.recipient)
 
-    # Parse Mappings
     col_map_dict = {}
     for line in st.session_state.col_map.split("\n"):
         if ":" in line:
@@ -849,12 +875,11 @@ elif main_menu == "🏢 SAP S/4HANA Stock & T-Codes (MMBE/MB52/MD07)":
     conn = get_db_connection()
     df_sap = pd.read_sql("SELECT * FROM sap_stock_master", conn)
 
-    # Date Filter
     c_df1, c_df2 = st.columns(2)
     with c_df1:
-        f_date = st.date_input("From Date", datetime.date.today() - datetime.timedelta(days=30))
+        f_date = st.date_input("From Date", datetime.date.today() - datetime.timedelta(days=30), key="sap_from")
     with c_df2:
-        t_date = st.date_input("To Date", datetime.date.today())
+        t_date = st.date_input("To Date", datetime.date.today(), key="sap_to")
 
     st.markdown("---")
     t_m1, t_m2, t_m3 = st.tabs(["📊 Stock Overview (MMBE / MB52)", "📋 MRP List & Requirements (MD07)", "📥 Import SAP Stock Excel"])
@@ -1284,7 +1309,18 @@ elif main_menu == "🚛 Fleet & Loading Bay Master":
     conn.close()
 
 # ==============================================================================
-# MODULE 13: EXECUTIVE KPI & VISUAL ANALYTICS
+# MODULE 13: TRACEABILITY & AUDIT LEDGERS
+# ==============================================================================
+
+elif main_menu == "🔍 Traceability & Audit Ledgers":
+    st.title("🔍 Input-Output Traceability & Stored Outputs")
+    conn = get_db_connection()
+    df_trace = pd.read_sql("SELECT * FROM input_output_traceability ORDER BY id DESC", conn)
+    st.dataframe(df_trace, use_container_width=True)
+    conn.close()
+
+# ==============================================================================
+# MODULE 14: EXECUTIVE KPI & VISUAL ANALYTICS
 # ==============================================================================
 
 elif main_menu == "📊 Executive KPI & Visual Analytics":
