@@ -22,23 +22,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Theme Dictionary with Fixed High-Contrast Typography
+# Theme Dictionary with Fixed High-Contrast Typography & Button Text
 THEMES = {
     "💼 SAP Classic Navy": {
         "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
-        "btn_bg": "#0f172a", "btn_hover": "#1e293b", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
+        "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "btn_text": "#ffffff", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
     },
     "🌙 Modern Dark ERP": {
         "bg": "#0b0f19", "text": "#f3f4f6", "card_bg": "#1f2937", "border": "#374151",
-        "btn_bg": "#374151", "btn_hover": "#4b5563", "primary": "#3b82f6", "input_bg": "#111827", "input_text": "#f3f4f6"
+        "btn_bg": "#374151", "btn_hover": "#4b5563", "btn_text": "#ffffff", "primary": "#3b82f6", "input_bg": "#111827", "input_text": "#f3f4f6"
     },
     "📊 Corporate Slate": {
         "bg": "#eef2f5", "text": "#0f172a", "card_bg": "#ffffff", "border": "#94a3b8",
-        "btn_bg": "#475569", "btn_hover": "#334155", "primary": "#0284c7", "input_bg": "#ffffff", "input_text": "#0f172a"
+        "btn_bg": "#475569", "btn_hover": "#334155", "btn_text": "#ffffff", "primary": "#0284c7", "input_bg": "#ffffff", "input_text": "#0f172a"
     },
     "☀️ Clean Light Minimal": {
         "bg": "#ffffff", "text": "#111827", "card_bg": "#f9fafb", "border": "#d1d5db",
-        "btn_bg": "#e5e7eb", "btn_hover": "#d1d5db", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
+        "btn_bg": "#0f172a", "btn_hover": "#1e293b", "btn_text": "#ffffff", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
     }
 }
 
@@ -47,7 +47,7 @@ st.sidebar.title("🎨 ERP Theme Engine")
 selected_theme_name = st.sidebar.selectbox("Choose Interface Theme", list(THEMES.keys()), label_visibility="collapsed")
 t = THEMES[selected_theme_name]
 
-# Professional CSS Injection with Dynamic High-Contrast Text Fixes
+# Professional CSS Injection with Guaranteed Button Text Visibility
 st.markdown(
     f"""
     <style>
@@ -61,23 +61,22 @@ st.markdown(
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }}
         
-        /* Force clean font colors for all text elements */
         h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{
             color: {t['text']} !important;
         }}
         
-        /* Inputs & Textareas contrast fix */
         input, textarea, select {{
             background-color: {t['input_bg']} !important;
             color: {t['input_text']} !important;
             border: 1px solid {t['border']} !important;
         }}
         
+        /* Force Button Text Visibility */
         .stButton>button {{
             width: 100%;
             height: 38px;
             background-color: {t['btn_bg']} !important;
-            color: #ffffff !important;
+            color: {t['btn_text']} !important;
             font-size: 13px;
             font-weight: 600;
             border-radius: 4px;
@@ -89,10 +88,12 @@ st.markdown(
         }}
         .stButton>button:hover {{
             background-color: {t['btn_hover']} !important;
+            color: {t['btn_text']} !important;
         }}
         
         button[kind="primary"] {{
             background-color: {t['primary']} !important;
+            color: #ffffff !important;
         }}
         
         div[data-testid="stExpander"] {{
@@ -215,7 +216,7 @@ for key, val in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
-# --- TOP COLLAPSIBLE ERP CONTROL PANEL (Replaces Left Sidebar Clutter) ---
+# --- TOP COLLAPSIBLE ERP CONTROL PANEL ---
 with st.expander("⚙️ Enterprise Control Panel & System Settings (Click to Expand)", expanded=False):
     col_set1, col_set2, col_set3 = st.columns(3)
     
