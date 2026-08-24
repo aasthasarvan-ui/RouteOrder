@@ -499,7 +499,7 @@ with st.sidebar:
     st.image("https://img.icons8.com/color/96/delivery-truck.png", width=55)
     st.title("Logistics Master Suite")
 
-        main_menu = st.radio(
+    main_menu = st.radio(
         "Navigation",
         [
             "⚡ Inbound Demand & Sales Order Engine",
@@ -513,11 +513,10 @@ with st.sidebar:
             "🚛 Fleet & Loading Bay Master",
             "🔍 Traceability & Audit Ledgers",
             "📊 Executive KPI & Visual Analytics",
-            "🗄️ In-App Database Builder & Dynamic Linker",
-            "🎯 Universal Date & Multi-Field Filter Center"
+            🎯 Universal Date & Multi-Field Filter Center",
+            "🗄️ In-App Database Builder & Dynamic Linker" # NEW MODULE ADDED
         ]
     )
-
     st.markdown("---")
     st.subheader("🎨 Interface Theme Engine")
     theme_choice = st.selectbox(
@@ -1942,176 +1941,3 @@ elif main_menu == "🗄️ In-App Database Builder & Dynamic Linker":
                         st.error("❌ Core system tables cannot be dropped!")
 
     conn.close()
-# ==============================================================================
-# SECTION: APPENDED AT END OF FILE
-# UNIVERSAL DATE & MULTI-FIELD FILTER ENGINE FOR ALL MODULES
-# ==============================================================================
-
-# Sidebar menu update instruction:
-# Apne Sidebar radio menu me "🎯 Universal Date & Multi-Field Filter Center" add karein.
-
-elif main_menu == "🎯 Universal Date & Multi-Field Filter Center":
-    st.title("🎯 Universal Date & Multi-Field Filter Engine")
-    st.markdown("Sabhi enterprise modules aur database tables ko **Date Range** aur **Multi-Column Filters** ke sath filter karein, analyze karein aur export karein.")
-
-    conn = get_db_connection()
-
-    MODULE_TABLE_MAP = {
-        "📖 Daily Dispatch Sale Register": {
-            "table": "daily_dispatch_register",
-            "date_col": "dispatch_date",
-            "filter_cols": ["route_no", "agency_no", "dr_code", "fg_code", "vehicle_no", "transporter_name", "bay_no"]
-        },
-        "🧩 Partial / Split Dispatch Database": {
-            "table": "partial_dispatch_ledger",
-            "date_col": "created_at",
-            "filter_cols": ["route_no", "agency_no", "dr_code", "fg_code", "status", "trip_id"]
-        },
-        "⏳ Pending Orders Ledger": {
-            "table": "pending_orders",
-            "date_col": "uploaded_at",
-            "filter_cols": ["route_no", "agency_no", "dr_code", "fg_code", "status", "source_file"]
-        },
-        "📋 Loading Slips & Active Trips": {
-            "table": "trip_loading_slips",
-            "date_col": "trip_date",
-            "filter_cols": ["route_no", "vehicle_no", "transporter_name", "loading_bay", "status"]
-        },
-        "🔍 Traceability Ledger": {
-            "table": "input_output_traceability",
-            "date_col": "created_at",
-            "filter_cols": ["input_file_name", "generated_output_file", "output_type"]
-        },
-        "🚛 Transporter Fleet Master": {
-            "table": "fleet_master",
-            "date_col": None,
-            "filter_cols": ["vehicle_type", "transporter_name", "status"]
-        },
-        "📋 Unique Master Routes DB": {
-            "table": "unique_routes_master",
-            "date_col": "created_at",
-            "filter_cols": ["route_no", "agency_no", "dr_code"]
-        }
-    }
-
-    # 1. Target Module Selection
-    target_mod_name = st.selectbox("1. Select Module / Database to Filter:", list(MODULE_TABLE_MAP.keys()))
-    cfg = MODULE_TABLE_MAP[target_mod_name]
-    table_name = cfg["table"]
-    date_col = cfg["date_col"]
-    filter_cols = cfg["filter_cols"]
-
-    # Load Full Table Data
-    raw_df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
-
-    if raw_df.empty:
-        st.info(f"ℹ️ '{target_mod_name}' me abhi koi data uplabdh nahi hai.")
-    else:
-        st.markdown("---")
-        st.subheader("⚙️ Filter Controls")
-
-        # 2. Date Filter Panel
-        filtered_df = raw_df.copy()
-        
-        c_d1, c_d2 = st.columns(2)
-        if date_col and date_col in raw_df.columns:
-            # Parse Date logic safely
-            filtered_df["_temp_filter_date"] = pd.to_datetime(filtered_df[date_col].astype(str).str[:10], errors="coerce")
-            valid_dates = filtered_df["_temp_filter_date"].dropna()
-
-            if not valid_dates.empty:
-                min_avail_date = valid_dates.min().date()
-                max_avail_date = valid_dates.max().date()
-
-                with c_d1:
-                    start_date = st.date_input("📅 From Date (IST):", min_avail_date, min_value=min_avail_date, max_value=max_avail_date)
-                with c_d2:
-                    end_date = st.date_input("📅 To Date (IST):", max_avail_date, min_value=min_avail_date, max_value=max_avail_date)
-
-                if start_date and end_date:
-                    if start_date > end_date:
-                        st.error("⚠️ 'From Date' must be before or equal to 'To Date'.")
-                    else:
-                        mask_date = (filtered_df["_temp_filter_date"].dt.date >= start_date) & (filtered_df["_temp_filter_date"].dt.date <= end_date)
-                        filtered_df = filtered_df[mask_date]
-
-            filtered_df.drop(columns=["_temp_filter_date"], errors="ignore", inplace=True)
-        else:
-            st.info("ℹ️ Is table me date field nahi hai ya static master table hai. Column filters use karein.")
-
-        # 3. Dynamic Column Multi-Select Filters
-        st.markdown("##### 🔍 Multi-Column Value Filters:")
-        cols_present = [c for c in filter_cols if c in filtered_df.columns]
-
-        # Display filter boxes in a clean 3-column grid
-        grid_cols = st.columns(3)
-        for idx, col_name in enumerate(cols_present):
-            with grid_cols[idx % 3]:
-                unique_vals = sorted([str(x) for x in raw_df[col_name].dropna().unique() if str(x).strip() != ""])
-                selected_vals = st.multiselect(
-                    f"Filter by {col_name.replace('_', ' ').title()}:",
-                    unique_vals,
-                    default=[],
-                    key=f"filter_{table_name}_{col_name}"
-                )
-                if selected_vals:
-                    filtered_df = filtered_df[filtered_df[col_name].astype(str).isin(selected_vals)]
-
-        # Global Text Search Filter
-        keyword_search = st.text_input("🔎 Search any text / keyword across all columns:", "")
-        if keyword_search:
-            filtered_df = filtered_df[filtered_df.apply(lambda row: row.astype(str).str.contains(keyword_search, case=False).any(), axis=1)]
-
-        # 4. Summary Metrics Row
-        st.markdown("---")
-        st.subheader("📊 Filtered Summary & Quick Metrics")
-        
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Total Records Found", f"{len(filtered_df):,}")
-        
-        # Numeric aggregations if Bags/MT exist
-        if "dispatched_bags" in filtered_df.columns:
-            m2.metric("Total Dispatched Bags", f"{filtered_df['dispatched_bags'].sum():,.0f}")
-            m3.metric("Total Weight (MT)", f"{filtered_df['dispatched_weight_mt'].sum():,.2f}")
-        elif "bags_qty" in filtered_df.columns:
-            m2.metric("Total Order Bags", f"{filtered_df['bags_qty'].sum():,.0f}")
-            m3.metric("Total Weight (MT)", f"{filtered_df['weight_mt'].sum():,.2f}")
-        elif "remaining_bags" in filtered_df.columns:
-            m2.metric("Total Remaining Bags", f"{filtered_df['remaining_bags'].sum():,.0f}")
-            m3.metric("Dispatched Bags", f"{filtered_df['dispatched_bags'].sum():,.0f}")
-        else:
-            m2.metric("Original Total Rows", f"{len(raw_df):,}")
-            pct_match = (len(filtered_df) / len(raw_df) * 100) if len(raw_df) > 0 else 0
-            m3.metric("Match Rate", f"{pct_match:.1f}%")
-
-        if "route_no" in filtered_df.columns:
-            m4.metric("Active Unique Routes", f"{filtered_df['route_no'].nunique():,}")
-        elif "vehicle_no" in filtered_df.columns:
-            m4.metric("Unique Vehicles", f"{filtered_df['vehicle_no'].nunique():,}")
-        else:
-            m4.metric("Columns Filtered", f"{len(cols_present)}")
-
-        # 5. Display Filtered Results
-        st.markdown("##### 📋 Filtered Records Result Table:")
-        st.dataframe(filtered_df, use_container_width=True)
-
-        # 6. Bulk Export Actions for Filtered Data
-        c_exp1, c_exp2 = st.columns(2)
-        with c_exp1:
-            st.download_button(
-                "📥 Export Filtered Data to Excel (.xlsx)",
-                to_excel_download_bytes(filtered_df, "FilteredData"),
-                f"{table_name}_Filtered_{get_ist_date_str()}.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        with c_exp2:
-            csv_bytes = filtered_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "📄 Export Filtered Data to CSV (.csv)",
-                csv_bytes,
-                f"{table_name}_Filtered_{get_ist_date_str()}.csv",
-                "text/csv"
-            )
-
-    conn.close()
-
