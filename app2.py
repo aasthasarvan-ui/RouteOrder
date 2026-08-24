@@ -1,7 +1,7 @@
 # ==============================================================================
 # ENTERPRISE LOGISTICS, DISPATCH ENGINE & SALES AUTOMATION SUITE
-# ENHANCED DISPATCH PLANNER WITH SAP S/4HANA (MMBE/MB52/MD07), VBA GENERATOR 
-# & MOGA ROUTE LEDGER INTEGRATION (FULL COMPREHENSIVE EDITION)
+# EXACT COPY & ENHANCED WITH SAP S/4HANA (MMBE/MB52/MD07), MOGA ROUTE LEDGER,
+# VBA MACRO GENERATOR, DYNAMIC DATE FILTERS & FULL MODULE EDITORS
 # ==============================================================================
 
 import datetime
@@ -27,7 +27,7 @@ import streamlit.components.v1 as components
 # ==============================================================================
 
 st.set_page_config(
-    page_title="Enterprise Logistics, SAP & Sales Hub (Moga)",
+    page_title="Enterprise Logistics, SAP & Sales Automation Hub (Moga)",
     page_icon="🚚",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -178,7 +178,7 @@ st.markdown(
 )
 
 # ==============================================================================
-# SECTION 4: UNIFIED DATABASE ARCHITECTURE (ALL 14+ TABLES)
+# SECTION 4: UNIFIED DATABASE ARCHITECTURE (ALL 16+ TABLES)
 # ==============================================================================
 
 def get_db_connection():
@@ -409,7 +409,23 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # 15. System Audit History Logs
+    # 15. Discrepancy Audit Ledger
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS discrepancy_audit_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_timestamp TEXT,
+            file_name TEXT,
+            agency_no TEXT,
+            dr_code TEXT,
+            fg_code TEXT,
+            input_qty REAL,
+            generated_qty REAL,
+            difference REAL,
+            logged_at TEXT
+        )
+    """)
+
+    # 16. System Audit History Logs
     cur.execute("""
         CREATE TABLE IF NOT EXISTS history_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -440,7 +456,8 @@ def init_all_enterprise_databases():
         default_fleet = [
             ('PB-10-AZ-1122', '10 Wheeler Truck', 400, 20.0, 'National Logistics', 'Gurpreet Singh', '9876543210', 'Available'),
             ('PB-08-BX-4455', '12 Wheeler Multi-Axle', 600, 30.0, 'Speedway Cargo', 'Baljit Sharma', '9812345678', 'Available'),
-            ('PB-29-CD-9900', 'Canter / Eicher', 200, 10.0, 'Punjab Roadlines', 'Ramesh Kumar', '9823456789', 'Available')
+            ('PB-29-CD-9900', 'Canter / Eicher', 200, 10.0, 'Punjab Roadlines', 'Ramesh Kumar', '9823456789', 'Available'),
+            ('PB-11-GH-3321', '14 Wheeler Heavy', 800, 40.0, 'Apex Transporters', 'Jarnail Singh', '9834567890', 'Available')
         ]
         cur.executemany("""
             INSERT INTO fleet_master (vehicle_no, vehicle_type, capacity_bags, capacity_mt, transporter_name, driver_name, driver_phone, status)
@@ -452,7 +469,8 @@ def init_all_enterprise_databases():
     if cur.fetchone()[0] == 0:
         default_bays = [
             ('BAY-01', 'Moga Plant Main Gate', 'Open'),
-            ('BAY-02', 'Moga Storage Silo Bay 2', 'Open')
+            ('BAY-02', 'Moga Storage Silo Bay 2', 'Open'),
+            ('BAY-03', 'Moga Express Bulk Bay 3', 'Open')
         ]
         cur.executemany("INSERT INTO loading_bays (bay_no, bay_name, status) VALUES (?, ?, ?)", default_bays)
 
@@ -612,6 +630,11 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
 
     if uploaded_files and st.button("🚀 Process Batch Orders & Ingest to Pending Database", type="primary"):
         st.session_state.processed_files = []
+        st.session_state.comparison_summary = []
+        st.session_state.skipped_rows_log = []
+        st.session_state.anomaly_logs = []
+        st.session_state.unmapped_current_batch = []
+
         total_in_qty = 0.0
         total_gen_qty = 0.0
         total_valid = 0
@@ -735,6 +758,9 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                 agency_str = str(agency_raw).replace(".0", "").strip()
                 if not agency_str.isdigit() or not (1 <= len(agency_str) <= 6):
                     total_skipped += 1
+                    st.session_state.skipped_rows_log.append({
+                        "File Name": short_fname, "Row": r + 1, "Agency": str(agency_raw), "Reason": "Non-numeric agency"
+                    })
                     continue
 
                 agency_val = int(agency_str)
@@ -755,6 +781,9 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                     else:
                         clean_dr = f"NEW_CUST_{agency_val}"
                         unmapped_records_to_insert.append((short_fname, resolved_route, str(agency_val), clean_dr, batch_ts))
+                        st.session_state.unmapped_current_batch.append({
+                            "File Name": short_fname, "Route": resolved_route, "Agency": agency_val, "Fallback DR": clean_dr
+                        })
 
                 is_valid_dr = clean_dr.upper().startswith("DR")
                 if is_valid_dr:
@@ -797,10 +826,18 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                                 target_ws.cell(row=curr_r, column=2, value=order_id_to_write)
                                 target_ws.cell(row=curr_r, column=3, value="OR")
                                 target_ws.cell(row=curr_r, column=4, value="SO20")
+                                target_ws.cell(row=curr_r, column=5, value=10)
+                                target_ws.cell(row=curr_r, column=6, value=20)
                                 target_ws.cell(row=curr_r, column=7, value=clean_dr)
+                                target_ws.cell(row=curr_r, column=8, value=clean_dr)
                                 target_ws.cell(row=curr_r, column=9, value=ref_code)
+                                target_ws.cell(row=curr_r, column=10, value=today_date)
+                                target_ws.cell(row=curr_r, column=11, value=today_date)
+                                target_ws.cell(row=curr_r, column=15, value=item_seq_id)
                                 target_ws.cell(row=curr_r, column=16, value=current_fg)
                                 target_ws.cell(row=curr_r, column=19, value=f_qty)
+                                target_ws.cell(row=curr_r, column=20, value="Bag")
+                                target_ws.cell(row=curr_r, column=22, value=2100)
                                 target_ws.cell(row=curr_r, column=26, value=resolved_route)
                                 target_ws.cell(row=curr_r, column=27, value=agency_val)
 
@@ -856,7 +893,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
         conn.close()
 
         st.session_state.kpi_data = {"input_qty": total_in_qty, "gen_qty": total_gen_qty, "valid_count": total_valid, "missing_count": total_missing, "skipped_count": total_skipped}
-        st.success(f"🎉 Batch processed! Clean Qty: {total_in_qty:,.0f} Bags extracted.")
+        st.success(f"🎉 Batch processed successfully! Clean Qty: {total_in_qty:,.0f} Bags extracted.")
 
     if st.session_state.processed_files:
         st.markdown("---")
@@ -870,7 +907,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
 
 elif main_menu == "🏢 SAP S/4HANA Stock & T-Codes (MMBE/MB52/MD07)":
     st.title("🏢 SAP S/4HANA Enterprise Stock & Inventory Engine (MMBE / MB52 / MD07)")
-    st.markdown("Real-time stock monitoring against pending order demand across plants and storage locations.")
+    st.markdown("Real-time stock monitoring against pending order demand across plants and storage locations with dynamic date range filters.")
 
     conn = get_db_connection()
     df_sap = pd.read_sql("SELECT * FROM sap_stock_master", conn)
