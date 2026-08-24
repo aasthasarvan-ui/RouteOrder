@@ -96,10 +96,8 @@ def init_db():
     cursor.execute("CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, file_name TEXT, route_no TEXT, agency_no TEXT, dr_code TEXT, created_at TEXT, UNIQUE(route_no, agency_no))")
     cursor.execute("CREATE TABLE IF NOT EXISTS input_output_traceability (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_timestamp TEXT, input_file_name TEXT, input_file_blob BLOB, total_input_qty REAL, generated_output_file TEXT, output_type TEXT, version_no INTEGER, created_at TEXT)")
     cursor.execute("CREATE TABLE IF NOT EXISTS discrepancy_audit_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_timestamp TEXT, file_name TEXT, agency_no TEXT, dr_code TEXT, fg_code TEXT, input_qty REAL, generated_qty REAL, difference REAL, logged_at TEXT)")
-    cursor.execute("CREATE TABLE IF NOT EXISTS dispatch_planning_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, dispatch_date TEXT, route_no TEXT, vehicle_no TEXT, driver_mobile TEXT, agency_no TEXT, fg_code TEXT, demand_qty REAL, dispatched_qty REAL, pending_qty REAL, status TEXT, created_at TEXT)")
-    cursor.execute("CREATE TABLE IF NOT EXISTS inventory_stock_table (id INTEGER PRIMARY KEY AUTOINCREMENT, fg_code TEXT UNIQUE, available_qty REAL, updated_at TEXT)")
     
- # Safe Column Migrations & Table Initialization
+    # Safe Table Initialization with Unique Constraint to prevent duplication
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS dispatch_planning_ledger (
@@ -121,6 +119,16 @@ def init_db():
     except Exception:
         pass
         
+    cursor.execute("CREATE TABLE IF NOT EXISTS inventory_stock_table (id INTEGER PRIMARY KEY AUTOINCREMENT, fg_code TEXT UNIQUE, available_qty REAL, updated_at TEXT)")
+    
+    try:
+        cursor.execute("PRAGMA table_info(unique_routes_master)")
+        columns_master = [col[1] for col in cursor.fetchall()]
+        if "file_name" not in columns_master:
+            cursor.execute("ALTER TABLE unique_routes_master ADD COLUMN file_name TEXT")
+    except Exception:
+        pass
+
     try:
         cursor.execute("PRAGMA table_info(dispatch_planning_ledger)")
         columns_dispatch = [col[1] for col in cursor.fetchall()]
@@ -787,7 +795,7 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, traceability_records)
 
-               if discrepancy_records:
+                if discrepancy_records:
                     cursor.executemany("""
                         INSERT INTO discrepancy_audit_ledger (batch_timestamp, file_name, agency_no, dr_code, fg_code, input_qty, generated_qty, difference, logged_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -932,7 +940,8 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
                 pdf.cell(100, 8, m_desc, border=1)
                 pdf.cell(90, 8, m_val, border=1, ln=True)
                 
-            pdf_bytes = bytes(pdf.output())
+            pdf_output = pdf.output()
+            pdf_bytes = pdf_output if isinstance(pdf_output, bytes) else bytes(pdf_output, 'latin1')
             st.download_button(
                 label="📄 PDF",
                 data=pdf_bytes,
