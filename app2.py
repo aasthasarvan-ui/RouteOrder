@@ -513,7 +513,8 @@ with st.sidebar:
             "🚛 Fleet & Loading Bay Master",
             "🔍 Traceability & Audit Ledgers",
             "📊 Executive KPI & Visual Analytics",
-            "🎯 Universal Date & Multi-Field Filter",     
+            "🎯 Universal Date & Multi-Field Filter",
+            "⚡ Smart Multi-Truck Load Optimizer Pro",     
             "🗄️ In-App Database Builder & Dynamic Linker" # NEW MODULE ADDED
         ]
     )
@@ -2041,3 +2042,175 @@ with st.expander("🎯 Global Universal Date & Multi-Field Filter Engine (All Mo
             st.download_button("📄 Export Filtered CSV", df_filtered.to_csv(index=False).encode('utf-8'), f"{tbl_name}_filtered.csv", "text/csv", key=f"dl_csv_{tbl_name}")
 
     conn_global.close()
+# ==============================================================================
+# MODULE 14: SMART MULTI-TRUCK LOAD OPTIMIZER PRO (APPENDED AT END OF FILE)
+# ==============================================================================
+
+elif main_menu in ["⚡ Smart Multi-Truck Load Optimizer Pro", "Smart Multi-Truck Load Optimizer Pro"]:
+    st.title("⚡ Smart Multi-Vehicle Dispatch Optimizer Pro")
+    st.markdown("Automated **Bin-Packing Algorithm** jo pending route load ko truck capacity ke hisab se exact fit batches (Trip-1, Trip-2...) me auto-split karta hai.")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    df_p_all = pd.read_sql("SELECT * FROM pending_orders WHERE status='Pending'", conn)
+    df_fleet_all = pd.read_sql("SELECT * FROM fleet_master WHERE status='Available'", conn)
+    df_bays_all = pd.read_sql("SELECT * FROM loading_bays WHERE status='Open'", conn)
+
+    if df_p_all.empty:
+        st.info("ℹ️ Koi pending demand nahi mili. Pehle Module 1 me demand files upload karein.")
+    else:
+        # Route Overview Cards
+        route_list = sorted(df_p_all["route_no"].unique().tolist())
+        
+        c_r1, c_r2, c_r3 = st.columns([1, 1, 1])
+        with c_r1:
+            sel_opt_route = st.selectbox("1. Select Route to Auto-Optimize:", route_list, key="opt_route_sel")
+        
+        route_orders = df_p_all[df_p_all["route_no"] == str(sel_opt_route)].copy()
+        tot_route_bags = route_orders["bags_qty"].sum()
+        tot_route_mt = round(tot_route_bags * 0.05, 2)
+        tot_agencies = route_orders["agency_no"].nunique()
+
+        with c_r2:
+            st.metric("Total Route Load", f"{tot_route_bags:,.0f} Bags", f"{tot_route_mt:.2f} MT")
+        with c_r3:
+            st.metric("Agencies in Route", f"{tot_agencies} Dealers")
+
+        st.markdown("---")
+        st.subheader("🚛 2. Select Vehicles for Smart Load Distribution")
+
+        if df_fleet_all.empty:
+            st.warning("⚠️ Koi 'Available' vehicle nahi mili. Fleet Master me status check karein.")
+        else:
+            avail_truck_choices = [
+                f"{r['vehicle_no']} | {r['vehicle_type']} (Max: {r['capacity_bags']} Bags)" 
+                for _, r in df_fleet_all.iterrows()
+            ]
+            
+            sel_trucks_multi = st.multiselect(
+                "Assign Available Trucks for this Route:",
+                avail_truck_choices,
+                default=avail_truck_choices[:min(3, len(avail_truck_choices))],
+                key="opt_trucks_multi"
+            )
+
+            # Auto Bin Packing Allocation Engine
+            if sel_trucks_multi and st.button("🤖 Run Auto-Load Balancing & Pack Trucks", type="primary"):
+                # Agency wise aggregated demand
+                agency_grp = route_orders.groupby(["agency_no", "dr_code"]).agg({
+                    "bags_qty": "sum"
+                }).reset_index().sort_values(by="bags_qty", ascending=False)
+
+                trucks_pool = []
+                for t_str in sel_trucks_multi:
+                    v_num = t_str.split(" | ")[0]
+                    v_row = df_fleet_all[df_fleet_all["vehicle_no"] == v_num].iloc[0]
+                    trucks_pool.append({
+                        "vehicle_no": v_num,
+                        "vehicle_type": v_row["vehicle_type"],
+                        "transporter_name": v_row["transporter_name"],
+                        "driver_name": v_row["driver_name"],
+                        "driver_phone": v_row["driver_phone"],
+                        "capacity_bags": int(v_row["capacity_bags"]),
+                        "allocated_bags": 0.0,
+                        "allocated_agencies": [],
+                        "items": []
+                    })
+
+                # Greedy Bin-Packing Algorithm
+                unallocated_agencies = []
+                for _, ag_row in agency_grp.iterrows():
+                    ag_no = ag_row["agency_no"]
+                    ag_dr = ag_row["dr_code"]
+                    ag_bags = float(ag_row["bags_qty"])
+
+                    placed = False
+                    for trk in trucks_pool:
+                        if (trk["allocated_bags"] + ag_bags) <= trk["capacity_bags"]:
+                            trk["allocated_bags"] += ag_bags
+                            trk["allocated_agencies"].append(ag_no)
+                            # Get detailed SKU rows
+                            sku_items = route_orders[route_orders["agency_no"] == ag_no].copy()
+                            for _, itm in sku_items.iterrows():
+                                trk["items"].append(itm)
+                            placed = True
+                            break
+                    if not placed:
+                        unallocated_agencies.append(ag_no)
+
+                st.session_state["optimized_plan"] = {
+                    "trucks": trucks_pool,
+                    "unallocated": unallocated_agencies,
+                    "route": sel_opt_route
+                }
+
+            # Render Optimized Trips Plan
+            if "optimized_plan" in st.session_state and st.session_state["optimized_plan"]["route"] == sel_opt_route:
+                plan = st.session_state["optimized_plan"]
+                st.markdown("---")
+                st.subheader("📋 Generated Optimal Trip Manifests")
+
+                trip_tabs = st.tabs([f"🚚 Trip {i+1}: {t['vehicle_no']} ({t['allocated_bags']:,.0f}/{t['capacity_bags']} Bags)" for i, t in enumerate(plan["trucks"])])
+
+                for idx, tab_ui in enumerate(trip_tabs):
+                    trk_info = plan["trucks"][idx]
+                    with tab_ui:
+                        util_pct = (trk_info["allocated_bags"] / trk_info["capacity_bags"] * 100) if trk_info["capacity_bags"] > 0 else 0
+                        
+                        m_c1, m_c2, m_c3 = st.columns(3)
+                        m_c1.metric("Load Assigned", f"{trk_info['allocated_bags']:,.0f} Bags", f"{util_pct:.1f}% Utilization")
+                        m_c2.metric("Total Weight", f"{trk_info['allocated_bags'] * 0.05:.2f} MT")
+                        m_c3.metric("Agencies Covered", f"{len(trk_info['allocated_agencies'])} Dealers")
+
+                        if util_pct > 100:
+                            st.error("🚨 Overloaded!")
+                        elif util_pct >= 85:
+                            st.success("🟢 Perfect Utilization!")
+                        else:
+                            st.warning("🟡 Capacity Under-utilized")
+
+                        if trk_info["items"]:
+                            trip_items_df = pd.DataFrame(trk_info["items"])[["agency_no", "dr_code", "fg_code", "bags_qty", "order_no"]]
+                            st.dataframe(trip_items_df, use_container_width=True)
+
+                            bay_sel = st.selectbox(f"Select Loading Bay for {trk_info['vehicle_no']}:", [f"{r['bay_no']} - {r['bay_name']}" for _, r in df_bays_all.iterrows()], key=f"bay_sel_{idx}")
+
+                            if st.button(f"🚀 Confirm & Discard Load for Trip {idx+1} ({trk_info['vehicle_no']})", key=f"btn_cfm_trip_{idx}"):
+                                now_dt = get_ist_now()
+                                trip_code = f"TRIP-{sel_opt_route}-{now_dt.strftime('%Y%m%d%H%M%S')}-{idx+1}"
+                                bay_id = bay_sel.split(" - ")[0]
+
+                                cur.execute("""
+                                    INSERT INTO trip_loading_slips (trip_id, trip_date, route_no, vehicle_no, transporter_name, driver_name, driver_phone, loading_bay, total_bags, total_weight_mt, capacity_utilization_pct, status, created_at)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Planned', ?)
+                                """, (
+                                    trip_code, now_dt.strftime("%Y-%m-%d"), str(sel_opt_route),
+                                    trk_info["vehicle_no"], trk_info["transporter_name"], trk_info["driver_name"],
+                                    trk_info["driver_phone"], bay_id, trk_info["allocated_bags"],
+                                    round(trk_info["allocated_bags"] * 0.05, 2), round(util_pct, 2),
+                                    now_dt.strftime("%Y-%m-%d %H:%M:%S")
+                                ))
+
+                                # Insert Items and Mark Pending as Assigned
+                                d_seq = 1
+                                for itm_obj in trk_info["items"]:
+                                    cur.execute("""
+                                        INSERT INTO trip_order_items (trip_id, order_no, agency_no, route_no, dr_code, fg_code, allocated_bags, allocated_weight_mt, delivery_seq, status)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Assigned')
+                                    """, (trip_code, itm_obj["order_no"], itm_obj["agency_no"], itm_obj["route_no"], itm_obj["dr_code"], itm_obj["fg_code"], itm_obj["bags_qty"], round(float(itm_obj["bags_qty"])*0.05, 2), d_seq))
+                                    
+                                    cur.execute("UPDATE pending_orders SET status='Assigned' WHERE id=?", (itm_obj["id"],))
+                                    d_seq += 1
+
+                                cur.execute("UPDATE fleet_master SET status='Assigned to Trip' WHERE vehicle_no=?", (trk_info["vehicle_no"],))
+                                conn.commit()
+                                st.success(f"🎉 {trip_code} successfully created!")
+                                del st.session_state["optimized_plan"]
+                                st.rerun()
+
+                if plan["unallocated"]:
+                    st.markdown("---")
+                    st.warning(f"⚠️ **Remaining Unpacked Load:** {len(plan['unallocated'])} Agencies fit nahi ho saki kyunki trucks ki capacity full ho gayi thi. Unko Agle batch ya bade truck me allocate karein.")
+
+    conn.close()
