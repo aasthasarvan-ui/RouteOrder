@@ -513,7 +513,7 @@ with st.sidebar:
             "🚛 Fleet & Loading Bay Master",
             "🔍 Traceability & Audit Ledgers",
             "📊 Executive KPI & Visual Analytics",
-            "🎯 Universal Date & Multi-Field Filter Center",
+            "🎯 Universal Date & Multi-Field Filter",     
             "🗄️ In-App Database Builder & Dynamic Linker" # NEW MODULE ADDED
         ]
     )
