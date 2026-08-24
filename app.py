@@ -14,7 +14,7 @@ from email.message import EmailMessage
 from fpdf import FPDF
 import streamlit.components.v1 as components
 
-# Page Configuration & Styling (Professional SAP ERP Layout with Top Control Panel)
+# Page Configuration & Styling (Professional SAP ERP Layout with Integrated Themes)
 st.set_page_config(
     page_title="Enterprise Sales Order Automation Hub (SAP ERP Edition)", 
     page_icon="💼", 
@@ -22,7 +22,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Theme Dictionary with Fixed High-Contrast Typography & Button Text
+# Integrated Enterprise Themes with Perfect Contrast & Visibility
 THEMES = {
     "💼 SAP Classic Navy": {
         "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
@@ -41,76 +41,6 @@ THEMES = {
         "btn_bg": "#0f172a", "btn_hover": "#1e293b", "btn_text": "#ffffff", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
     }
 }
-
-# Theme Selector in Sidebar (Clean & Minimal)
-st.sidebar.title("🎨 ERP Theme Engine")
-selected_theme_name = st.sidebar.selectbox("Choose Interface Theme", list(THEMES.keys()), label_visibility="collapsed")
-t = THEMES[selected_theme_name]
-
-# Professional CSS Injection with Guaranteed Button Text Visibility
-st.markdown(
-    f"""
-    <style>
-        #GithubIcon {{ visibility: hidden !important; display: none !important; }}
-        .stAppHeader {{ background-color: transparent !important; }}
-        header[data-testid="stHeader"] {{ display: none !important; }}
-        
-        .stApp {{
-            background-color: {t['bg']};
-            color: {t['text']};
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }}
-        
-        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{
-            color: {t['text']} !important;
-        }}
-        
-        input, textarea, select {{
-            background-color: {t['input_bg']} !important;
-            color: {t['input_text']} !important;
-            border: 1px solid {t['border']} !important;
-        }}
-        
-        /* Force Button Text Visibility */
-        .stButton>button {{
-            width: 100%;
-            height: 38px;
-            background-color: {t['btn_bg']} !important;
-            color: {t['btn_text']} !important;
-            font-size: 13px;
-            font-weight: 600;
-            border-radius: 4px;
-            border: 1px solid {t['border']};
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-        }}
-        .stButton>button:hover {{
-            background-color: {t['btn_hover']} !important;
-            color: {t['btn_text']} !important;
-        }}
-        
-        button[kind="primary"] {{
-            background-color: {t['primary']} !important;
-            color: #ffffff !important;
-        }}
-        
-        div[data-testid="stExpander"] {{
-            background-color: {t['card_bg']};
-            border: 1px solid {t['border']};
-            border-radius: 4px;
-        }}
-        
-        div[data-testid="stDataFrame"] {{
-            border: 1px solid {t['border']};
-            border-radius: 4px;
-            background-color: {t['card_bg']};
-        }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
 # IST Timezone Helper via pytz
 IST = pytz.timezone('Asia/Kolkata')
@@ -194,7 +124,7 @@ if not is_healthy:
     st.error(f"❌ **System Integrity Warning:** {health_msg}")
     st.stop()
 
-# --- Session State Defaults for Reset/Clear/Restore ---
+# --- Session State Defaults for Reset/Clear/Restore & Theme ---
 DEFAULTS = {
     "fg_code": "FG500014",
     "col_map": "36:FG500014AJ\n37:FG500014AK",
@@ -204,6 +134,7 @@ DEFAULTS = {
     "email_pass": st.secrets.get("email", {}).get("app_password", ""),
     "recipient": st.secrets.get("email", {}).get("recipient_email", ""),
     "whatsapp": "",
+    "selected_theme": "💼 SAP Classic Navy",
     "processed_files": [],
     "comparison_summary": [],
     "skipped_rows_log": [],
@@ -216,8 +147,81 @@ for key, val in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
-# --- TOP COLLAPSIBLE ERP CONTROL PANEL ---
-with st.expander("⚙️ Enterprise Control Panel & System Settings (Click to Expand)", expanded=False):
+# Fetch active theme from session state
+t = THEMES[st.session_state.selected_theme]
+
+# Professional CSS Injection with Integrated Button Styling
+st.markdown(
+    f"""
+    <style>
+        #GithubIcon {{ visibility: hidden !important; display: none !important; }}
+        .stAppHeader {{ background-color: transparent !important; }}
+        header[data-testid="stHeader"] {{ display: none !important; }}
+        
+        .stApp {{
+            background-color: {t['bg']};
+            color: {t['text']};
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }}
+        
+        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{
+            color: {t['text']} !important;
+        }}
+        
+        input, textarea, select {{
+            background-color: {t['input_bg']} !important;
+            color: {t['input_text']} !important;
+            border: 1px solid {t['border']} !important;
+        }}
+        
+        /* Fully Integrated & Visible Buttons */
+        .stButton>button {{
+            width: 100%;
+            height: 38px;
+            background-color: {t['btn_bg']} !important;
+            color: {t['btn_text']} !important;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 4px;
+            border: 1px solid {t['border']};
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }}
+        .stButton>button:hover {{
+            background-color: {t['btn_hover']} !important;
+            color: {t['btn_text']} !important;
+        }}
+        
+        button[kind="primary"] {{
+            background-color: {t['primary']} !important;
+            color: #ffffff !important;
+        }}
+        
+        div[data-testid="stExpander"] {{
+            background-color: {t['card_bg']};
+            border: 1px solid {t['border']};
+            border-radius: 4px;
+        }}
+        
+        div[data-testid="stDataFrame"] {{
+            border: 1px solid {t['border']};
+            border-radius: 4px;
+            background-color: {t['card_bg']};
+        }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- TOP COLLAPSIBLE ERP CONTROL PANEL & VISIBLE THEME ENGINE ---
+with st.expander("⚙️ Enterprise Control Panel, Theme Engine & System Settings (Click to Expand)", expanded=True):
+    # Theme Selector right inside the top panel so it's never lost!
+    st.subheader("🎨 ERP Theme Engine")
+    st.session_state.selected_theme = st.selectbox("Select Interface Theme", list(THEMES.keys()), index=list(THEMES.keys()).index(st.session_state.selected_theme), label_visibility="collapsed")
+    st.markdown("---")
+
     col_set1, col_set2, col_set3 = st.columns(3)
     
     with col_set1:
@@ -260,7 +264,8 @@ with st.expander("⚙️ Enterprise Control Panel & System Settings (Click to Ex
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 Reset All Settings to Defaults"):
             for k, v in DEFAULTS.items():
-                st.session_state[k] = v
+                if k != "selected_theme":
+                    st.session_state[k] = v
             st.rerun()
 
 # Mapping assignments
