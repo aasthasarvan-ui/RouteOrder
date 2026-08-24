@@ -2046,7 +2046,7 @@ with st.expander("🎯 Global Universal Date & Multi-Field Filter Engine (All Mo
 # MODULE 14: SMART MULTI-TRUCK LOAD OPTIMIZER PRO (APPENDED AT END OF FILE)
 # ==============================================================================
 
-elif main_menu in ["⚡ Smart Multi-Truck Load Optimizer Pro", "Smart Multi-Truck Load Optimizer Pro"]:
+if main_menu in ["⚡ Smart Multi-Truck Load Optimizer Pro", "Smart Multi-Truck Load Optimizer Pro"]:
     st.title("⚡ Smart Multi-Vehicle Dispatch Optimizer Pro")
     st.markdown("Automated **Bin-Packing Algorithm** jo pending route load ko truck capacity ke hisab se exact fit batches (Trip-1, Trip-2...) me auto-split karta hai.")
 
