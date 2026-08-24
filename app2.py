@@ -1,6 +1,6 @@
 # ==============================================================================
 # ENTERPRISE LOGISTICS, DISPATCH ENGINE & SALES AUTOMATION SUITE
-# PRODUCTION-READY UNIFIED MULTI-DATABASE ARCHITECTURE (IST / ASIA-KOLKATA)
+# ENHANCED DISPATCH PLANNER WITH SKU-LEVEL PARTIAL DISPATCH & EXCEL IMPORTERS
 # ==============================================================================
 
 import datetime
@@ -177,7 +177,7 @@ st.markdown(
 )
 
 # ==============================================================================
-# SECTION 4: UNIFIED DATABASE ARCHITECTURE
+# SECTION 4: UNIFIED DATABASE ARCHITECTURE (ALL 14 TABLES)
 # ==============================================================================
 
 def get_db_connection():
@@ -189,6 +189,7 @@ def init_all_enterprise_databases():
     conn = get_db_connection()
     cur = conn.cursor()
 
+    # 1. Route-Agency-DR Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS unique_routes_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,6 +202,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 2. Uploaded Input File Archive
     cur.execute("""
         CREATE TABLE IF NOT EXISTS uploaded_files_archive (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,6 +214,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 3. Pending Orders Database
     cur.execute("""
         CREATE TABLE IF NOT EXISTS pending_orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -229,6 +232,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 4. Transporter Fleet Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS fleet_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -243,6 +247,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 5. Plant Loading Bays Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS loading_bays (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -252,6 +257,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 6. Trip Loading Slips Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS trip_loading_slips (
             trip_id TEXT PRIMARY KEY,
@@ -270,6 +276,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 7. Trip Order Items Manifest Sequence
     cur.execute("""
         CREATE TABLE IF NOT EXISTS trip_order_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -287,6 +294,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 8. Daily Dispatch Sale Register
     cur.execute("""
         CREATE TABLE IF NOT EXISTS daily_dispatch_register (
             register_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -306,6 +314,26 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 9. Partial / Remaining Pending Dispatch Database
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS partial_dispatch_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id TEXT,
+            source_file TEXT,
+            order_no TEXT,
+            route_no TEXT,
+            agency_no TEXT,
+            dr_code TEXT,
+            fg_code TEXT,
+            original_bags REAL,
+            dispatched_bags REAL,
+            remaining_bags REAL,
+            status TEXT DEFAULT 'Partial Pending',
+            created_at TEXT
+        )
+    """)
+
+    # 10. Unmapped Missing DR Fallback Ledger
     cur.execute("""
         CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -318,6 +346,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 11. Generated Output Files Storage Ledger (BLOB Storage)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS output_files_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -328,6 +357,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 12. Traceability Ledger
     cur.execute("""
         CREATE TABLE IF NOT EXISTS input_output_traceability (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -342,6 +372,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 13. Discrepancy Audit Ledger
     cur.execute("""
         CREATE TABLE IF NOT EXISTS discrepancy_audit_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -357,6 +388,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # 14. System Audit History Logs
     cur.execute("""
         CREATE TABLE IF NOT EXISTS history_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -368,6 +400,7 @@ def init_all_enterprise_databases():
         )
     """)
 
+    # Default Fleet Seed
     cur.execute("SELECT COUNT(*) FROM fleet_master")
     if cur.fetchone()[0] == 0:
         default_fleet = [
@@ -381,6 +414,7 @@ def init_all_enterprise_databases():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, default_fleet)
 
+    # Default Bays Seed
     cur.execute("SELECT COUNT(*) FROM loading_bays")
     if cur.fetchone()[0] == 0:
         default_bays = [
@@ -472,6 +506,7 @@ with st.sidebar:
             "🚚 Route Dispatch Trip Planner",
             "📋 Loading Slips & Active Trips",
             "📖 Daily Dispatch Sale Register",
+            "🧩 Partial / Split Dispatch Database",
             "⏳ Pending Orders Ledger",
             "🗄️ File Upload Archive",
             "📋 Master DB & Unmapped Ledger",
@@ -577,7 +612,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
             if short_fname.lower() == "output.xlsx":
                 continue
 
-            # Anti-Duplicate Guard 1: Skip if file was already uploaded and archived
+            # Anti-Duplicate Guard: Skip if file was already uploaded and archived
             cur.execute("SELECT id FROM uploaded_files_archive WHERE file_name=?", (short_fname,))
             if cur.fetchone():
                 st.warning(f"⚠️ '{short_fname}' pehle se process ho chuki hai. Duplicate upload skip kiya gaya.")
@@ -743,7 +778,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                                 if (agency_val, c_idx) in agency_override_dict:
                                     current_fg = agency_override_dict[(agency_val, c_idx)]
 
-                                # Anti-Duplicate Guard 2: Order uniqueness check
+                                # Order uniqueness check
                                 cur.execute("""
                                     SELECT id FROM pending_orders 
                                     WHERE route_no=? AND agency_no=? AND fg_code=? AND status='Pending' AND bags_qty=?
@@ -950,11 +985,12 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
             st.download_button(f"📥 Download {f_itm['name']}", f_itm["data"], f_itm["filename"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_indiv_{idx_f}")
 
 # ==============================================================================
-# MODULE 2: ROUTE DISPATCH TRIP PLANNER (STRICT VEHICLE CAPACITY ENFORCEMENT)
+# MODULE 2: ROUTE DISPATCH TRIP PLANNER (SKU-LEVEL PARTIAL DISPATCH & OVERLOAD CONFIRMATION)
 # ==============================================================================
 
 elif main_menu == "🚚 Route Dispatch Trip Planner":
-    st.title("🚚 Route Dispatch Planning & Intelligent Vehicle Allocation")
+    st.title("🚚 Route Dispatch Planning & Vehicle Allocation")
+    st.markdown("Intelligent vehicle assignment with **SKU-level partial modifications** and **Overload confirmation protocols**.")
 
     conn = get_db_connection()
     df_pending = pd.read_sql("SELECT * FROM pending_orders WHERE status='Pending'", conn)
@@ -983,35 +1019,91 @@ elif main_menu == "🚚 Route Dispatch Trip Planner":
             sel_bay = st.selectbox("3. Assign Loading Bay", [f"{r['bay_no']} - {r['bay_name']}" for _, r in avail_bays.iterrows()])
 
         with col_p2:
-            st.markdown("##### 📋 Filter Agencies to Load in this Trip:")
+            st.markdown("##### 📋 4. Filter Agencies in Route:")
             agencies = route_df["agency_no"].unique().tolist()
-            selected_agencies = st.multiselect("Select Agencies", agencies, default=agencies)
+            selected_agencies = st.multiselect("Select Agencies to allocate:", agencies, default=agencies)
 
-            trip_df = route_df[route_df["agency_no"].isin(selected_agencies)]
-            trip_bags = trip_df["bags_qty"].sum()
-            trip_mt = trip_df["weight_mt"].sum()
+        st.markdown("---")
+        st.subheader("📦 5. Agency & SKU Level Quantity Modification (Include/Exclude/Partial Split):")
+        st.markdown("Har Agency ke specific SKU ko include karein ya quantity modify karein (e.g. 30 ki jagah 20 ya 35 bhej sakte hain). Jo quantity bachegi wo automatically **Partial Dispatch Database** me chali jayegi.")
 
-            cap_bags = 0
-            is_overloaded = False
-            if sel_vehicle != "No Vehicles Available":
-                v_num = sel_vehicle.split(" | ")[0]
-                v_info = avail_fleet[avail_fleet["vehicle_no"] == v_num].iloc[0]
-                cap_bags = int(v_info["capacity_bags"])
-                util_pct = (trip_bags / cap_bags * 100) if cap_bags > 0 else 0.0
-                st.metric("Total Load Allocated", f"{trip_bags:,.0f} / {cap_bags} Bags", f"{util_pct:.1f}% Capacity Utilization")
-                
-                # STRICT OVERLOAD PREVENTION
-                if trip_bags > cap_bags:
-                    is_overloaded = True
-                    st.error(f"🚨 **OVERLOAD ALERT:** Truck capacity exceeded by {trip_bags - cap_bags:,.0f} bags! Plan confirm nahi ho sakta. Kripya agencies kam karein ya badi gadi select karein.")
-                elif util_pct < 70:
-                    st.warning("⚠️ **Low Utilization:** Truck capacity 70% se kam hai.")
+        filtered_route_df = route_df[route_df["agency_no"].isin(selected_agencies)].copy()
+        
+        # Prepare Interactive Editor Table
+        filtered_route_df["Include in Trip"] = True
+        filtered_route_df["Dispatch Bags"] = filtered_route_df["bags_qty"]
+        
+        display_cols = ["id", "Include in Trip", "agency_no", "dr_code", "fg_code", "bags_qty", "Dispatch Bags", "order_no"]
+        
+        edited_orders = st.data_editor(
+            filtered_route_df[display_cols],
+            column_config={
+                "id": st.column_config.NumberColumn("Item ID", disabled=True),
+                "agency_no": st.column_config.TextColumn("Agency", disabled=True),
+                "dr_code": st.column_config.TextColumn("DR Code", disabled=True),
+                "fg_code": st.column_config.TextColumn("FG Code", disabled=True),
+                "bags_qty": st.column_config.NumberColumn("Original Pending Bags", disabled=True),
+                "Include in Trip": st.column_config.CheckboxColumn("Include in Vehicle?"),
+                "Dispatch Bags": st.column_config.NumberColumn("Dispatch Qty (Bags)", min_value=0.0, step=1.0)
+            },
+            hide_index=True,
+            use_container_width=True,
+            key="trip_sku_editor"
+        )
+
+        # Calculate Trip Aggregates
+        active_trip_items = edited_orders[edited_orders["Include in Trip"] == True].copy()
+        trip_bags = active_trip_items["Dispatch Bags"].sum()
+        trip_mt = round(trip_bags * 0.05, 2)
+
+        # Dynamic Color Status Badging
+        partial_agencies = []
+        for ag, group in edited_orders.groupby("agency_no"):
+            orig = group["bags_qty"].sum()
+            disp = group[group["Include in Trip"] == True]["Dispatch Bags"].sum()
+            if disp < orig:
+                partial_agencies.append(str(ag))
+
+        if partial_agencies:
+            st.markdown(f"""
+                <div style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 10px; border-radius: 6px; margin: 10px 0;">
+                    <span style="color: #b45309; font-weight: bold;">⚠️ PARTIAL / SPLIT AGENCIES DETECTED:</span> 
+                    <span style="background: #fde68a; color: #92400e; padding: 2px 8px; border-radius: 4px; font-weight: bold;">
+                        {', '.join(partial_agencies)}
+                    </span> 
+                    <br><small style="color: #78350f;">In agencies ka remaining balance automatically alag Partial Dispatch Database me update ho jayega.</small>
+                </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+        # Overload Handling Logic
+        cap_bags = 0
+        is_overloaded = False
+        if sel_vehicle != "No Vehicles Available":
+            v_num = sel_vehicle.split(" | ")[0]
+            v_info = avail_fleet[avail_fleet["vehicle_no"] == v_num].iloc[0]
+            cap_bags = int(v_info["capacity_bags"])
+            util_pct = (trip_bags / cap_bags * 100) if cap_bags > 0 else 0.0
+            
+            c_met1, c_met2 = st.columns(2)
+            c_met1.metric("Total Dispatch Bags", f"{trip_bags:,.0f} / {cap_bags} Bags", f"{util_pct:.1f}% Capacity Utilization")
+            c_met2.metric("Total Tonnage (MT)", f"{trip_mt:,.2f} MT")
+
+            if trip_bags > cap_bags:
+                is_overloaded = True
+                st.error(f"🚨 **VEHICLE OVERLOAD WARNING:** Truck capacity exceeded by {trip_bags - cap_bags:,.0f} bags ({trip_mt - v_info['capacity_mt']:.2f} MT)!")
+                confirm_overload = st.checkbox("⚠️ Check this box to CONFIRM and OVERRIDE vehicle capacity limits for this trip.")
+            else:
+                confirm_overload = True
+                if util_pct < 70:
+                    st.warning("⚠️ **Low Utilization Warning:** Truck capacity 70% se kam hai.")
                 else:
                     st.success("🟢 **Optimal Load Allocation!**")
 
         st.markdown("---")
-        confirm_disabled = is_overloaded or (sel_vehicle == "No Vehicles Available") or trip_df.empty
-        if st.button("🚀 Confirm Trip & Generate Loading Slip", type="primary", disabled=confirm_disabled):
+        submit_disabled = (sel_vehicle == "No Vehicles Available") or active_trip_items.empty or (is_overloaded and not confirm_overload)
+        
+        if st.button("🚀 Confirm Trip & Generate Loading Slip", type="primary", disabled=submit_disabled):
             cur = conn.cursor()
             now_ist = get_ist_now()
             trip_id = f"TRIP-{sel_route}-{now_ist.strftime('%Y%m%d%H%M%S')}"
@@ -1019,21 +1111,52 @@ elif main_menu == "🚚 Route Dispatch Trip Planner":
             v_info = avail_fleet[avail_fleet["vehicle_no"] == v_num].iloc[0]
             bay_code = sel_bay.split(" - ")[0]
 
+            # 1. Insert Trip Master
             cur.execute("""
                 INSERT INTO trip_loading_slips (trip_id, trip_date, route_no, vehicle_no, transporter_name, driver_name, driver_phone, loading_bay, total_bags, total_weight_mt, capacity_utilization_pct, status, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Planned', ?)
             """, (trip_id, now_ist.strftime("%Y-%m-%d"), str(sel_route), v_num, v_info["transporter_name"], v_info["driver_name"], v_info["driver_phone"], bay_code, trip_bags, trip_mt, round((trip_bags/v_info["capacity_bags"]*100), 2), now_ist.strftime("%Y-%m-%d %H:%M:%S")))
 
-            for seq, (_, r_val) in enumerate(trip_df.iterrows(), 1):
-                cur.execute("""
-                    INSERT INTO trip_order_items (trip_id, order_no, agency_no, route_no, dr_code, fg_code, allocated_bags, allocated_weight_mt, delivery_seq)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (trip_id, r_val["order_no"], r_val["agency_no"], r_val["route_no"], r_val["dr_code"], r_val["fg_code"], r_val["bags_qty"], r_val["weight_mt"], seq))
-                cur.execute("UPDATE pending_orders SET status='Assigned' WHERE id=?", (r_val["id"],))
+            # 2. Process Items & Split Partials
+            seq = 1
+            for _, r_val in edited_orders.iterrows():
+                item_id = r_val["id"]
+                orig_qty = float(r_val["bags_qty"])
+                inc = r_val["Include in Trip"]
+                disp_qty = float(r_val["Dispatch Bags"]) if inc else 0.0
+
+                # Fetch original item details
+                item_row = df_pending[df_pending["id"] == item_id].iloc[0]
+
+                if inc and disp_qty > 0:
+                    cur.execute("""
+                        INSERT INTO trip_order_items (trip_id, order_no, agency_no, route_no, dr_code, fg_code, allocated_bags, allocated_weight_mt, delivery_seq, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Assigned')
+                    """, (trip_id, item_row["order_no"], item_row["agency_no"], item_row["route_no"], item_row["dr_code"], item_row["fg_code"], disp_qty, round(disp_qty*0.05, 2), seq))
+                    seq += 1
+
+                # Handle Partial Remaining Logic
+                rem_qty = orig_qty - disp_qty
+                if rem_qty > 0:
+                    # Update pending order with remaining quantity
+                    cur.execute("UPDATE pending_orders SET bags_qty=?, weight_mt=?, status='Pending' WHERE id=?", (rem_qty, round(rem_qty*0.05, 2), item_id))
+                    # Record in Partial Dispatch Database
+                    cur.execute("""
+                        INSERT INTO partial_dispatch_ledger (trip_id, source_file, order_no, route_no, agency_no, dr_code, fg_code, original_bags, dispatched_bags, remaining_bags, status, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Partial Pending', ?)
+                    """, (trip_id, item_row["source_file"], item_row["order_no"], item_row["route_no"], item_row["agency_no"], item_row["dr_code"], item_row["fg_code"], orig_qty, disp_qty, rem_qty, now_ist.strftime("%Y-%m-%d %H:%M:%S")))
+                elif rem_qty == 0 and inc:
+                    cur.execute("UPDATE pending_orders SET status='Assigned' WHERE id=?", (item_id,))
+                elif rem_qty < 0: # If user modified to more than original
+                    cur.execute("UPDATE pending_orders SET status='Assigned' WHERE id=?", (item_id,))
+                    cur.execute("""
+                        INSERT INTO partial_dispatch_ledger (trip_id, source_file, order_no, route_no, agency_no, dr_code, fg_code, original_bags, dispatched_bags, remaining_bags, status, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Excess Dispatched', ?)
+                    """, (trip_id, item_row["source_file"], item_row["order_no"], item_row["route_no"], item_row["agency_no"], item_row["dr_code"], item_row["fg_code"], orig_qty, disp_qty, 0, now_ist.strftime("%Y-%m-%d %H:%M:%S")))
 
             cur.execute("UPDATE fleet_master SET status='Assigned to Trip' WHERE vehicle_no=?", (v_num,))
             conn.commit()
-            st.success(f"🎉 Trip '{trip_id}' Created Successfully! Vehicle assigned within capacity limits.")
+            st.success(f"🎉 Trip '{trip_id}' Created Successfully! Partials updated in Partial Dispatch Database.")
             st.rerun()
     conn.close()
 
@@ -1104,7 +1227,7 @@ elif main_menu == "📋 Loading Slips & Active Trips":
     conn.close()
 
 # ==============================================================================
-# MODULE 4: DAILY DISPATCH SALE REGISTER (WITH INLINE EDIT & SAVE)
+# MODULE 4: DAILY DISPATCH SALE REGISTER
 # ==============================================================================
 
 elif main_menu == "📖 Daily Dispatch Sale Register":
@@ -1177,7 +1300,62 @@ elif main_menu == "📖 Daily Dispatch Sale Register":
     conn.close()
 
 # ==============================================================================
-# MODULE 5: PENDING ORDERS LEDGER (WITH INLINE EDIT & SAVE)
+# MODULE 5: PARTIAL / SPLIT DISPATCH DATABASE
+# ==============================================================================
+
+elif main_menu == "🧩 Partial / Split Dispatch Database":
+    st.title("🧩 Partial & Split Dispatch Database")
+    st.markdown("Jo orders kisi trip me **partially dispatch** hue hain ya jinka remaining balance bach gaya hai, unka complete historical audit ledger.")
+
+    conn = get_db_connection()
+    df_part = pd.read_sql("SELECT * FROM partial_dispatch_ledger ORDER BY id DESC", conn)
+
+    search_part = st.text_input("🔍 Search Partial Ledger (Trip ID, Agency, Route, FG Code):", "")
+    if search_part:
+        df_part = df_part[df_part.apply(lambda r: r.astype(str).str.contains(search_part, case=False).any(), axis=1)]
+
+    st.markdown("##### ✏️ Cell Editing Partial Table:")
+    edited_part = st.data_editor(df_part, use_container_width=True, num_rows="dynamic", key="editor_part")
+
+    c1, c2, c3 = st.columns([1, 1, 2])
+    with c1:
+        if st.button("💾 Save Partial Changes", type="primary"):
+            conn = get_db_connection()
+            cur = conn.cursor()
+            for _, row in edited_part.iterrows():
+                cur.execute("""
+                    UPDATE partial_dispatch_ledger 
+                    SET trip_id=?, route_no=?, agency_no=?, dr_code=?, fg_code=?, original_bags=?, dispatched_bags=?, remaining_bags=?, status=?
+                    WHERE id=?
+                """, (row['trip_id'], str(row['route_no']), str(row['agency_no']), str(row['dr_code']), str(row['fg_code']), float(row['original_bags']), float(row['dispatched_bags']), float(row['remaining_bags']), str(row['status']), row['id']))
+            conn.commit()
+            conn.close()
+            st.success("✅ Partial ledger changes saved!")
+            st.rerun()
+
+    with c2:
+        if not df_part.empty:
+            st.download_button("📥 Export Partials to Excel", to_excel_download_bytes(df_part, "Partials"), "Partial_Dispatch_Ledger.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    with c3:
+        with st.expander("🗑️ Delete Partial Records"):
+            del_part_ids = st.multiselect("Select Partial IDs to Delete:", df_part["id"].tolist() if not df_part.empty else [])
+            if st.button("Delete Selected Partials"):
+                cur = conn.cursor()
+                cur.executemany("DELETE FROM partial_dispatch_ledger WHERE id=?", [(i,) for i in del_part_ids])
+                conn.commit()
+                st.success("Selected partial records deleted.")
+                st.rerun()
+            if st.button("🔥 Purge Partial Database"):
+                cur = conn.cursor()
+                cur.execute("DELETE FROM partial_dispatch_ledger")
+                cur.execute("DELETE FROM sqlite_sequence WHERE name='partial_dispatch_ledger'")
+                conn.commit()
+                st.success("Partial ledger wiped.")
+                st.rerun()
+    conn.close()
+
+# ==============================================================================
+# MODULE 6: PENDING ORDERS LEDGER
 # ==============================================================================
 
 elif main_menu == "⏳ Pending Orders Ledger":
@@ -1250,7 +1428,7 @@ elif main_menu == "⏳ Pending Orders Ledger":
     conn.close()
 
 # ==============================================================================
-# MODULE 6: FILE UPLOAD ARCHIVE
+# MODULE 7: FILE UPLOAD ARCHIVE
 # ==============================================================================
 
 elif main_menu == "🗄️ File Upload Archive":
@@ -1288,7 +1466,7 @@ elif main_menu == "🗄️ File Upload Archive":
     conn.close()
 
 # ==============================================================================
-# MODULE 7: MASTER DB & UNMAPPED LEDGER (WITH INLINE EDIT & SAVE)
+# MODULE 8: MASTER DB & UNMAPPED LEDGER (WITH BULK EXCEL IMPORTER)
 # ==============================================================================
 
 elif main_menu == "📋 Master DB & Unmapped Ledger":
@@ -1301,6 +1479,33 @@ elif main_menu == "📋 Master DB & Unmapped Ledger":
     t1, t2 = st.tabs(["📋 Unique Master Mapping DB", "🚨 Unmapped Missing DR Ledger"])
 
     with t1:
+        # DATA IMPORT OPTION FOR MASTER ROUTES
+        with st.expander("📥 Import Master Routes via Excel / CSV File"):
+            up_master = st.file_uploader("Upload Master Routes File (Must contain route_no, agency_no, dr_code)", type=["xlsx", "csv"], key="master_file_import")
+            if up_master and st.button("🚀 Process & Import Master File"):
+                try:
+                    if up_master.name.endswith('.csv'):
+                        df_imp = pd.read_csv(up_master)
+                    else:
+                        df_imp = pd.read_excel(up_master)
+                    
+                    df_imp.columns = [str(c).strip().lower().replace(' ', '_') for c in df_imp.columns]
+                    if all(req in df_imp.columns for req in ['route_no', 'agency_no', 'dr_code']):
+                        imp_records = []
+                        now_ts = get_ist_timestamp_full()
+                        for _, row in df_imp.iterrows():
+                            imp_records.append((up_master.name, str(row['route_no']).strip(), str(row['agency_no']).replace('.0','').strip(), str(row['dr_code']).strip(), now_ts))
+                        
+                        cur = conn.cursor()
+                        cur.executemany("INSERT OR REPLACE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at) VALUES (?, ?, ?, ?, ?)", imp_records)
+                        conn.commit()
+                        st.success(f"✅ Successfully imported {len(imp_records)} master records!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Required columns missing! File must have: 'route_no', 'agency_no', 'dr_code'")
+                except Exception as ex:
+                    st.error(f"Import Error: {str(ex)}")
+
         sm = st.text_input("🔍 Search Master Database:", "", key="search_m")
         if sm:
             df_m = df_m[df_m.apply(lambda r: r.astype(str).str.contains(sm, case=False).any(), axis=1)]
@@ -1311,7 +1516,6 @@ elif main_menu == "📋 Master DB & Unmapped Ledger":
         c1, c2, c3 = st.columns([1, 1, 2])
         with c1:
             if st.button("💾 Save Master DB Changes", type="primary"):
-                conn = get_db_connection()
                 cur = conn.cursor()
                 for _, row in edited_m.iterrows():
                     cur.execute("""
@@ -1320,7 +1524,6 @@ elif main_menu == "📋 Master DB & Unmapped Ledger":
                         WHERE id=?
                     """, (str(row['route_no']), str(row['agency_no']), str(row['dr_code']), row['id']))
                 conn.commit()
-                conn.close()
                 st.success("✅ Master DB changes saved!")
                 st.rerun()
         with c2:
@@ -1383,7 +1586,7 @@ elif main_menu == "📋 Master DB & Unmapped Ledger":
     conn.close()
 
 # ==============================================================================
-# MODULE 8: FLEET & LOADING BAY MASTER (WITH INLINE EDIT & SAVE)
+# MODULE 9: FLEET & LOADING BAY MASTER (WITH BULK EXCEL IMPORTER)
 # ==============================================================================
 
 elif main_menu == "🚛 Fleet & Loading Bay Master":
@@ -1396,13 +1599,46 @@ elif main_menu == "🚛 Fleet & Loading Bay Master":
     tab1, tab2 = st.tabs(["🚛 Fleet Master", "🏭 Loading Bays"])
 
     with tab1:
+        # DATA IMPORT OPTION FOR FLEET MASTER
+        with st.expander("📥 Import Vehicle Master List via Excel / CSV File"):
+            up_fleet = st.file_uploader("Upload Fleet Master List (Columns: vehicle_no, vehicle_type, capacity_bags, capacity_mt, transporter_name, driver_name, driver_phone)", type=["xlsx", "csv"], key="fleet_import_file")
+            if up_fleet and st.button("🚀 Process & Import Fleet Master"):
+                try:
+                    if up_fleet.name.endswith('.csv'):
+                        df_fl_imp = pd.read_csv(up_fleet)
+                    else:
+                        df_fl_imp = pd.read_excel(up_fleet)
+                    
+                    df_fl_imp.columns = [str(c).strip().lower().replace(' ', '_') for c in df_fl_imp.columns]
+                    if all(req in df_fl_imp.columns for req in ['vehicle_no', 'capacity_bags']):
+                        cur = conn.cursor()
+                        for _, row in df_fl_imp.iterrows():
+                            v_no = str(row['vehicle_no']).strip()
+                            v_type = str(row.get('vehicle_type', '10 Wheeler Truck')).strip()
+                            cap_b = int(row['capacity_bags'])
+                            cap_m = float(row.get('capacity_mt', cap_b * 0.05))
+                            trans = str(row.get('transporter_name', 'National Logistics')).strip()
+                            driver = str(row.get('driver_name', 'Driver')).strip()
+                            phone = str(row.get('driver_phone', '9876543210')).replace('.0','').strip()
+                            
+                            cur.execute("""
+                                INSERT OR REPLACE INTO fleet_master (vehicle_no, vehicle_type, capacity_bags, capacity_mt, transporter_name, driver_name, driver_phone, status)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, 'Available')
+                            """, (v_no, v_type, cap_b, cap_m, trans, driver, phone))
+                        conn.commit()
+                        st.success(f"✅ Successfully imported {len(df_fl_imp)} vehicles into Fleet Master!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Required columns missing! File must have at least: 'vehicle_no', 'capacity_bags'")
+                except Exception as ex:
+                    st.error(f"Fleet Import Error: {str(ex)}")
+
         st.markdown("##### ✏️ Cell Editing Fleet Table (Direct edit karein aur neeche Save button dabayein):")
         edited_f = st.data_editor(df_f, use_container_width=True, num_rows="dynamic", key="editor_fleet")
 
         c1, c2, c3 = st.columns([1, 1, 2])
         with c1:
             if st.button("💾 Save Fleet Changes", type="primary"):
-                conn = get_db_connection()
                 cur = conn.cursor()
                 for _, row in edited_f.iterrows():
                     cur.execute("""
@@ -1411,7 +1647,6 @@ elif main_menu == "🚛 Fleet & Loading Bay Master":
                         WHERE id=?
                     """, (str(row['vehicle_no']), str(row['vehicle_type']), int(row['capacity_bags']), float(row['capacity_mt']), str(row['transporter_name']), str(row['driver_name']), str(row['driver_phone']), str(row['status']), row['id']))
                 conn.commit()
-                conn.close()
                 st.success("✅ Fleet master changes saved!")
                 st.rerun()
         with c2:
@@ -1425,7 +1660,7 @@ elif main_menu == "🚛 Fleet & Loading Bay Master":
                     conn.commit()
                     st.rerun()
 
-        with st.expander("➕ Add Vehicle"):
+        with st.expander("➕ Add Single Vehicle"):
             v1, v2, v3 = st.columns(3)
             with v1:
                 v_num = st.text_input("Vehicle No (e.g. PB-10-AZ-9988)")
@@ -1451,7 +1686,6 @@ elif main_menu == "🚛 Fleet & Loading Bay Master":
         c1, c2, c3 = st.columns([1, 1, 2])
         with c1:
             if st.button("💾 Save Bays Changes", type="primary"):
-                conn = get_db_connection()
                 cur = conn.cursor()
                 for _, row in edited_b.iterrows():
                     cur.execute("""
@@ -1460,7 +1694,6 @@ elif main_menu == "🚛 Fleet & Loading Bay Master":
                         WHERE id=?
                     """, (str(row['bay_no']), str(row['bay_name']), str(row['status']), row['id']))
                 conn.commit()
-                conn.close()
                 st.success("✅ Loading bays changes saved!")
                 st.rerun()
         with c2:
@@ -1487,7 +1720,7 @@ elif main_menu == "🚛 Fleet & Loading Bay Master":
     conn.close()
 
 # ==============================================================================
-# MODULE 9: TRACEABILITY & AUDIT LEDGERS
+# MODULE 10: TRACEABILITY & AUDIT LEDGERS
 # ==============================================================================
 
 elif main_menu == "🔍 Traceability & Audit Ledgers":
@@ -1531,7 +1764,7 @@ elif main_menu == "🔍 Traceability & Audit Ledgers":
     conn.close()
 
 # ==============================================================================
-# MODULE 10: EXECUTIVE KPI & VISUAL ANALYTICS
+# MODULE 11: EXECUTIVE KPI & VISUAL ANALYTICS
 # ==============================================================================
 
 elif main_menu == "📊 Executive KPI & Visual Analytics":
@@ -1541,6 +1774,7 @@ elif main_menu == "📊 Executive KPI & Visual Analytics":
     df_trips = pd.read_sql("SELECT * FROM trip_loading_slips", conn)
     df_pending = pd.read_sql("SELECT * FROM pending_orders", conn)
     df_reg = pd.read_sql("SELECT * FROM daily_dispatch_register", conn)
+    df_part = pd.read_sql("SELECT * FROM partial_dispatch_ledger", conn)
     conn.close()
 
     col_k1, col_k2, col_k3, col_k4 = st.columns(4)
@@ -1552,7 +1786,7 @@ elif main_menu == "📊 Executive KPI & Visual Analytics":
     col_k1.metric("Total Trips Planned", tot_trips)
     col_k2.metric("Dispatched Bags", f"{tot_dispatched_bags:,.0f}")
     col_k3.metric("Avg Fleet Utilization", f"{avg_util:.1f}%")
-    col_k4.metric("Pending Orders Load", f"{active_pending_bags:,.0f} Bags")
+    col_k4.metric("Active Pending Load", f"{active_pending_bags:,.0f} Bags")
 
     st.markdown("---")
     c_ch1, c_ch2 = st.columns(2)
@@ -1563,8 +1797,8 @@ elif main_menu == "📊 Executive KPI & Visual Analytics":
         else:
             st.info("No dispatched register records.")
     with c_ch2:
-        st.markdown("##### 📦 Transporter-wise Dispatched Volume (Bags)")
-        if not df_reg.empty:
-            st.bar_chart(df_reg.groupby("transporter_name")["dispatched_bags"].sum())
+        st.markdown("##### 🧩 Partial / Split Orders Breakdown")
+        if not df_part.empty:
+            st.bar_chart(df_part.groupby("agency_no")["remaining_bags"].sum())
         else:
-            st.info("No transporter volume data.")
+            st.info("No partial orders recorded yet.")
