@@ -488,10 +488,12 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
 
                     valid_cols = []
                     for c in range(fg_col, total_col):
-                        fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
-                        if any(kw in fg_code.upper() for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
+                        cell_fg_header = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
+                        if any(kw in cell_fg_header.upper() for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
                             break
-                        valid_cols.append((c, fg_code))
+                        # Use exact header if it looks like a valid product code, otherwise fallback mapping
+                        resolved_fg = cell_fg_header if (cell_fg_header != "" and cell_fg_header.upper() != "NAN") else direct_col_mapping.get(c, default_fg_code)
+                        valid_cols.append((c, resolved_fg))
 
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
                     ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
@@ -532,7 +534,7 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                         
                         valid_row_quantities = []
                         row_total_qty = 0
-                        for c, fg_code in valid_cols:
+                        for c, header_fg in valid_cols:
                             if c >= total_col:
                                 continue
                             sku_qty = df_input.iloc[r, c]
@@ -543,7 +545,8 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                                         row_total_qty += qty_val
                                         file_input_qty += qty_val
                                         
-                                        current_fg_code = agency_col_override_map.get((agency_val, c), direct_col_mapping.get(c, default_fg_code))
+                                        # Correct hierarchy: Agency Override > Excel Header / Direct Col Mapping > Default Fallback
+                                        current_fg_code = agency_col_override_map.get((agency_val, c), header_fg if header_fg else direct_col_mapping.get(c, default_fg_code))
                                         avail_stock = stock_inventory_dict.get(current_fg_code, 99999.0)
                                         
                                         if avail_stock >= qty_val:
@@ -747,7 +750,6 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                 # --- Consolidate / Aggregate Split Records for Same Agency & Product ---
                 agency_product_agg = {}
                 for rec in raw_dispatch_records:
-                    # rec format: (dispatch_date, route_no, vehicle_no, driver_mobile, agency_no, fg_code, demand_qty, dispatched_qty, pending_qty, status, created_at)
                     d_date, r_no, v_no, d_mob, ag_no, fgc, d_dem, d_disp, d_pend, stat, c_at = rec
                     key = (d_date, r_no, v_no, d_mob, ag_no, fgc)
                     if key not in agency_product_agg:
