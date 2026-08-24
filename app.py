@@ -928,7 +928,7 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- ALL THREE DATABASES MANAGEMENT PANEL (CHECKBOXES REMOVED FOR DIRECT DELETION) ---
+# --- ALL THREE DATABASES MANAGEMENT PANEL (CHECKBOXES REMOVED) ---
 st.markdown("---")
 with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs) & Upload DR Codes"):
     st.markdown("Yahan aap teeno databases ke records dekh sakte hain, manual/bulk DR code upload kar sakte hain, aur record delete karne par ID auto-reset kar sakte hain.")
