@@ -1300,3 +1300,4 @@ with st.expander("🕒 View Historical Trend Analysis (SQLite Database - IST)"):
             st.info("No historical logs available yet.")
     except Exception as e:
         st.error(f"Error loading history: {str(e)}")
+
