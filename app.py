@@ -65,7 +65,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==========================================
-# 2. DATABASE INTEGRITY & INITIALIZATION
+# 2. DATABASE INTEGRITY & INITIALIZATION (AUTO-MIGRATION ADDED)
 # ==========================================
 def verify_core_integrity():
     try:
@@ -99,10 +99,16 @@ def init_db():
     cursor.execute("CREATE TABLE IF NOT EXISTS dispatch_planning_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, dispatch_date TEXT, route_no TEXT, vehicle_no TEXT, driver_mobile TEXT, agency_no TEXT, fg_code TEXT, demand_qty REAL, dispatched_qty REAL, pending_qty REAL, status TEXT, created_at TEXT)")
     cursor.execute("CREATE TABLE IF NOT EXISTS inventory_stock_table (id INTEGER PRIMARY KEY AUTOINCREMENT, fg_code TEXT UNIQUE, available_qty REAL, updated_at TEXT)")
     
+    # Auto-migration check for existing tables
     cursor.execute("PRAGMA table_info(unique_routes_master)")
-    columns = [col[1] for col in cursor.fetchall()]
-    if "file_name" not in columns:
+    columns_master = [col[1] for col in cursor.fetchall()]
+    if "file_name" not in columns_master:
         cursor.execute("ALTER TABLE unique_routes_master ADD COLUMN file_name TEXT")
+
+    cursor.execute("PRAGMA table_info(dispatch_planning_ledger)")
+    columns_dispatch = [col[1] for col in cursor.fetchall()]
+    if "fg_code" not in columns_dispatch:
+        cursor.execute("ALTER TABLE dispatch_planning_ledger ADD COLUMN fg_code TEXT")
         
     conn.commit()
     conn.close()
@@ -509,8 +515,6 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                             continue
                         
                         agency_str = str(agency).replace('.0','').strip()
-                        
-                        # STRICT FILTER: Skip bottom summary/total rows (e.g., where agency column says TOTAL)
                         if any(kw in agency_str.upper() for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
                             continue
 
