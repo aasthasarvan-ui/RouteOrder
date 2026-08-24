@@ -1088,7 +1088,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
             "🔍 Discrepancy Audit"
         ])
         
-        # --- TAB 1: MASTER DATABASE MANAGEMENT (RESTORED KPI & DELETE/UPLOAD TOOLS) ---
+        # --- TAB 1: MASTER DATABASE MANAGEMENT ---
         with tab_m1:
             if not df_master.empty:
                 st.markdown("#### 📊 Master Database Health & Analytics")
@@ -1100,7 +1100,6 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                 
                 st.markdown("---")
 
-                # Manual & Bulk DR Code Upload Feature
                 with st.expander("📤 Manual Entry / Bulk Upload DR Codes into Master Database"):
                     col_man1, col_man2, col_man3 = st.columns(3)
                     with col_man1:
@@ -1363,19 +1362,69 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
             else:
                 st.info("No output files archived yet.")
 
-        # --- TAB 4: TRACEABILITY MAPPING ---
+        # --- TAB 4: INPUT-OUTPUT TRACEABILITY MANAGEMENT (WITH DELETE & RESET) ---
         with tab_m4:
             st.markdown("#### 🔗 Input File to Output File Traceability & Version History")
             if not df_trace.empty:
                 st.dataframe(df_trace, use_container_width=True)
+                
+                st.markdown("##### 🗑️ Traceability Ledger Deletion & ID Reset Tools")
+                tr_col1, tr_col2 = st.columns(2)
+                with tr_col1:
+                    trace_del_id = st.number_input("Enter Traceability Record ID", min_value=1, step=1, key="trace_del_id")
+                    if st.button("🗑️ Delete Traceability Record & Reset ID"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM input_output_traceability WHERE id = ?", (trace_del_id,))
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='input_output_traceability'")
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Traceability Record ID {trace_del_id} deleted & ID sequence reset!")
+                        st.rerun()
+                with tr_col2:
+                    st.markdown("##### Wipe Traceability Ledger")
+                    if st.button("🚨 Wipe Traceability Ledger & Reset IDs"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM input_output_traceability")
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='input_output_traceability'")
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Traceability Ledger wiped & IDs reset!")
+                        st.rerun()
             else:
                 st.info("No traceability mapping records found yet.")
 
-        # --- TAB 5: DISCREPANCY AUDIT LEDGER ---
+        # --- TAB 5: DISCREPANCY AUDIT LEDGER MANAGEMENT (WITH DELETE & RESET) ---
         with tab_m5:
             st.markdown("#### 🔍 Discrepancy & Variance Audit Ledger")
             if not df_audit.empty:
                 st.dataframe(df_audit, use_container_width=True)
+                
+                st.markdown("##### 🗑️ Discrepancy Ledger Deletion & ID Reset Tools")
+                aud_col1, aud_col2 = st.columns(2)
+                with aud_col1:
+                    audit_del_id = st.number_input("Enter Discrepancy Record ID", min_value=1, step=1, key="audit_del_id")
+                    if st.button("🗑️ Delete Discrepancy Record & Reset ID"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM discrepancy_audit_ledger WHERE id = ?", (audit_del_id,))
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='discrepancy_audit_ledger'")
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Discrepancy Record ID {audit_del_id} deleted & ID sequence reset!")
+                        st.rerun()
+                with aud_col2:
+                    st.markdown("##### Wipe Discrepancy Ledger")
+                    if st.button("🚨 Wipe Discrepancy Ledger & Reset IDs"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM discrepancy_audit_ledger")
+                        cursor.execute("DELETE FROM sqlite_sequence WHERE name='discrepancy_audit_ledger'")
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Discrepancy Ledger wiped & IDs reset!")
+                        st.rerun()
             else:
                 st.success("🟢 No discrepancies or variances logged in current batch cycles!")
 
