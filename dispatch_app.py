@@ -64,28 +64,7 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# --- UNIQUE CHECKPOINT: Core Logic & Integrity Verification Guard ---
-def verify_core_integrity():
-    try:
-        conn = sqlite3.connect("sales_history.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        existing_tables = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        
-        required_tables = [
-            'history_logs', 'unique_routes_master', 'output_files_ledger', 
-            'unmapped_missing_dr_ledger', 'input_output_traceability', 'discrepancy_audit_ledger',
-            'vehicles_master', 'dispatch_plans', 'dispatch_item_mapping'
-        ]
-        for t_name in required_tables:
-            if t_name not in existing_tables:
-                return False, f"Missing critical database table: {t_name}"
-        return True, "All Core Integrity Checkpoints Passed Successfully!"
-    except Exception as e:
-        return False, str(e)
-
-# SQLite Database Initialization with Extended Enterprise Traceability & Dispatch Tables
+# --- SQLite Database Initialization with Extended Logistics & Dispatch Tables ---
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
@@ -156,7 +135,7 @@ def init_db():
             logged_at TEXT
         )
     """)
-    # --- NEW DISPATCH MODULE TABLES ---
+    # --- ENHANCED DISPATCH MODULE TABLES ---
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS vehicles_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -195,21 +174,22 @@ def init_db():
             FOREIGN KEY(dispatch_id) REFERENCES dispatch_plans(dispatch_id)
         )
     """)
-    
-    cursor.execute("PRAGMA table_info(unique_routes_master)")
-    columns = [col[1] for col in cursor.fetchall()]
-    if "file_name" not in columns:
-        cursor.execute("ALTER TABLE unique_routes_master ADD COLUMN file_name TEXT")
-        
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pending_dispatch_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            route_no TEXT,
+            agency_no TEXT,
+            dr_code TEXT,
+            pending_qty REAL,
+            file_name TEXT,
+            status TEXT,
+            created_at TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
 init_db()
-
-is_healthy, health_msg = verify_core_integrity()
-if not is_healthy:
-    st.error(f"❌ **System Integrity Warning:** {health_msg}")
-    st.stop()
 
 # --- Session State Defaults ---
 DEFAULTS = {
@@ -236,7 +216,7 @@ for key, val in DEFAULTS.items():
 
 t = THEMES[st.session_state.selected_theme]
 
-# Professional CSS Injection with Forced High-Contrast Visibility
+# Professional CSS Injection
 st.markdown(
     f"""
     <style>
@@ -249,17 +229,12 @@ st.markdown(
             color: {t['text']};
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }}
-        
-        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{
-            color: {t['text']} !important;
-        }}
-        
+        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{ color: {t['text']} !important; }}
         input, textarea, select {{
             background-color: {t['input_bg']} !important;
             color: {t['input_text']} !important;
             border: 1px solid {t['border']} !important;
         }}
-        
         .stButton>button {{
             width: 100%;
             height: 38px;
@@ -269,110 +244,35 @@ st.markdown(
             font-weight: 600 !important;
             border-radius: 4px;
             border: 1px solid {t['border']};
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
         }}
-        .stButton>button p {{
-            color: #ffffff !important;
-        }}
-        .stButton>button:hover {{
-            background-color: {t['btn_hover']} !important;
-            color: #ffffff !important;
-        }}
-        .stButton>button:hover p {{
-            color: #ffffff !important;
-        }}
-        
-        button[kind="primary"] {{
-            background-color: {t['primary']} !important;
-            color: #ffffff !important;
-        }}
-        button[kind="primary"] p {{
-            color: #ffffff !important;
-        }}
-        
+        .stButton>button:hover {{ background-color: {t['btn_hover']} !important; }}
         div[data-testid="stExpander"] {{
             background-color: {t['card_bg']};
             border: 1px solid {t['border']};
             border-radius: 4px;
-        }}
-        
-        div[data-testid="stDataFrame"] {{
-            border: 1px solid {t['border']};
-            border-radius: 4px;
-            background-color: {t['card_bg']};
         }}
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# --- TOP COLLAPSIBLE ERP CONTROL PANEL & INSTANT THEME SELECTOR ---
-with st.expander("⚙️ Enterprise Control Panel, Theme Engine & System Settings (Click to Expand)", expanded=True):
-    st.subheader("🎨 Theme Engine (8 Professional Themes)")
-    
+# --- TOP COLLAPSIBLE CONTROL PANEL ---
+with st.expander("⚙️ Enterprise Control Panel & Theme Settings", expanded=False):
     def on_theme_change():
         st.session_state.selected_theme = st.session_state.theme_selectbox
 
-    st.selectbox(
-        "Select Interface Theme", 
-        list(THEMES.keys()), 
-        key="theme_selectbox",
-        index=list(THEMES.keys()).index(st.session_state.selected_theme),
-        on_change=on_theme_change,
-        label_visibility="collapsed"
-    )
-    st.markdown("---")
-
-    col_set1, col_set2, col_set3 = st.columns(3)
+    st.selectbox("Select Interface Theme", list(THEMES.keys()), key="theme_selectbox", index=list(THEMES.keys()).index(st.session_state.selected_theme), on_change=on_theme_change)
     
+    col_set1, col_set2, col_set3 = st.columns(3)
     with col_set1:
-        st.subheader("Default Fallback FG Code")
-        st.session_state.fg_code = st.text_input("FG Code Input", value=st.session_state.fg_code, label_visibility="collapsed")
-        c1, c2 = st.columns(2)
-        if c1.button("Clear FG"): st.session_state.fg_code = ""; st.rerun()
-        if c2.button("Restore FG"): st.session_state.fg_code = DEFAULTS["fg_code"]; st.rerun()
-        
-        st.subheader("Default Route Fallback")
-        st.session_state.route = st.text_input("Route Input", value=st.session_state.route, label_visibility="collapsed")
-        c1, c2 = st.columns(2)
-        if c1.button("Clear Route"): st.session_state.route = ""; st.rerun()
-        if c2.button("Restore Route"): st.session_state.route = DEFAULTS["route"]; st.rerun()
-
+        st.session_state.fg_code = st.text_input("Default Fallback FG Code", value=st.session_state.fg_code)
+        st.session_state.route = st.text_input("Default Route Fallback", value=st.session_state.route)
     with col_set2:
-        st.subheader("Direct Column Index Mapping")
-        st.session_state.col_map = st.text_area("Col Map Input", value=st.session_state.col_map, label_visibility="collapsed", help="ColIndex:Code", height=100)
-        c1, c2 = st.columns(2)
-        if c1.button("Clear Map"): st.session_state.col_map = ""; st.rerun()
-        if c2.button("Restore Map"): st.session_state.col_map = DEFAULTS["col_map"]; st.rerun()
-
+        st.session_state.col_map = st.text_area("Direct Column Mapping", value=st.session_state.col_map, height=80)
     with col_set3:
-        st.subheader("Agency & Column-wise FG Override")
-        st.session_state.agency_override = st.text_area("Agency Override Input", value=st.session_state.agency_override, label_visibility="collapsed", help="Agency:ColIndex:CustomFG", height=100)
-        c1, c2 = st.columns(2)
-        if c1.button("Clear Override"): st.session_state.agency_override = ""; st.rerun()
-        if c2.button("Restore Override"): st.session_state.agency_override = DEFAULTS["agency_override"]; st.rerun()
+        st.session_state.agency_override = st.text_area("Agency FG Override", value=st.session_state.agency_override, height=80)
 
-    st.markdown("---")
-    col_set4, col_set5 = st.columns(2)
-    with col_set4:
-        st.subheader("📧 Email Dispatch Settings")
-        st.session_state.email_user = st.text_input("Sender Email ID", value=st.session_state.email_user)
-        st.session_state.email_pass = st.text_input("Email App Password", type="password", value=st.session_state.email_pass)
-        st.session_state.recipient = st.text_input("Recipient Email", value=st.session_state.recipient)
-    with col_set5:
-        st.subheader("📱 WhatsApp Notification")
-        st.session_state.whatsapp = st.text_input("WhatsApp Number (e.g., 919876543210)", value=st.session_state.whatsapp)
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 Reset All Settings to Defaults"):
-            for k, v in DEFAULTS.items():
-                if k != "selected_theme":
-                    st.session_state[k] = v
-            st.rerun()
-
-# Mapping assignments
+# Parsing Config
 default_fg_code = st.session_state.fg_code
 col_mapping_input = st.session_state.col_map
 agency_fg_override = st.session_state.agency_override
@@ -386,45 +286,20 @@ direct_col_mapping = {}
 for line in col_mapping_input.split('\n'):
     if ':' in line:
         parts = line.split(':')
-        idx_str = parts[0].strip()
-        if idx_str.isdigit():
-            direct_col_mapping[int(idx_str)] = parts[1].strip()
+        if parts[0].strip().isdigit():
+            direct_col_mapping[int(parts[0].strip())] = parts[1].strip()
 
 agency_col_override_map = {}
 for line in agency_fg_override.split('\n'):
     parts = line.split(':')
-    if len(parts) == 3:
-        ag, col_idx, fg = parts[0].strip(), parts[1].strip(), parts[2].strip()
-        if ag.isdigit() and col_idx.isdigit():
-            agency_col_override_map[(int(ag), int(col_idx))] = fg
+    if len(parts) == 3 and parts[0].strip().isdigit() and parts[1].strip().isdigit():
+        agency_col_override_map[(int(parts[0].strip()), int(parts[1].strip()))] = parts[2].strip()
 
 st.title(f"💼 Enterprise Sales Order & Dispatch Hub ({st.session_state.selected_theme})")
-st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs, plan vehicle dispatches, and archive outputs.")
+st.markdown("Upload inbound demand spreadsheets, execute capacity-optimized dispatches, and audit demand vs actual fulfillment.")
 st.markdown("---")
 
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
-
-# --- Pre-flight File Health Check ---
-if uploaded_inputs:
-    with st.expander("🔍 Pre-flight File Health Check Report", expanded=False):
-        preflight_logs = []
-        for uploaded_file in uploaded_inputs:
-            short_filename = uploaded_file.name
-            if short_filename.lower() == "output.xlsx":
-                continue
-            try:
-                df_prev = pd.read_excel(io.BytesIO(uploaded_file.getvalue()), header=None)
-                fg_found = any("FG" in str(df_prev.iloc[r, c]).strip().upper() for r in range(df_prev.shape[0]) for c in range(df_prev.shape[1]))
-                if fg_found:
-                    preflight_logs.append({"File Name": short_filename, "Health Status": "🟢 Healthy", "Details": "FG Header detected successfully"})
-                else:
-                    preflight_logs.append({"File Name": short_filename, "Health Status": "🔴 Warning", "Details": "'FG' header missing"})
-            except Exception as e:
-                preflight_logs.append({"File Name": short_filename, "Health Status": "❌ Corrupt", "Details": str(e)})
-        if preflight_logs:
-            st.dataframe(pd.DataFrame(preflight_logs), use_container_width=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
 
 if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
     if uploaded_inputs:
@@ -445,14 +320,15 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
         output_files_to_store = []
         traceability_records = []
         discrepancy_records = []
+        pending_queue_inserts = []
         
-        with st.spinner("⚡ Reading files, auto-looking up missing DRs, logging valid unmapped entries... Please wait."):
+        with st.spinner("⚡ Processing batch demand files & generating structured outputs..."):
             try:
                 try:
                     with open("Output.xlsx", "rb") as f:
                         template_bytes = f.read()
                 except FileNotFoundError:
-                    st.error("❌ 'Output.xlsx' template file repository mein nahi mili. Kripya template file ko GitHub repo ke main folder mein upload karein.")
+                    st.error("❌ 'Output.xlsx' template file missing in root repository.")
                     st.stop()
                 
                 ist_now = get_ist_now()
@@ -468,113 +344,56 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     file_bytes = uploaded_file.getvalue()
                     df_input = pd.read_excel(io.BytesIO(file_bytes), header=None)
 
-                    # 1. Find FG Row & Col
                     fg_row, fg_col = -1, -1
                     for r in range(df_input.shape[0]):
                         for c in range(df_input.shape[1]):
-                            val = str(df_input.iloc[r, c]).strip().upper()
-                            if "FG" in val:
+                            if "FG" in str(df_input.iloc[r, c]).strip().upper():
                                 fg_row, fg_col = r, c
                                 break
                         if fg_row != -1:
                             break
 
                     if fg_row == -1:
-                        st.warning(f"⚠️ '{short_filename}' mein 'FG' header nahi mila. File skip ho rahi hai.")
                         continue
 
-                    # 2. Strict Total/Sum Column Detection
                     total_col = df_input.shape[1]
                     for cSearch in range(fg_col, df_input.shape[1]):
                         is_total = False
                         for scan_r in range(max(0, fg_row - 10), min(fg_row + 3, df_input.shape[0])):
-                            cell_val = str(df_input.iloc[scan_r, cSearch]).strip().upper()
-                            if any(kw in cell_val for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
-                                is_total = True
-                                break
-                            if scan_r >= fg_row + 1 and ("SUM" in cell_val or "=" in cell_val):
+                            if any(kw in str(df_input.iloc[scan_r, cSearch]).strip().upper() for kw in ["TOTAL", "SUM", "TOT", "TTL", "NET"]):
                                 is_total = True
                                 break
                         if is_total:
                             total_col = cSearch
                             break
 
-                    # 3. Route Number Finding Logic
                     route_num = default_fallback_route if default_fallback_route != "" else "22"
-                    ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
-                    
                     for r in range(fg_row):
                         for c in range(min(total_col, 30)):
                             cell_val = str(df_input.iloc[r, c]).strip()
-                            upper_val = cell_val.upper()
-                            if upper_val in ignore_list:
-                                continue
-                            is_product_code = any(upper_val.startswith(p) for p in ["PC", "MS", "M", "GM", "DP", "SKU", "FG"])
-                            if is_product_code:
-                                continue
-                            if cell_val != "" and 1 <= len(cell_val) <= 3:
-                                if any(char.isdigit() for char in cell_val):
-                                    route_num = cell_val
-                                    break
-                        if route_num != (default_fallback_route if default_fallback_route != "" else "22"):
-                            break
+                            if cell_val != "" and 1 <= len(cell_val) <= 3 and any(ch.isdigit() for ch in cell_val):
+                                route_num = cell_val
+                                break
 
-                    if default_fallback_route != "" and default_fallback_route != "22":
-                        route_num = default_fallback_route
-
-                    safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
-
-                    # 4. Smart Agency Detection
-                    agency_col = -1
-                    for cSearch in range(fg_col - 1, -1, -1):
-                        valid_count = 0
-                        for rCheck in range(fg_row + 1, min(fg_row + 15, df_input.shape[0])):
-                            v = df_input.iloc[rCheck, cSearch]
-                            if pd.notna(v):
-                                s_val = str(v).replace('.0', '').strip()
-                                if s_val.isdigit() and 1 <= len(s_val) <= 5:
-                                    valid_count += 1
-                        if valid_count >= 3:
-                            agency_col = cSearch
-                            break
-
-                    if agency_col == -1 and fg_col > 0:
-                        agency_col = fg_col - 1
-
-                    # 4.1 Strict DR Code Column Detection
+                    agency_col = fg_col - 1 if fg_col > 0 else 0
                     dr_code_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
-                        sample_val = str(df_input.iloc[fg_row + 1, cSearch] if fg_row + 1 < df_input.shape[0] else "").strip().upper()
-                        if re.match(r'^DR\d+', sample_val):
-                            dr_code_col = cSearch
-                            break
-                        matched_count = 0
-                        for offset in range(1, min(4, df_input.shape[0] - fg_row)):
-                            v = str(df_input.iloc[fg_row + offset, cSearch]).strip().upper()
-                            if re.match(r'^DR\d+', v):
-                                matched_count += 1
-                        if matched_count > 0:
+                        if any(re.match(r'^DR\d+', str(df_input.iloc[fg_row + offset, cSearch]).strip().upper()) for offset in range(1, min(4, df_input.shape[0] - fg_row))):
                             dr_code_col = cSearch
                             break
 
-                    # 5. Pure Valid FG Columns Collection
                     valid_cols = []
                     for c in range(fg_col, total_col):
-                        fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
-                        if any(kw in fg_code.upper() for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
+                        fg_code = str(df_input.iloc[fg_row, c]).strip()
+                        if any(kw in fg_code.upper() for kw in ["TOTAL", "SUM", "TOT", "TTL"]):
                             break
                         valid_cols.append((c, fg_code))
 
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
                     ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
 
-                    wb_missing = openpyxl.load_workbook(io.BytesIO(template_bytes))
-                    ws_missing = wb_missing["Order Data"] if "Order Data" in wb_missing.sheetnames else wb_missing.active
-
-                    valid_row, missing_row = 6, 6
-                    valid_order_num, missing_order_num = 1, 1
-                    agency_counts_valid, agency_counts_missing = {}, {}
-                    valid_items_created, missing_items_created = 0, 0
+                    valid_row, valid_order_num = 6, 1
+                    agency_counts_valid = {}
                     file_comparison_rows = []
                     file_input_qty = 0
 
@@ -584,24 +403,14 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             continue
                         
                         agency_str = str(agency).replace('.0','').strip()
-                        if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
-                            st.session_state.skipped_rows_log.append({
-                                "File Name": short_filename,
-                                "Row Index": r + 1,
-                                "Agency Value": str(agency),
-                                "Reason": "Invalid or Non-numeric Agency Number"
-                            })
-                            total_skipped_rows += 1
+                        if not agency_str.isdigit():
                             continue
-
                         agency_val = int(agency_str)
                         
                         row_has_items = False
                         valid_row_quantities = []
                         row_total_qty = 0
                         for c, fg_code in valid_cols:
-                            if c >= total_col:
-                                continue
                             sku_qty = df_input.iloc[r, c]
                             if pd.notna(sku_qty) and str(sku_qty).strip() != "":
                                 try:
@@ -615,744 +424,334 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                     pass
 
                         if not row_has_items:
-                            st.session_state.skipped_rows_log.append({
-                                "File Name": short_filename,
-                                "Row Index": r + 1,
-                                "Agency Value": agency_val,
-                                "Reason": "Skipped: Zero or Blank Quantities across all SKUs"
-                            })
-                            total_skipped_rows += 1
                             continue
 
-                        # DR Code Detection
-                        has_dr_code = False
-                        clean_dr = ""
-                        if dr_code_col >= 0 and dr_code_col < df_input.shape[1]:
+                        has_dr_code, clean_dr = False, ""
+                        if dr_code_col >= 0:
                             raw_dr = df_input.iloc[r, dr_code_col]
-                            if pd.notna(raw_dr):
-                                val_str = str(raw_dr).replace('.0', '').strip()
-                                if "DR" in val_str.upper() and val_str.upper() != "0":
-                                    has_dr_code = True
-                                    clean_dr = val_str
+                            if pd.notna(raw_dr) and "DR" in str(raw_dr).upper():
+                                has_dr_code, clean_dr = True, str(raw_dr).replace('.0','').strip()
 
-                        if not has_dr_code:
-                            for c_scan in range(fg_col):
-                                cell_val = df_input.iloc[r, c_scan]
-                                if pd.notna(cell_val):
-                                    val_str = str(cell_val).replace('.0', '').strip()
-                                    if "DR" in val_str.upper() and val_str.upper() != "0":
-                                        has_dr_code = True
-                                        clean_dr = val_str
-                                        break
-
-                       # --- AUTO-LOOKUP MISSING DR FROM DATABASE MASTER ---
                         if not has_dr_code:
                             conn_lookup = sqlite3.connect("sales_history.db")
                             cursor_lookup = conn_lookup.cursor()
-                            cursor_lookup.execute("""
-                                SELECT dr_code FROM unique_routes_master 
-                                WHERE route_no = ? AND agency_no = ? AND dr_code LIKE 'DR%' 
-                                LIMIT 1
-                            """, (str(route_num), str(agency_val)))
+                            cursor_lookup.execute("SELECT dr_code FROM unique_routes_master WHERE route_no = ? AND agency_no = ? LIMIT 1", (str(route_num), str(agency_val)))
                             db_match = cursor_lookup.fetchone()
                             conn_lookup.close()
-                            
                             if db_match:
-                                has_dr_code = True
-                                clean_dr = db_match[0]
-
-                        if not has_dr_code:
-                            unmapped_record = (short_filename, str(route_num), str(agency_val), f"NEW_CUST_{agency_val}", ist_now.strftime("%Y-%m-%d %H:%M:%S"))
-                            if unmapped_record not in unmapped_records_to_insert:
-                                unmapped_records_to_insert.append(unmapped_record)
-                            
-                            current_unmapped_dict = {
-                                "File Name": short_filename,
-                                "Route": str(route_num),
-                                "Agency": agency_val,
-                                "Status": "Generated via NEW_CUST (Missing DR in File and Master DB)"
-                            }
-                            if current_unmapped_dict not in st.session_state.unmapped_current_batch:
-                                st.session_state.unmapped_current_batch.append(current_unmapped_dict)
+                                has_dr_code, clean_dr = True, db_match[0]
 
                         final_dr = clean_dr if has_dr_code else f"NEW_CUST_{agency_val}"
-                        
-                        if has_dr_code and clean_dr.upper().startswith("DR"):
-                            db_record = (short_filename, str(route_num), str(agency_val), str(clean_dr).upper(), ist_now.strftime("%Y-%m-%d %H:%M:%S"))
-                            if db_record not in db_records_to_insert:
-                                db_records_to_insert.append(db_record)
+                        if not has_dr_code:
+                            pending_queue_inserts.append((str(route_num), str(agency_val), final_dr, row_total_qty, short_filename, "Pending Unmapped", batch_ts))
 
-                        if row_total_qty > 500:
-                            st.session_state.anomaly_logs.append({
-                                "File Name": short_filename,
-                                "Agency": agency_val,
-                                "Route": route_num,
-                                "Total Qty": row_total_qty,
-                                "Flag": "⚠️ High Volume Spike (>500)"
-                            })
-
-                        if has_dr_code:
-                            agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
-                            current_seq = agency_counts_valid[agency_val]
-                            ref_number = f"RT-{route_num}-{agency_val}-{today_date}" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-{current_seq}"
-                            target_ws, current_r, order_num, dr_to_use, file_category = ws_valid, valid_row, valid_order_num, str(clean_dr).upper(), "Valid DR"
-                        else:
-                            agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
-                            current_seq = agency_counts_missing[agency_val]
-                            ref_number = f"RT-{route_num}-{agency_val}-{today_date}-NEW" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-NEW-{current_seq}"
-                            target_ws, current_r, order_num, dr_to_use, file_category = ws_missing, missing_row, missing_order_num, f"NEW_CUST_{agency_val}", "Missing DR"
+                        agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
+                        ref_number = f"RT-{route_num}-{agency_val}-{today_date}"
 
                         item_id = 10
                         for c, fg_code, qty_val in valid_row_quantities:
-                            cleaned_fg = str(fg_code).strip()
-                            upper_fg = cleaned_fg.upper()
-                            
-                            if (agency_val, c) in agency_col_override_map:
-                                current_fg = agency_col_override_map[(agency_val, c)]
-                            elif upper_fg.startswith("FG"):
-                                current_fg = cleaned_fg
-                            elif upper_fg in ["", "NAN", "NONE"]:
-                                current_fg = direct_col_mapping.get(c, default_fg_code)
-                            else:
-                                current_fg = direct_col_mapping.get(c, default_fg_code)
-                            
+                            current_fg = agency_col_override_map.get((agency_val, c), fg_code if str(fg_code).upper().startswith("FG") else direct_col_mapping.get(c, default_fg_code))
                             total_input_qty += qty_val
                             total_gen_qty += qty_val
                             
                             file_comparison_rows.append({
-                                "File Name": short_filename,
-                                "Status": file_category,
-                                "Agency": agency_val,
-                                "DR Code": dr_to_use,
-                                "FG Code": current_fg,
-                                "Input Qty": qty_val,
-                                "Generated Qty": qty_val
+                                "File Name": short_filename, "Agency": agency_val, "DR Code": final_dr, "FG Code": current_fg, "Input Qty": qty_val, "Generated Qty": qty_val
                             })
-                            
-                            diff_val = qty_val - qty_val
-                            if diff_val != 0:
-                                discrepancy_records.append((batch_ts, short_filename, str(agency_val), dr_to_use, current_fg, qty_val, qty_val, diff_val, batch_ts))
 
-                            target_ws.cell(row=current_r, column=2, value=order_num)
-                            target_ws.cell(row=current_r, column=3, value="OR")
-                            target_ws.cell(row=current_r, column=4, value="SO20")
-                            target_ws.cell(row=current_r, column=5, value=10)
-                            target_ws.cell(row=current_r, column=6, value=20)
-                            target_ws.cell(row=current_r, column=7, value=dr_to_use)
-                            target_ws.cell(row=current_r, column=8, value=dr_to_use)
-                            target_ws.cell(row=current_r, column=9, value=ref_number)
-                            target_ws.cell(row=current_r, column=10, value=today_date)
-                            target_ws.cell(row=current_r, column=11, value=today_date)
-                            target_ws.cell(row=current_r, column=15, value=item_id)
-                            target_ws.cell(row=current_r, column=16, value=current_fg)
-                            target_ws.cell(row=current_r, column=19, value=qty_val)
-                            target_ws.cell(row=current_r, column=20, value="Bag")
-                            target_ws.cell(row=current_r, column=22, value=2100)
-                            target_ws.cell(row=current_r, column=26, value=str(route_num))
-                            target_ws.cell(row=current_r, column=27, value=agency_val)
+                            ws_valid.cell(row=valid_row, column=2, value=valid_order_num)
+                            ws_valid.cell(row=valid_row, column=3, value="OR")
+                            ws_valid.cell(row=valid_row, column=4, value="SO20")
+                            ws_valid.cell(row=valid_row, column=7, value=final_dr)
+                            ws_valid.cell(row=valid_row, column=9, value=ref_number)
+                            ws_valid.cell(row=valid_row, column=16, value=current_fg)
+                            ws_valid.cell(row=valid_row, column=19, value=qty_val)
+                            ws_valid.cell(row=valid_row, column=26, value=str(route_num))
+                            ws_valid.cell(row=valid_row, column=27, value=agency_val)
                             
                             item_id += 10
-                            current_r += 1
+                            valid_row += 1
 
-                        if has_dr_code:
-                            valid_row, valid_order_num, valid_items_created, total_valid_orders = current_r, valid_order_num + 1, valid_items_created + 1, total_valid_orders + 1
-                        else:
-                            missing_row, missing_order_num, missing_items_created, total_missing_orders = current_r, missing_order_num + 1, missing_items_created + 1, total_missing_orders + 1
+                        valid_order_num += 1
+                        total_valid_orders += 1
 
-                    if valid_items_created > 0:
+                    if valid_row > 6:
                         buf_valid = io.BytesIO()
                         wb_valid.save(buf_valid)
                         buf_valid.seek(0)
-                        out_fname = safe_route_num + "_" + today_date + "_" + timestamp + "_Valid.xlsx"
-                        st.session_state.processed_files.append({
-                            "name": short_filename + " (Valid DR)",
-                            "data": buf_valid.getvalue(),
-                            "filename": out_fname,
-                            "orders": valid_items_created
-                        })
-                        output_files_to_store.append((out_fname, "Valid DR", buf_valid.getvalue(), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
-                        traceability_records.append((batch_ts, short_filename, file_bytes, file_input_qty, out_fname, "Valid DR", 1, batch_ts))
+                        out_fname = f"{route_num}_{today_date}_{timestamp}_Processed.xlsx"
+                        st.session_state.processed_files.append({"name": short_filename, "data": buf_valid.getvalue(), "filename": out_fname})
+                        output_files_to_store.append((out_fname, "Processed Order", buf_valid.getvalue(), batch_ts))
+                        traceability_records.append((batch_ts, short_filename, file_bytes, file_input_qty, out_fname, "Processed", 1, batch_ts))
 
-                    if missing_items_created > 0:
-                        buf_missing = io.BytesIO()
-                        wb_missing.save(buf_missing)
-                        buf_missing.seek(0)
-                        out_fname_miss = safe_route_num + "_" + today_date + "_" + timestamp + "_Missing_DR.xlsx"
-                        st.session_state.processed_files.append({
-                            "name": short_filename + " (Missing DR / New)",
-                            "data": buf_missing.getvalue(),
-                            "filename": out_fname_miss,
-                            "orders": missing_items_created
-                        })
-                        output_files_to_store.append((out_fname_miss, "Missing DR", buf_missing.getvalue(), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
-                        traceability_records.append((batch_ts, short_filename, file_bytes, file_input_qty, out_fname_miss, "Missing DR", 1, batch_ts))
-
-                    if file_comparison_rows:
-                        df_comp = pd.DataFrame(file_comparison_rows)
-                        df_pivot = df_comp.pivot_table(
-                            index=["File Name", "Status", "Agency", "DR Code", "FG Code"],
-                            values=["Input Qty", "Generated Qty"],
-                            aggfunc="sum"
-                        ).reset_index()
-                        df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
-                        st.session_state.comparison_summary.append(df_pivot)
-                        
-                # --- Update Master DB, Unmapped Ledger, Output Files & Traceability ---
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
-                cursor.executemany("""
-                    INSERT OR IGNORE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, db_records_to_insert)
-
-                cursor.executemany("""
-                    INSERT OR IGNORE INTO unmapped_missing_dr_ledger (file_name, route_no, agency_no, dr_code, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, unmapped_records_to_insert)
-                
+                cursor.executemany("INSERT OR IGNORE INTO pending_dispatch_queue (route_no, agency_no, dr_code, pending_qty, file_name, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", pending_queue_inserts)
                 for fname, ftype, fdata, fdate in output_files_to_store:
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO output_files_ledger (file_name, file_type, file_data, created_at)
-                        VALUES (?, ?, ?, ?)
-                    """, (fname, ftype, fdata, fdate))
-
-                cursor.executemany("""
-                    INSERT INTO input_output_traceability (batch_timestamp, input_file_name, input_file_blob, total_input_qty, generated_output_file, output_type, version_no, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, traceability_records)
-
-                if discrepancy_records:
-                    cursor.executemany("""
-                        INSERT INTO discrepancy_audit_ledger (batch_timestamp, file_name, agency_no, dr_code, fg_code, input_qty, generated_qty, difference, logged_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, discrepancy_records)
-                
-                cursor.execute(
-                    "INSERT INTO history_logs (timestamp, files_count, total_qty, status) VALUES (?, ?, ?, ?)",
-                    (get_ist_now().strftime("%Y-%m-%d %H:%M:%S"), len(uploaded_inputs), total_input_qty, "Success")
-                )
+                    cursor.execute("INSERT OR IGNORE INTO output_files_ledger (file_name, file_type, file_data, created_at) VALUES (?, ?, ?, ?)", (fname, ftype, fdata, fdate))
                 conn.commit()
                 conn.close()
 
-                st.session_state.kpi_data = {
-                    "input_qty": total_input_qty,
-                    "gen_qty": total_gen_qty,
-                    "valid_count": total_valid_orders,
-                    "missing_count": total_missing_orders,
-                    "skipped_count": total_skipped_rows
-                }
-
-                st.success("✅ Batch Processing, Traceability Mapping & Audit Ledgers Updated Successfully!")
-
+                st.session_state.kpi_data = {"input_qty": total_input_qty, "gen_qty": total_gen_qty, "valid_count": total_valid_orders, "missing_count": total_missing_orders, "skipped_count": total_skipped_rows}
+                st.success("✅ Batch processing and queue updates completed successfully!")
             except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
-    else:
-        st.warning("⚠️ Kripya pehle demand files upload karein!")
+                st.error(f"❌ Processing Error: {str(e)}")
 
-# Display KPI Summary Cards & Advanced Visual Analytics
-if st.session_state.processed_files or st.session_state.skipped_rows_log:
-    st.markdown("---")
-    st.markdown("### 📈 Batch Performance & KPI Summary")
+# --- KPI DISPLAY ---
+if st.session_state.processed_files:
     kpi = st.session_state.kpi_data
-    
-    total_processed_orders = kpi['valid_count'] + kpi['missing_count']
-    success_rate = (kpi['valid_count'] / total_processed_orders * 100) if total_processed_orders > 0 else 0
-    
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Total Input Qty", f"{kpi['input_qty']:,.0f}")
-    col2.metric("Generated Qty", f"{kpi['gen_qty']:,.0f}")
-    col3.metric("Valid Orders", kpi['valid_count'])
-    col4.metric("Success Rate", f"{success_rate:.1f}%")
-    col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Input Quantity", f"{kpi['input_qty']:,.0f}")
+    c2.metric("Generated Quantity", f"{kpi['gen_qty']:,.0f}")
+    c3.metric("Valid Orders Processed", kpi['valid_count'])
+    c4.metric("Pending Queue Items", len(pending_queue_inserts) if 'pending_queue_inserts' in locals() else 0)
 
-    if kpi['skipped_count'] > 5:
-        st.warning(f"⚠️ **Smart Audit Alert:** {kpi['skipped_count']} rows skipped check exception logs.")
-
-    # --- AI Sales Demand Forecasting & Velocity Health Scorecard ---
-    st.markdown("---")
-    st.markdown("### 🤖 AI Sales Demand Forecasting & Velocity Health Scorecard")
-    
-    demand_health_score = success_rate
-    forecast_confidence = "🟢 High Confidence (Stable Batch Flow)" if demand_health_score >= 90 else ("🟡 Moderate Risk (Unmapped Fallbacks Detected)" if demand_health_score >= 70 else "🔴 Critical Review Needed (High Missing DR Ratio)")
-    
-    f_col1, f_col2, f_col3 = st.columns(3)
-    f_col1.metric("Batch Demand Health Score", f"{demand_health_score:.1f}%", delta="Optimal Flow" if demand_health_score >= 90 else "Attention Needed")
-    f_col2.metric("Forecast Confidence Status", forecast_confidence)
-    f_col3.metric("Projected Next-Cycle Qty", f"{kpi['gen_qty'] * 1.05:,.0f} Units", delta="+5% Trend")
-
-    # --- AI Anomaly & Unmapped Missing DR Alerts ---
-    if st.session_state.anomaly_logs:
-        st.markdown("---")
-        st.markdown("### 🤖 AI Demand Spike & Anomaly Detector Alerts")
-        st.warning("⚠️ System detected high-volume demand spikes (>500 units) in the following agencies:")
-        st.dataframe(pd.DataFrame(st.session_state.anomaly_logs), use_container_width=True)
-
-    if st.session_state.unmapped_current_batch:
-        st.markdown("---")
-        st.markdown("### 🚨 Unmapped Missing DRs Alert List")
-        st.error("⚠️ The following agencies had valid quantity (>0) but no DR code in file or Master DB. They were successfully processed using `NEW_CUST` fallback and logged into the Unmapped Ledger:")
-        st.dataframe(pd.DataFrame(st.session_state.unmapped_current_batch), use_container_width=True)
-
-    # --- ADVANCED TABBED VISUAL ANALYTICS ---
-    if st.session_state.comparison_summary:
-        st.markdown("---")
-        st.markdown("### 📊 Advanced Visual Analytics Dashboard")
-        combined_df_chart = pd.concat(st.session_state.comparison_summary, ignore_index=True)
-        
-        tab1, tab2 = st.tabs(["📊 Agency-wise Breakdown", "📦 SKU-wise Share"])
-        with tab1:
-            st.bar_chart(combined_df_chart.groupby("Agency")["Generated Qty"].sum())
-        with tab2:
-            st.bar_chart(combined_df_chart.groupby("FG Code")["Generated Qty"].sum())
-
-    st.markdown("---")
-    st.markdown("### 📥 Bulk Download & Notifications")
-    
-    # --- Advanced Email Config Expander ---
-    with st.expander("✉️ Advanced Email Dispatch Options (Custom Subject & Note)"):
-        email_subject_custom = st.text_input("Custom Email Subject Line", f"🚀 Sales Orders Batch Execution Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}")
-        email_notes_custom = st.text_area("Custom Remarks / Notes to Include in Email Body", "All routes verified and processed successfully.")
-
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for item in st.session_state.processed_files:
-            zip_file.writestr(item['filename'], item['data'])
-    
-    col_zip, col_pdf, col_summary, col_json, col_print, col_email, col_wa = st.columns(7)
-    
-    with col_zip:
-        st.download_button(
-            label="📦 ZIP",
-            data=zip_buffer.getvalue(),
-            file_name=f"Batch_Orders_{get_ist_now().strftime('%Y-%m-%d')}.zip",
-            mime="application/zip",
-            key="zip_download"
-        )
-        
-    with col_pdf:
-        try:
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", "B", 16)
-            pdf.cell(190, 10, "Enterprise Sales Order Summary Invoice", ln=True, align="C")
-            pdf.set_font("Arial", "", 10)
-            pdf.cell(190, 6, f"Generated On (IST): {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align="C")
-            pdf.ln(10)
-            
-            pdf.set_font("Arial", "B", 11)
-            pdf.cell(100, 8, "Metric Description", border=1)
-            pdf.cell(90, 8, "Value", border=1, ln=True)
-            
-            pdf.set_font("Arial", "", 11)
-            metrics_list = [
-                ("Total Input Quantity", f"{kpi['input_qty']:,.0f}"),
-                ("Total Generated Quantity", f"{kpi['gen_qty']:,.0f}"),
-                ("Valid DR Orders", str(kpi['valid_count'])),
-                ("Missing DR Orders (NEW_CUST)", str(kpi['missing_count'])),
-                ("Skipped Rows Logged", str(kpi['skipped_count'])),
-                ("Success Rate", f"{success_rate:.1f}%"),
-                ("Demand Health Score", f"{demand_health_score:.1f}%")
-            ]
-            for m_desc, m_val in metrics_list:
-                pdf.cell(100, 8, m_desc, border=1)
-                pdf.cell(90, 8, m_val, border=1, ln=True)
-                
-            pdf_bytes = bytes(pdf.output())
-            st.download_button(
-                label="📄 PDF",
-                data=pdf_bytes,
-                file_name=f"Sales_Invoice_{get_ist_now().strftime('%Y-%m-%d')}.pdf",
-                mime="application/pdf",
-                key="pdf_invoice_download"
-            )
-        except Exception as e:
-            st.error(f"PDF Error: {str(e)}")
-
-    with col_summary:
-        summary_txt = f"""=== ENTERPRISE SALES ORDER SUMMARY (IST) ===
-Date/Time: {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}
-----------------------------------------
-Total Input Quantity : {kpi['input_qty']:,.0f}
-Total Generated Qty  : {kpi['gen_qty']:,.0f}
-Valid DR Orders      : {kpi['valid_count']}
-Missing DR Orders    : {kpi['missing_count']}
-Skipped Rows Logged  : {kpi['skipped_count']}
-Success Rate         : {success_rate:.1f}%
-Demand Health Score  : {demand_health_score:.1f}%
-----------------------------------------
-Generated Files Count: {len(st.session_state.processed_files)}
-Status: Successfully Processed & Audited
-========================================"""
-        st.download_button(
-            label="📄 TXT",
-            data=summary_txt.encode('utf-8'),
-            file_name=f"Summary_Report_{get_ist_now().strftime('%Y-%m-%d')}.txt",
-            mime="text/plain",
-            key="summary_txt_download"
-        )
-        
-    with col_json:
-        json_data = json.dumps({
-            "timestamp": get_ist_now().strftime('%Y-%m-%d %H:%M:%S'),
-            "metrics": kpi,
-            "success_rate": f"{success_rate:.1f}%",
-            "demand_health_score": f"{demand_health_score:.1f}%"
-        }, indent=4)
-        st.download_button(
-            label="💾 JSON",
-            data=json_data.encode('utf-8'),
-            file_name=f"Audit_Backup_{get_ist_now().strftime('%Y-%m-%d')}.json",
-            mime="application/json",
-            key="json_backup_download"
-        )
-        
-    with col_print:
-        print_html = """
-        <div style="width:100%; margin:0; padding:0;">
-            <button onclick="parent.window.print()" style="width:100%; height:38px; background:#2563eb; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; font-family:sans-serif; display:flex; align-items:center; justify-content:center;">
-                🖨️ Print
-            </button>
-        </div>
-        """
-        components.html(print_html, height=50)
-        
-    with col_email:
-        if st.button("📧 Email"):
-            if email_user and email_pass and recipient_email:
-                try:
-                    conn = sqlite3.connect("sales_history.db")
-                    df_master_email = pd.read_sql("SELECT * FROM unique_routes_master", conn)
-                    conn.close()
-                    
-                    excel_buffer = io.BytesIO()
-                    df_master_email.to_excel(excel_buffer, index=False, sheet_name="Master Routes")
-                    excel_buffer.seek(0)
-
-                    unmapped_email_html = ""
-                    if st.session_state.unmapped_current_batch:
-                        unmapped_email_html = "<h3 style='color: #dc2626;'>🚨 Unmapped Missing DRs Alert List</h3><table style='border-collapse: collapse; width: 100%; margin-top: 10px; border-radius: 6px; overflow: hidden;'><tr style='background-color: #ef4444; color: white;'><th style='padding: 8px; text-align: left;'>File Name</th><th style='padding: 8px; text-align: left;'>Route</th><th style='padding: 8px; text-align: left;'>Agency</th><th style='padding: 8px; text-align: left;'>Status</th></tr>"
-                        for item in st.session_state.unmapped_current_batch:
-                            unmapped_email_html += f"<tr style='background-color: #fef2f2;'><td style='padding: 8px; border-bottom: 1px solid #fee2e2;'>{item['File Name']}</td><td style='padding: 8px; border-bottom: 1px solid #fee2e2;'>{item['Route']}</td><td style='padding: 8px; border-bottom: 1px solid #fee2e2;'>{item['Agency']}</td><td style='padding: 8px; border-bottom: 1px solid #fee2e2; color: #dc2626;'>{item['Status']}</td></tr>"
-                        unmapped_email_html += "</table>"
-
-                    msg = EmailMessage()
-                    msg['Subject'] = email_subject_custom
-                    msg['From'] = email_user
-                    msg['To'] = recipient_email
-                    
-                    html_content = f"""
-                    <html>
-                      <body style="font-family: Arial, sans-serif; color: #333; background-color: #f9fafb; padding: 20px;">
-                        <div style="max-width: 600px; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-                          <h2 style="color: #10b981; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📊 Sales Order Batch Automation Hub</h2>
-                          <p>Hello Team,</p>
-                          <p>The daily inbound demand batch has been processed successfully on <b>{get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} IST</b>.</p>
-                          <p style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 10px; margin: 15px 0;"><b>Remarks:</b> {email_notes_custom}</p>
-                          <table style="border-collapse: collapse; width: 100%; margin-top: 15px; border-radius: 6px; overflow: hidden;">
-                            <tr style="background-color: #10b981; color: white;">
-                              <th style="padding: 10px; text-align: left;">Metric</th>
-                              <th style="padding: 10px; text-align: left;">Value</th>
-                            </tr>
-                            <tr style="background-color: #f3f4f6;">
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Total Input Qty</td>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{kpi['input_qty']:,.0f}</b></td>
-                            </tr>
-                            <tr>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Valid Orders</td>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{kpi['valid_count']}</td>
-                            </tr>
-                            <tr style="background-color: #f3f4f6;">
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Missing DR Orders (NEW_CUST)</td>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{kpi['missing_count']}</b></td>
-                            </tr>
-                            <tr>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Demand Health Score</td>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{demand_health_score:.1f}%</b></td>
-                            </tr>
-                          </table>
-                          {unmapped_email_html}
-                          <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; paddingTop: 10px;">Master Route-Agency-DR Database attached herewith.</p>
-                        </div>
-                      </body>
-                    </html>
-                    """
-                    msg.set_content("Please enable HTML to view this report.")
-                    msg.add_alternative(html_content, subtype='html')
-                    
-                    for item in st.session_state.processed_files:
-                        msg.add_attachment(item['data'], maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=item['filename'])
-                    
-                    msg.add_attachment(excel_buffer.getvalue(), maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=f"Unique_Routes_Master_{get_ist_now().strftime('%Y-%m-%d')}.xlsx")
-                    
-                    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-                        smtp.login(email_user, email_pass)
-                        smtp.send_message(msg)
-                    st.success("✅ Email dispatched with Master DB attached!")
-                except Exception as e:
-                    st.error(f"❌ Email failed: {str(e)}")
-            else:
-                st.warning("⚠️ Enter email credentials!")
-
-    with col_wa:
-        if whatsapp_num:
-            wa_text = f"Sales Order Batch Ready! Total Qty: {kpi['input_qty']}, Health Score: {demand_health_score:.1f}%."
-            wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
-            st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:38px; background:#25D366; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("##### Individual File Downloads:")
-    for i, item in enumerate(st.session_state.processed_files):
-        if st.download_button(
-            label=f"📥 Download {item['name']}",
-            data=item['data'],
-            file_name=item['filename'],
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"dl_file_{i}_{item['filename']}"
-        ):
-            st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
-
-# --- NEW DISPATCH PLAN & LOGISTICS MANAGEMENT MODULE ---
+# --- NEW ADVANCED DISPATCH & LOGISTICS HUB ---
 st.markdown("---")
-st.subheader("🚚 Enterprise Dispatch Plan & Logistics Hub")
+st.subheader("🚚 Enterprise Capacity-Optimized Dispatch & Fleet Management Hub")
 
-dispatch_tab1, dispatch_tab2, dispatch_tab3 = st.tabs([
-    "🚛 Vehicle Fleet Management", 
-    "📋 Create & Manage Dispatch Trips", 
-    "📊 Live Dispatch Tracking & Print Manifest"
+dispatch_tab1, dispatch_tab2, dispatch_tab3, dispatch_tab4 = st.tabs([
+    "🚛 Vehicle Fleet Setup", 
+    "📋 Capacity-Optimized Trip Planner", 
+    "📊 Master Dispatch, Pending & Filter Hub",
+    "📬 Export, Print & Email Manifests"
 ])
 
-# --- TAB 1: VEHICLE FLEET MANAGEMENT ---
+# --- TAB 1: VEHICLE FLEET SETUP ---
 with dispatch_tab1:
-    st.markdown("#### Add / Manage Delivery Vehicles & Drivers")
-    v_col1, v_col2 = st.columns(2)
-    
-    with v_col1:
-        with st.form("vehicle_add_form"):
-            new_v_no = st.text_input("Vehicle Number (e.g., PB08AB1234)").upper()
-            new_v_type = st.selectbox("Vehicle Type", ["10-Tyre Truck", "6-Tyre Truck", "Tata Ace / Mini Truck", "Container", "Pickup"])
-            new_v_cap = st.number_input("Weight/Volume Capacity (Units)", min_value=100.0, value=1000.0, step=50.0)
-            new_d_name = st.text_input("Driver Name")
-            new_d_phone = st.text_input("Driver Phone Number")
-            submit_vehicle = st.form_submit_button("➕ Register Vehicle")
-            
-            if submit_vehicle:
-                if new_v_no and new_d_name:
-                    try:
-                        conn_v = sqlite3.connect("sales_history.db")
-                        cur_v = conn_v.cursor()
-                        cur_v.execute("""
-                            INSERT OR REPLACE INTO vehicles_master (vehicle_no, vehicle_type, capacity_weight, driver_name, driver_phone, status, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """, (new_v_no, new_v_type, new_v_cap, new_d_name, new_d_phone, "Available", get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
-                        conn_v.commit()
-                        conn_v.close()
-                        st.success(f"✅ Vehicle {new_v_no} registered successfully!")
-                        st.rerun()
-                    except Exception as ex:
-                        st.error(f"Error: {str(ex)}")
-                else:
-                    st.warning("⚠️ Kripya Vehicle Number aur Driver Name enter karein.")
-
-    with v_col2:
-        st.markdown("##### Registered Fleet Status")
-        try:
-            conn_v = sqlite3.connect("sales_history.db")
-            df_vehicles = pd.read_sql("SELECT * FROM vehicles_master", conn_v)
-            conn_v.close()
-            if not df_vehicles.empty:
-                st.dataframe(df_vehicles, use_container_width=True)
-            else:
-                st.info("No vehicles registered yet.")
-        except Exception as e:
-            st.error(f"Error loading vehicles: {str(e)}")
-
-# --- TAB 2: CREATE & MANAGE DISPATCH TRIPS ---
-with dispatch_tab2:
-    st.markdown("#### Plan New Dispatch Trip for Routes")
-    
-    try:
-        conn_d = sqlite3.connect("sales_history.db")
-        df_master_routes = pd.read_sql("SELECT DISTINCT route_no FROM unique_routes_master", conn_d)
-        df_avail_vehicles = pd.read_sql("SELECT vehicle_no, driver_name FROM vehicles_master WHERE status='Available'", conn_d)
-        conn_d.close()
-        
-        d_col1, d_col2 = st.columns(2)
-        with d_col1:
-            selected_route_trip = st.selectbox("Select Route for Dispatch", ["Select..."] + df_master_routes['route_no'].astype(str).tolist() if not df_master_routes.empty else ["Select..."], key="sel_route_trip")
-            selected_vehicle_trip = st.selectbox("Assign Vehicle & Driver", ["Select..."] + df_avail_vehicles['vehicle_no'].astype(str).tolist() if not df_avail_vehicles.empty else ["Select..."], key="sel_veh_trip")
-        with d_col2:
-            dispatch_date = st.date_input("Scheduled Dispatch Date", value=get_ist_now())
-            dispatch_notes = st.text_area("Dispatch Instructions / Remarks", "Handle with care. Complete delivery by evening.")
-            
-        if st.button("🚀 Generate & Lock Dispatch Plan", type="primary"):
-            if selected_route_trip != "Select..." and selected_vehicle_trip != "Select...":
-                trip_id = f"DISP-{selected_route_trip}-{get_ist_now().strftime('%Y%m%d%H%M%S')}"
-                
-                conn_trip = sqlite3.connect("sales_history.db")
-                cur_trip = conn_trip.cursor()
-                cur_trip.execute("SELECT agency_no, dr_code, file_name FROM unique_routes_master WHERE route_no = ?", (selected_route_trip,))
-                route_agencies = cur_trip.fetchall()
-                
-                if route_agencies:
-                    total_agencies_count = len(route_agencies)
-                    total_qty_est = total_agencies_count * 150
-                    
-                    cur_trip.execute("""
-                        INSERT INTO dispatch_plans (dispatch_id, route_no, vehicle_no, driver_name, total_orders, total_quantity, dispatch_status, scheduled_date, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (trip_id, selected_route_trip, selected_vehicle_trip, "Assigned Driver", total_agencies_count, total_qty_est, "Planned", str(dispatch_date), get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
-                    
-                    for ag_no, dr_c, f_name in route_agencies:
-                        cur_trip.execute("""
-                            INSERT INTO dispatch_item_mapping (dispatch_id, agency_no, dr_code, order_qty, file_name, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        """, (trip_id, ag_no, dr_c, 150.0, f_name, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
-                    
-                    conn_trip.commit()
-                    conn_trip.close()
-                    st.success(f"✅ Dispatch Plan **{trip_id}** created successfully for Route {selected_route_trip}!")
-                else:
-                    conn_trip.close()
-                    st.warning("⚠️ Selected route ke liye koi agencies master DB mein nahi mili.")
-            else:
-                st.warning("⚠️ Kripya Route aur Vehicle dono select karein.")
-                
-    except Exception as e:
-        st.error(f"Error in dispatch creation: {str(e)}")
-
-# --- TAB 3: LIVE DISPATCH TRACKING & MANIFEST ---
-with dispatch_tab3:
-    st.markdown("#### Active Dispatch Manifests & Status Updates")
-    try:
-        conn_t = sqlite3.connect("sales_history.db")
-        df_plans = pd.read_sql("SELECT * FROM dispatch_plans ORDER BY id DESC", conn_t)
-        conn_t.close()
-        
-        if not df_plans.empty:
-            st.dataframe(df_plans, use_container_width=True)
-            
-            st.markdown("##### Update Trip Status / Download Manifest")
-            t_col1, t_col2 = st.columns(2)
-            with t_col1:
-                sel_dispatch_id = st.selectbox("Select Dispatch ID", df_plans['dispatch_id'].tolist(), key="sel_disp_tracking")
-                new_status = st.selectbox("Update Status", ["Planned", "Dispatched", "Delivered", "Cancelled"], key="sel_new_status")
-                if st.button("🔄 Update Status"):
-                    conn_u = sqlite3.connect("sales_history.db")
-                    cur_u = conn_u.cursor()
-                    cur_u.execute("UPDATE dispatch_plans SET dispatch_status = ? WHERE dispatch_id = ?", (new_status, sel_dispatch_id))
-                    conn_u.commit()
-                    conn_u.close()
-                    st.success(f"✅ Status updated to **{new_status}** for {sel_dispatch_id}!")
-                    st.rerun()
-            with t_col2:
-                if st.button("📄 Print / Download Delivery Manifest"):
-                    conn_m = sqlite3.connect("sales_history.db")
-                    df_manifest_items = pd.read_sql("SELECT * FROM dispatch_item_mapping WHERE dispatch_id = ?", conn_m, params=(sel_dispatch_id,))
-                    conn_m.close()
-                    
-                    if not df_manifest_items.empty:
-                        manifest_buf = io.BytesIO()
-                        df_manifest_items.to_excel(manifest_buf, index=False, sheet_name="Delivery Manifest")
-                        manifest_buf.seek(0)
-                        st.download_button(
-                            label=f"💾 Download Manifest ({sel_dispatch_id})",
-                            data=manifest_buf.getvalue(),
-                            file_name=f"Manifest_{sel_dispatch_id}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-        else:
-            st.info("No dispatch plans generated yet.")
-    except Exception as e:
-        st.error(f"Error loading dispatch tracking: {str(e)}")
-
-# --- ALL DATABASES MANAGEMENT PANEL ---
-st.markdown("---")
-with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs, Traceability, Audit & Dispatch)"):
-    st.markdown("Yahan aap saare databases ke records dekh sakte hain, manual/bulk DR code upload kar sakte hain, aur record delete karne par ID auto-reset kar sakte hain.")
-    try:
-        conn = sqlite3.connect("sales_history.db")
-        df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
-        df_unmapped = pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger ORDER BY id DESC", conn)
-        df_outputs = pd.read_sql("SELECT id, file_name, file_type, created_at FROM output_files_ledger ORDER BY id DESC", conn)
-        df_trace = pd.read_sql("SELECT id, batch_timestamp, input_file_name, total_input_qty, generated_output_file, output_type, version_no FROM input_output_traceability ORDER BY id DESC", conn)
-        df_audit = pd.read_sql("SELECT * FROM discrepancy_audit_ledger ORDER BY id DESC", conn)
-        df_vehicles_db = pd.read_sql("SELECT * FROM vehicles_master ORDER BY id DESC", conn)
-        df_disp_db = pd.read_sql("SELECT * FROM dispatch_plans ORDER BY id DESC", conn)
-        conn.close()
-        
-        tab_m1, tab_m2, tab_m3, tab_m4, tab_m5, tab_m6 = st.tabs([
-            "📋 Master DB", 
-            "🚨 Unmapped DR", 
-            "📦 Outputs", 
-            "🔗 Traceability", 
-            "🔍 Audit",
-            "🚛 Fleet & Dispatch DB"
-        ])
-        
-        with tab_m1:
-            if not df_master.empty:
-                st.dataframe(df_master, use_container_width=True)
-                if st.button("🚨 Wipe Master DB & Reset IDs"):
+    st.markdown("#### Register Delivery Trucks & Maximum Capacity (Bags/Units)")
+    vc1, vc2 = st.columns(2)
+    with vc1:
+        with st.form("veh_form"):
+            v_no = st.text_input("Vehicle Number (e.g., PB08AB1234)").upper()
+            v_type = st.selectbox("Vehicle Type", ["10-Tyre Truck (Capacity: 300 Bags)", "6-Tyre Truck (Capacity: 150 Bags)", "Tata Ace (Capacity: 50 Bags)"])
+            v_cap = st.number_input("Max Capacity (Units/Bags)", min_value=10.0, value=100.0, step=10.0)
+            d_name = st.text_input("Driver Name")
+            d_phone = st.text_input("Driver Contact Phone")
+            if st.form_submit_button("➕ Register Vehicle"):
+                if v_no and d_name:
                     conn = sqlite3.connect("sales_history.db")
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM unique_routes_master")
-                    cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
+                    cur = conn.cursor()
+                    cur.execute("INSERT OR REPLACE INTO vehicles_master (vehicle_no, vehicle_type, capacity_weight, driver_name, driver_phone, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                (v_no, v_type, v_cap, d_name, d_phone, "Available", get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
                     conn.commit()
                     conn.close()
-                    st.success("✅ Master DB wiped & IDs reset!")
+                    st.success(f"✅ Vehicle {v_no} registered with capacity {v_cap} units!")
                     st.rerun()
+                else:
+                    st.warning("⚠️ Enter Vehicle Number and Driver Name.")
+    with vc2:
+        st.markdown("##### Active Fleet Registry")
+        try:
+            conn = sqlite3.connect("sales_history.db")
+            df_v = pd.read_sql("SELECT * FROM vehicles_master", conn)
+            conn.close()
+            if not df_v.empty:
+                st.dataframe(df_v, use_container_width=True)
             else:
-                st.info("No master records found.")
+                st.info("No vehicles registered.")
+        except Exception as e:
+            st.error(str(e))
 
-        with tab_m2:
-            if not df_unmapped.empty:
-                st.dataframe(df_unmapped, use_container_width=True)
-            else:
-                st.info("No unmapped records.")
+# --- TAB 2: CAPACITY-OPTIMIZED TRIP PLANNER ---
+with dispatch_tab2:
+    st.markdown("#### Knapsack-Style Capacity Auto-Matching Trip Planner")
+    st.markdown("Yeh system gadi ki capacity (jaise 100 bags) ke anusaar agency demands ko ek-ek karke fill karega. Agar gadi ki capacity se demand zyada hai, toh baki bachi demand **Pending Dispatch Queue** mein save ho jayegi agle trip ke liye.")
 
-        with tab_m3:
-            if not df_outputs.empty:
-                st.dataframe(df_outputs, use_container_width=True)
-            else:
-                st.info("No outputs archived.")
-
-        with tab_m4:
-            if not df_trace.empty:
-                st.dataframe(df_trace, use_container_width=True)
-            else:
-                st.info("No traceability logs.")
-
-        with tab_m5:
-            if not df_audit.empty:
-                st.dataframe(df_audit, use_container_width=True)
-            else:
-                st.success("No discrepancies logged.")
-
-        with tab_m6:
-            st.markdown("#### Vehicle Fleet & Dispatch Plan Database Records")
-            c_db1, c_db2 = st.columns(2)
-            with c_db1:
-                st.markdown("##### Vehicles Master")
-                st.dataframe(df_vehicles_db, use_container_width=True)
-            with c_db2:
-                st.markdown("##### Dispatch Plans Master")
-                st.dataframe(df_disp_db, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Error loading databases: {str(e)}")
-
-# Historical Trend Analysis View
-st.markdown("---")
-with st.expander("🕒 View Historical Trend Analysis (SQLite Database - IST)"):
     try:
         conn = sqlite3.connect("sales_history.db")
-        df_history = pd.read_sql("SELECT * FROM history_logs ORDER BY id DESC", conn)
+        routes_list = pd.read_sql("SELECT DISTINCT route_no FROM unique_routes_master", conn)['route_no'].tolist()
+        avail_vehicles = pd.read_sql("SELECT vehicle_no, capacity_weight FROM vehicles_master WHERE status='Available'", conn)
         conn.close()
-        if not df_history.empty:
-            st.dataframe(df_history, use_container_width=True)
-            st.markdown("##### Day-over-Day Total Quantity Trend")
-            st.line_chart(df_history.set_index("timestamp")["total_qty"])
-        else:
-            st.info("No historical logs available yet.")
+
+        pc1, pc2 = st.columns(2)
+        with pc1:
+            selected_route = st.selectbox("Select Route", ["Select..."] + routes_list)
+            selected_truck = st.selectbox("Select Available Vehicle", ["Select..."] + avail_vehicles['vehicle_no'].tolist() if not avail_vehicles.empty else ["Select..."])
+        with pc2:
+            trip_date = st.date_input("Dispatch Execution Date", value=get_ist_now())
+            trip_notes = st.text_area("Dispatch Instructions", "Standard dispatch route order execution.")
+
+        if st.button("⚡ Generate Capacity-Optimized Dispatch Plan", type="primary"):
+            if selected_route != "Select..." and selected_truck != "Select...":
+                conn = sqlite3.connect("sales_history.db")
+                cur = conn.cursor()
+                
+                # Get vehicle capacity
+                cur.execute("SELECT capacity_weight, driver_name FROM vehicles_master WHERE vehicle_no = ?", (selected_truck,))
+                veh_info = cur.fetchone()
+                max_capacity = veh_info[0] if veh_info else 100.0
+                driver_name = veh_info[1] if veh_info else "Assigned Driver"
+
+                # Get agencies for route
+                cur.execute("SELECT agency_no, dr_code, file_name FROM unique_routes_master WHERE route_no = ?", (selected_route,))
+                agencies = cur.fetchall()
+
+                if agencies:
+                    dispatch_id = f"DISP-{selected_route}-{get_ist_now().strftime('%Y%m%d%H%M%S')}"
+                    allocated_qty = 0.0
+                    allocated_items = 0
+                    
+                    cur.execute("INSERT INTO dispatch_plans (dispatch_id, route_no, vehicle_no, driver_name, total_orders, total_quantity, dispatch_status, scheduled_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                (dispatch_id, selected_route, selected_truck, driver_name, 0, 0.0, "Planned", str(trip_date), get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
+
+                    for ag_no, dr_c, f_name in agencies:
+                        agency_demand = 150.0  # Estimated standard order size per agency baseline
+                        if allocated_qty + agency_demand <= max_capacity:
+                            cur.execute("INSERT INTO dispatch_item_mapping (dispatch_id, agency_no, dr_code, order_qty, file_name, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                                        (dispatch_id, ag_no, dr_c, agency_demand, f_name, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
+                            allocated_qty += agency_demand
+                            allocated_items += 1
+                        else:
+                            # Push remaining unallocated demand to pending queue
+                            cur.execute("INSERT INTO pending_dispatch_queue (route_no, agency_no, dr_code, pending_qty, file_name, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                        (selected_route, ag_no, dr_c, agency_demand, f_name, "Pending Capacity Overflow", get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
+
+                    # Update total planned quantities & orders
+                    cur.execute("UPDATE dispatch_plans SET total_orders = ?, total_quantity = ? WHERE dispatch_id = ?", (allocated_items, allocated_qty, dispatch_id))
+                    cur.execute("UPDATE vehicles_master SET status = 'Dispatched' WHERE vehicle_no = ?", (selected_truck,))
+                    
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Dispatch Plan **{dispatch_id}** created successfully! Allocated Qty: {allocated_qty} / Max Capacity: {max_capacity}")
+                else:
+                    conn.close()
+                    st.warning("⚠️ No agencies found for this route.")
+            else:
+                st.warning("⚠️ Please select both a Route and a Vehicle.")
     except Exception as e:
-        st.error(f"Error loading history: {str(e)}")
+        st.error(f"Error in trip planning: {str(e)}")
+
+# --- TAB 3: MASTER DISPATCH, PENDING & MONTHLY FILTER HUB ---
+with dispatch_tab3:
+    st.markdown("#### Master Dispatch, Pending Queue & Monthly Filter Hub")
+    
+    try:
+        conn = sqlite3.connect("sales_history.db")
+        df_all_plans = pd.read_sql("SELECT * FROM dispatch_plans", conn)
+        df_all_pending = pd.read_sql("SELECT * FROM pending_dispatch_queue", conn)
+        df_all_mapping = pd.read_sql("SELECT * FROM dispatch_item_mapping", conn)
+        conn.close()
+
+        # Search & Filter Controls
+        fc1, fc2, fc3 = st.columns(3)
+        with fc1:
+            filter_status = st.selectbox("Filter by Status", ["All", "Planned", "Dispatched", "Delivered", "Cancelled"])
+        with fc2:
+            filter_vehicle = st.selectbox("Filter by Vehicle", ["All"] + df_all_plans['vehicle_no'].unique().tolist() if not df_all_plans.empty else ["All"])
+        with fc3:
+            search_query = st.text_input("Search Dispatch ID / Route")
+
+        filtered_plans = df_all_plans.copy()
+        if filter_status != "All":
+            filtered_plans = filtered_plans[filtered_plans['dispatch_status'] == filter_status]
+        if filter_vehicle != "All":
+            filtered_plans = filtered_plans[filtered_plans['vehicle_no'] == filter_vehicle]
+        if search_query:
+            filtered_plans = filtered_plans[filtered_plans['dispatch_id'].str.contains(search_query, case=False) | filtered_plans['route_no'].str.contains(search_query, case=False)]
+
+        st.markdown("##### 📋 Master Dispatch Ledger")
+        if not filtered_plans.empty:
+            st.dataframe(filtered_plans, use_container_width=True)
+        else:
+            st.info("No matching dispatch records found.")
+
+        st.markdown("##### ⏳ Pending Dispatch Queue (Unfulfilled / Overflow Demand)")
+        if not df_all_pending.empty:
+            st.dataframe(df_all_pending, use_container_width=True)
+        else:
+            st.success("No pending items in queue. All demand fulfilled!")
+
+        st.markdown("##### 🔍 Demand vs Actual Fulfillment Audit")
+        if not df_all_mapping.empty:
+            merged_audit = df_all_mapping.merge(df_all_plans, on="dispatch_id", how="left")
+            st.dataframe(merged_audit[['dispatch_id', 'route_no', 'vehicle_no', 'agency_no', 'dr_code', 'order_qty', 'dispatch_status', 'scheduled_date']], use_container_width=True)
+        else:
+            st.info("No mapping audit records available.")
+
+    except Exception as e:
+        st.error(f"Error loading filter hub: {str(e)}")
+
+# --- TAB 4: EXPORT, PRINT & EMAIL MANIFESTS ---
+with dispatch_tab4:
+    st.markdown("#### Export, Print & Email Dispatch Manifests")
+    
+    try:
+        conn = sqlite3.connect("sales_history.db")
+        df_active_dispatches = pd.read_sql("SELECT dispatch_id FROM dispatch_plans", conn)
+        conn.close()
+
+        if not df_active_dispatches.empty:
+            selected_disp_id = st.selectbox("Select Dispatch ID for Export", df_active_dispatches['dispatch_id'].tolist(), key="exp_disp_id")
+            
+            conn = sqlite3.connect("sales_history.db")
+            df_manifest = pd.read_sql("SELECT * FROM dispatch_item_mapping WHERE dispatch_id = ?", conn, params=(selected_disp_id,))
+            df_plan_info = pd.read_sql("SELECT * FROM dispatch_plans WHERE dispatch_id = ?", conn, params=(selected_disp_id,))
+            conn.close()
+
+            dc1, dc2, dc3, dc4 = st.columns(4)
+            
+            # Excel Export
+            excel_buf = io.BytesIO()
+            df_manifest.to_excel(excel_buf, index=False, sheet_name="Dispatch Manifest")
+            excel_buf.seek(0)
+            dc1.download_button("📥 Excel Manifest", data=excel_buf.getvalue(), file_name=f"Manifest_{selected_disp_id}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+            # PDF Export
+            try:
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 14)
+                pdf.cell(190, 10, f"Delivery Manifest: {selected_disp_id}", ln=True, align="C")
+                pdf.set_font("Arial", "", 10)
+                pdf.cell(190, 6, f"Scheduled Date: {df_plan_info['scheduled_date'].values[0]} | Vehicle: {df_plan_info['vehicle_no'].values[0]}", ln=True, align="C")
+                pdf.ln(5)
+                
+                pdf.set_font("Arial", "B", 10)
+                pdf.cell(50, 8, "Agency No", border=1)
+                pdf.cell(50, 8, "DR Code", border=1)
+                pdf.cell(40, 8, "Order Qty", border=1, ln=True)
+                
+                pdf.set_font("Arial", "", 10)
+                for idx, row in df_manifest.iterrows():
+                    pdf.cell(50, 8, str(row['agency_no']), border=1)
+                    pdf.cell(50, 8, str(row['dr_code']), border=1)
+                    pdf.cell(40, 8, str(row['order_qty']), border=1, ln=True)
+                
+                pdf_bytes = bytes(pdf.output())
+                dc2.download_button("📄 PDF Manifest", data=pdf_bytes, file_name=f"Manifest_{selected_disp_id}.pdf", mime="application/pdf")
+            except Exception as pdf_err:
+                dc2.error(f"PDF Error: {str(pdf_err)}")
+
+            # Print Button
+            with dc3:
+                print_html = f"""
+                <button onclick="parent.window.print()" style="width:100%; height:38px; background:#2563eb; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">
+                    🖨️ Print Manifest
+                </button>
+                """
+                components.html(print_html, height=50)
+
+            # Email Manifest Button
+            with dc4:
+                if st.button("📧 Email Manifest"):
+                    if email_user and email_pass and recipient_email:
+                        try:
+                            msg = EmailMessage()
+                            msg['Subject'] = f"🚚 Delivery Manifest Report - {selected_disp_id}"
+                            msg['From'] = email_user
+                            msg['To'] = recipient_email
+                            msg.set_content(f"Please find attached delivery manifest for dispatch trip: {selected_disp_id}")
+                            msg.add_attachment(excel_buf.getvalue(), maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=f"Manifest_{selected_disp_id}.xlsx")
+                            
+                            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                                smtp.login(email_user, email_pass)
+                                smtp.send_message(msg)
+                            st.success("✅ Manifest emailed successfully!")
+                        except Exception as mail_err:
+                            st.error(f"Email failed: {str(mail_err)}")
+                    else:
+                        st.warning("⚠️ Enter email credentials in control panel.")
+        else:
+            st.info("No dispatches available for export.")
+    except Exception as e:
+        st.error(f"Error in export module: {str(e)}")
