@@ -1,5 +1,6 @@
 # ==============================================================================
-# ENTERPRISE LOGISTICS, DISPATCH ENGINE & SALES AUTOMATION SUITE (FIXED PARSER)
+# ENTERPRISE LOGISTICS, DISPATCH ENGINE & SALES AUTOMATION SUITE
+# FIXED: STRICT SUM/FORMULA EXCLUSION & CLEAN DATA EXTRACTION (IST)
 # ==============================================================================
 
 import datetime
@@ -48,7 +49,7 @@ def get_ist_file_suffix():
 DB_NAME = "enterprise_logistics_sales_hub.db"
 
 # ==============================================================================
-# SECTION 2: THEME PALETTES
+# SECTION 2: THEME PALETTES & STYLING
 # ==============================================================================
 
 THEMES = {
@@ -251,7 +252,7 @@ def init_all_enterprise_databases():
         )
     """)
 
-    # Seed Default Fleet
+    # Default Fleet Seed
     cur.execute("SELECT COUNT(*) FROM fleet_master")
     if cur.fetchone()[0] == 0:
         cur.executemany("""
@@ -303,12 +304,12 @@ with st.sidebar:
     )
 
 # ==============================================================================
-# MODULE 1: INBOUND DEMAND & SALES ORDER AUTOMATION (FIXED EXTRACTION ENGINE)
+# MODULE 1: INBOUND DEMAND & SALES ORDER AUTOMATION
 # ==============================================================================
 
 if main_menu == "⚡ Inbound Demand & Sales Order Engine":
     st.title("⚡ Enterprise Inbound Demand & Sales Order Processing Engine")
-    st.markdown("Upload demand workbooks to parse SKUs, match DR codes, and generate Output templates.")
+    st.markdown("Upload demand workbooks to parse SKUs, match DR codes, and generate Output templates **(Sum/Formula rows & columns excluded)**.")
 
     with st.expander("⚙️ SKU & Route Settings", expanded=False):
         c1, c2, c3 = st.columns(3)
@@ -367,15 +368,25 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                 continue
 
             f_bytes = up_file.getvalue()
+            
+            # Use openpyxl data_only=True to evaluate formula values or strings
             try:
-                df_input = pd.read_excel(io.BytesIO(f_bytes), header=None)
+                wb_raw = openpyxl.load_workbook(io.BytesIO(f_bytes), data_only=True)
+                ws_raw = wb_raw.active
+                data_matrix = []
+                for row_cells in ws_raw.iter_rows(values_only=True):
+                    data_matrix.append(list(row_cells))
+                df_input = pd.DataFrame(data_matrix)
             except Exception as e:
-                st.error(f"Error reading '{short_fname}': {str(e)}")
-                continue
+                try:
+                    df_input = pd.read_excel(io.BytesIO(f_bytes), header=None)
+                except Exception as ex:
+                    st.error(f"Error reading '{short_fname}': {str(ex)}")
+                    continue
 
-            # 1. Broad FG Search (Exact or Partial)
+            # 1. Detect FG Header Row & Column
             fg_row, fg_col = -1, -1
-            for r in range(min(df_input.shape[0], 25)):
+            for r in range(min(df_input.shape[0], 30)):
                 for c in range(df_input.shape[1]):
                     cell_val = str(df_input.iloc[r, c]).strip().upper()
                     if "FG" in cell_val or "PRODUCT" in cell_val or "SKU" in cell_val:
@@ -388,30 +399,40 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                 st.error(f"❌ '{short_fname}' me FG / SKU header row detect nahi hui.")
                 continue
 
-            # 2. Total Column Detection
+            # 2. Strict Total Column Cutoff (Formula & Summary Header Guard)
             total_col = df_input.shape[1]
             for c_s in range(fg_col, df_input.shape[1]):
-                val = str(df_input.iloc[fg_row, c_s]).strip().upper()
-                if any(kw in val for kw in ["TOTAL", "SUM", "NET", "TTL", "GR. TOTAL"]):
+                val_header = str(df_input.iloc[fg_row, c_s]).strip().upper()
+                if any(kw in val_header for kw in ["TOTAL", "SUM", "NET", "TTL", "GR. TOTAL", "GRAND"]):
+                    total_col = c_s
+                    break
+                # Check column data for formulas or sum patterns
+                is_sum_col = False
+                for r_scan in range(max(0, fg_row - 5), min(fg_row + 5, df_input.shape[0])):
+                    cell_txt = str(df_input.iloc[r_scan, c_s]).strip().upper()
+                    if any(kw in cell_txt for kw in ["TOTAL", "SUM", "GRAND TOTAL"]):
+                        is_sum_col = True
+                        break
+                if is_sum_col:
                     total_col = c_s
                     break
 
-            # 3. Route Number Fallback & Detection
+            # 3. Route Number Detection
             route_num = st.session_state.route if st.session_state.route != "" else "22"
             for r in range(fg_row):
                 for c in range(min(total_col, 20)):
                     val = str(df_input.iloc[r, c]).replace('.0', '').strip()
                     if val != "" and 1 <= len(val) <= 4 and any(ch.isdigit() for ch in val):
-                        if not any(prefix in val.upper() for prefix in ["DR", "FG", "OR", "SO", "RT-"]):
+                        if not any(prefix in val.upper() for prefix in ["DR", "FG", "OR", "SO", "RT-", "TOTAL"]):
                             route_num = val
                             break
 
             resolved_route = "".join(ch for ch in str(route_num) if ch.isalnum() or ch in ('-', '_'))
 
-            # 4. Agency & DR Column
+            # 4. Agency & DR Columns
             agency_col = -1
             for c_s in range(fg_col - 1, -1, -1):
-                col_samples = df_input.iloc[fg_row + 1: fg_row + 10, c_s].dropna().astype(str).str.replace(r'\.0$', '', regex=True)
+                col_samples = df_input.iloc[fg_row + 1: fg_row + 15, c_s].dropna().astype(str).str.replace(r'\.0$', '', regex=True)
                 if col_samples.str.isdigit().sum() >= 2:
                     agency_col = c_s
                     break
@@ -420,14 +441,14 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
 
             dr_code_col = -1
             for c_s in range(fg_col - 1, -1, -1):
-                col_samples = df_input.iloc[fg_row + 1: fg_row + 10, c_s].dropna().astype(str).str.upper()
+                col_samples = df_input.iloc[fg_row + 1: fg_row + 15, c_s].dropna().astype(str).str.upper()
                 if col_samples.str.startswith("DR").sum() >= 1:
                     dr_code_col = c_s
                     break
 
             valid_cols = [(c, str(df_input.iloc[fg_row, c]).strip()) for c in range(fg_col, total_col)]
 
-            # Output Excel Workbook Init
+            # Output Workbooks
             wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes)) if template_bytes else openpyxl.Workbook()
             ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
             wb_missing = openpyxl.load_workbook(io.BytesIO(template_bytes)) if template_bytes else openpyxl.Workbook()
@@ -439,12 +460,17 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
             agency_counts_valid, agency_counts_missing = {}, {}
 
             for r in range(fg_row + 1, df_input.shape[0]):
+                # STRICT SUMMARY ROW FILTER: Agar row ke kisi bhi column me Total/Sum likha ho toh skip
+                row_raw_values = [str(val).strip().upper() for val in df_input.iloc[r, :min(total_col, 15)] if pd.notna(val)]
+                if any(any(kw in cell_str for kw in ["TOTAL", "SUM", "GRAND TOTAL", "GR. TOTAL", "NET TOTAL", "TOTAL QTY"]) for cell_str in row_raw_values):
+                    continue
+
                 agency_raw = df_input.iloc[r, agency_col]
                 if pd.isna(agency_raw) or str(agency_raw).strip() in ["", "nan", "None", "0"]:
                     continue
 
                 agency_str = str(agency_raw).replace(".0", "").strip()
-                if not agency_str.isdigit():
+                if not agency_str.isdigit() or not (1 <= len(agency_str) <= 6):
                     total_skipped += 1
                     continue
 
@@ -485,9 +511,13 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                 row_items_added = 0
                 for c_idx, fg_val in valid_cols:
                     q_val = df_input.iloc[r, c_idx]
-                    if pd.notna(q_val):
+                    if pd.notna(q_val) and str(q_val).strip() != "":
+                        q_str = str(q_val).strip()
+                        # FORMULA EXCLUSION: Ignore formula strings if formula didn't evaluate
+                        if q_str.startswith("=") or "SUM(" in q_str.upper():
+                            continue
                         try:
-                            f_qty = float(q_val)
+                            f_qty = float(q_str)
                             if f_qty > 0:
                                 current_fg = fg_val if fg_val.startswith("FG") else col_map_dict.get(c_idx, st.session_state.fg_code)
                                 if (agency_val, c_idx) in agency_override_dict:
@@ -598,9 +628,9 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
         }
 
         if len(st.session_state.processed_files) > 0:
-            st.success(f"🎉 Batch execution completed! Created {len(st.session_state.processed_files)} output workbooks & saved {len(pending_records_to_insert)} pending orders.")
+            st.success(f"🎉 Batch execution completed! Clean Qty: {total_in_qty:,.0f} Bags extracted. Created {len(st.session_state.processed_files)} output workbooks & saved {len(pending_records_to_insert)} pending orders.")
         else:
-            st.warning("⚠️ Koi valid demand row extract nahi ho saki. Kripya check karein ki Excel me valid positive quantities hain.")
+            st.warning("⚠️ Koi valid demand row extract nahi ho saki.")
 
     if st.session_state.processed_files:
         st.markdown("---")
