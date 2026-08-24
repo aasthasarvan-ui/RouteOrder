@@ -97,7 +97,6 @@ def init_db():
     cursor.execute("CREATE TABLE IF NOT EXISTS input_output_traceability (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_timestamp TEXT, input_file_name TEXT, input_file_blob BLOB, total_input_qty REAL, generated_output_file TEXT, output_type TEXT, version_no INTEGER, created_at TEXT)")
     cursor.execute("CREATE TABLE IF NOT EXISTS discrepancy_audit_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_timestamp TEXT, file_name TEXT, agency_no TEXT, dr_code TEXT, fg_code TEXT, input_qty REAL, generated_qty REAL, difference REAL, logged_at TEXT)")
     
-    # Safe Table Initialization with Unique Constraint to prevent duplication
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS dispatch_planning_ledger (
@@ -250,12 +249,12 @@ with st.expander("⚙️ Control Panel, Vehicle Capacity, Stock Inventory & Sett
 
     col_v1, col_v2 = st.columns(2)
     with col_v1:
-        st.session_state.vehicle_no = st.text_input("Assigned Vehicle Number (Shared across Route agencies)", value=st.session_state.vehicle_no)
+        st.session_state.vehicle_no = st.text_input("Assigned Vehicle Number", value=st.session_state.vehicle_no)
     with col_v2:
         st.session_state.driver_mobile = st.text_input("Driver / Transporter Mobile No", value=st.session_state.driver_mobile)
 
     st.markdown("---")
-    st.subheader("📦 Daily Stock Inventory Upload (For Shortfall / Pending Calculation)")
+    st.subheader("📦 Daily Stock Inventory Upload")
     stock_upload_file = st.file_uploader("Upload Available Stock Excel/CSV (Columns: fg_code, available_qty)", type=["csv", "xlsx"], key="stock_up")
     if stock_upload_file:
         try:
@@ -282,29 +281,12 @@ with st.expander("⚙️ Control Panel, Vehicle Capacity, Stock Inventory & Sett
     with col_set1:
         st.subheader("Default Fallback FG Code")
         st.session_state.fg_code = st.text_input("FG Code Input", value=st.session_state.fg_code, label_visibility="collapsed")
-        c1, c2 = st.columns(2)
-        if c1.button("Clear FG"): st.session_state.fg_code = ""; st.rerun()
-        if c2.button("Restore FG"): st.session_state.fg_code = DEFAULTS["fg_code"]; st.rerun()
-        
-        st.subheader("Default Route Fallback")
-        st.session_state.route = st.text_input("Route Input", value=st.session_state.route, label_visibility="collapsed")
-        c1, c2 = st.columns(2)
-        if c1.button("Clear Route"): st.session_state.route = ""; st.rerun()
-        if c2.button("Restore Route"): st.session_state.route = DEFAULTS["route"]; st.rerun()
-
     with col_set2:
         st.subheader("Direct Column Index Mapping")
-        st.session_state.col_map = st.text_area("Col Map Input", value=st.session_state.col_map, label_visibility="collapsed", help="ColIndex:Code", height=100)
-        c1, c2 = st.columns(2)
-        if c1.button("Clear Map"): st.session_state.col_map = ""; st.rerun()
-        if c2.button("Restore Map"): st.session_state.col_map = DEFAULTS["col_map"]; st.rerun()
-
+        st.session_state.col_map = st.text_area("Col Map Input", value=st.session_state.col_map, label_visibility="collapsed", height=100)
     with col_set3:
         st.subheader("Agency & Column-wise FG Override")
-        st.session_state.agency_override = st.text_area("Agency Override Input", value=st.session_state.agency_override, label_visibility="collapsed", help="Agency:ColIndex:CustomFG", height=100)
-        c1, c2 = st.columns(2)
-        if c1.button("Clear Override"): st.session_state.agency_override = ""; st.rerun()
-        if c2.button("Restore Override"): st.session_state.agency_override = DEFAULTS["agency_override"]; st.rerun()
+        st.session_state.agency_override = st.text_area("Agency Override Input", value=st.session_state.agency_override, label_visibility="collapsed", height=100)
 
     st.markdown("---")
     col_set4, col_set5 = st.columns(2)
@@ -316,12 +298,6 @@ with st.expander("⚙️ Control Panel, Vehicle Capacity, Stock Inventory & Sett
     with col_set5:
         st.subheader("📱 WhatsApp Notification")
         st.session_state.whatsapp = st.text_input("WhatsApp Number (e.g., 919876543210)", value=st.session_state.whatsapp)
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 Reset All Settings to Defaults"):
-            for k, v in DEFAULTS.items():
-                if k != "selected_theme":
-                    st.session_state[k] = v
-            st.rerun()
 
 default_fg_code = st.session_state.fg_code
 col_mapping_input = st.session_state.col_map
@@ -400,7 +376,7 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
         output_files_to_store = []
         traceability_records = []
         discrepancy_records = []
-        dispatch_plan_records = []
+        raw_dispatch_records = []
         
         with st.spinner("⚡ Running Vehicle Capacity Clubbing & Shortfall Pending Calculations... Please wait."):
             try:
@@ -449,9 +425,6 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                         for scan_r in range(max(0, fg_row - 10), min(fg_row + 3, df_input.shape[0])):
                             cell_val = str(df_input.iloc[scan_r, cSearch]).strip().upper()
                             if any(kw in cell_val for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
-                                is_total = True
-                                break
-                            if scan_r >= fg_row + 1 and ("SUM" in cell_val or "=" in cell_val):
                                 is_total = True
                                 break
                         if is_total:
@@ -607,7 +580,7 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                             current_vehicle_load = row_dispatch_sum
 
                         for _, fgc, d_dem, d_disp, d_pend in valid_row_quantities:
-                            dispatch_plan_records.append((today_date, str(route_num), assigned_vehicle_no, default_driver_mobile, str(agency_val), fgc, d_dem, d_disp, d_pend, status_str, batch_ts))
+                            raw_dispatch_records.append((today_date, str(route_num), assigned_vehicle_no, default_driver_mobile, str(agency_val), fgc, d_dem, d_disp, d_pend, status_str, batch_ts))
 
                         has_dr_code = False
                         clean_dr = ""
@@ -770,6 +743,27 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                         ).reset_index()
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
+
+                # --- Consolidate / Aggregate Split Records for Same Agency & Product ---
+                agency_product_agg = {}
+                for rec in raw_dispatch_records:
+                    # rec format: (dispatch_date, route_no, vehicle_no, driver_mobile, agency_no, fg_code, demand_qty, dispatched_qty, pending_qty, status, created_at)
+                    d_date, r_no, v_no, d_mob, ag_no, fgc, d_dem, d_disp, d_pend, stat, c_at = rec
+                    key = (d_date, r_no, v_no, d_mob, ag_no, fgc)
+                    if key not in agency_product_agg:
+                        agency_product_agg[key] = {'demand': 0.0, 'dispatched': 0.0, 'pending': 0.0, 'status': stat, 'created_at': c_at}
+                    agency_product_agg[key]['demand'] += d_dem
+                    agency_product_agg[key]['dispatched'] += d_disp
+                    agency_product_agg[key]['pending'] += d_pend
+
+                dispatch_plan_records = []
+                for key, vals in agency_product_agg.items():
+                    d_date, r_no, v_no, d_mob, ag_no, fgc = key
+                    dispatch_plan_records.append((
+                        d_date, r_no, v_no, d_mob, ag_no, fgc, 
+                        vals['demand'], vals['dispatched'], vals['pending'], 
+                        vals['status'], vals['created_at']
+                    ))
 
                 # --- Update Master DB, Unmapped Ledger & Output Files Ledger ---
                 conn = sqlite3.connect("sales_history.db")
