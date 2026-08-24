@@ -499,7 +499,7 @@ with st.sidebar:
     st.image("https://img.icons8.com/color/96/delivery-truck.png", width=55)
     st.title("Logistics Master Suite")
 
-    main_menu = st.radio(
+        main_menu = st.radio(
         "Navigation",
         [
             "⚡ Inbound Demand & Sales Order Engine",
@@ -513,11 +513,11 @@ with st.sidebar:
             "🚛 Fleet & Loading Bay Master",
             "🔍 Traceability & Audit Ledgers",
             "📊 Executive KPI & Visual Analytics",
-            "🎯 Universal Date & Multi-Field Filter",
-            "🗄️ In-App Database Builder & Dynamic Linker" # NEW MODULE ADDED
-             Center"
+            "🗄️ In-App Database Builder & Dynamic Linker",
+            "🎯 Universal Date & Multi-Field Filter Center"
         ]
     )
+
     st.markdown("---")
     st.subheader("🎨 Interface Theme Engine")
     theme_choice = st.selectbox(
