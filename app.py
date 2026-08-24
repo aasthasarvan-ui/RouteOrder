@@ -682,7 +682,7 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                         buf_valid.seek(0)
                         out_fname = safe_route_num + "_" + today_date + "_" + timestamp + "_Valid.xlsx"
                         st.session_state.processed_files.append({
-                            "name": short_filename + " (Valid DR / Dispatch Plan)",
+                            "name": short_filename + " (Valid DR)",
                             "data": buf_valid.getvalue(),
                             "filename": out_fname,
                             "orders": valid_items_created
@@ -784,8 +784,8 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     success_rate = (kpi['valid_count'] / total_processed_orders * 100) if total_processed_orders > 0 else 0
     
     col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Total Demand Qty", f"{kpi['input_qty']:,.0f}")
-    col2.metric("Dispatched Qty", f"{kpi['gen_qty']:,.0f}")
+    col1.metric("Total Input Qty", f"{kpi['input_qty']:,.0f}")
+    col2.metric("Generated Qty", f"{kpi['gen_qty']:,.0f}")
     col3.metric("Valid Orders", kpi['valid_count'])
     col4.metric("Success Rate", f"{success_rate:.1f}%")
     col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
@@ -793,6 +793,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     if kpi['skipped_count'] > 5:
         st.warning(f"⚠️ **Smart Audit Alert:** {kpi['skipped_count']} rows skipped check exception logs.")
 
+    # --- AI Sales Demand Forecasting & Velocity Health Scorecard ---
     st.markdown("---")
     st.markdown("### 🤖 AI Sales Demand Forecasting & Velocity Health Scorecard")
     
@@ -804,6 +805,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     f_col2.metric("Forecast Confidence Status", forecast_confidence)
     f_col3.metric("Projected Next-Cycle Qty", f"{kpi['gen_qty'] * 1.05:,.0f} Units", delta="+5% Trend")
 
+    # --- AI Anomaly & Unmapped Missing DR Alerts ---
     if st.session_state.anomaly_logs:
         st.markdown("---")
         st.markdown("### 🤖 AI Demand Spike & Anomaly Detector Alerts")
@@ -816,23 +818,25 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         st.error("⚠️ The following agencies had valid quantity (>0) but no DR code in file or Master DB. They were successfully processed using `NEW_CUST` fallback and logged into the Unmapped Ledger:")
         st.dataframe(pd.DataFrame(st.session_state.unmapped_current_batch), use_container_width=True)
 
+    # --- ADVANCED TABBED VISUAL ANALYTICS ---
     if st.session_state.comparison_summary:
         st.markdown("---")
         st.markdown("### 📊 Advanced Visual Analytics Dashboard")
         combined_df_chart = pd.concat(st.session_state.comparison_summary, ignore_index=True)
         
-        tab_v1, tab_v2 = st.tabs(["📊 Agency-wise Breakdown", "📦 SKU-wise Share"])
-        with tab_v1:
+        tab1, tab2 = st.tabs(["📊 Agency-wise Breakdown", "📦 SKU-wise Share"])
+        with tab1:
             st.bar_chart(combined_df_chart.groupby("Agency")["Generated Qty"].sum())
-        with tab_v2:
+        with tab2:
             st.bar_chart(combined_df_chart.groupby("FG Code")["Generated Qty"].sum())
 
     st.markdown("---")
     st.markdown("### 📥 Bulk Download & Notifications")
     
+    # --- Advanced Email Config Expander ---
     with st.expander("✉️ Advanced Email Dispatch Options (Custom Subject & Note)"):
-        email_subject_custom = st.text_input("Custom Email Subject Line", f"🚀 Sales Orders & Dispatch Plan Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}")
-        email_notes_custom = st.text_area("Custom Remarks / Notes to Include in Email Body", "All routes, vehicle loads, and pending schedules verified successfully.")
+        email_subject_custom = st.text_input("Custom Email Subject Line", f"🚀 Sales Orders Batch Execution Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}")
+        email_notes_custom = st.text_area("Custom Remarks / Notes to Include in Email Body", "All routes verified and processed successfully.")
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
@@ -842,14 +846,20 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     col_zip, col_pdf, col_summary, col_json, col_print, col_email, col_wa = st.columns(7)
     
     with col_zip:
-        st.download_button(label="📦 ZIP", data=zip_buffer.getvalue(), file_name=f"Batch_Dispatch_Orders_{get_ist_now().strftime('%Y-%m-%d')}.zip", mime="application/zip", key="zip_download")
+        st.download_button(
+            label="📦 ZIP",
+            data=zip_buffer.getvalue(),
+            file_name=f"Batch_Orders_{get_ist_now().strftime('%Y-%m-%d')}.zip",
+            mime="application/zip",
+            key="zip_download"
+        )
         
     with col_pdf:
         try:
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("Arial", "B", 16)
-            pdf.cell(190, 10, "Enterprise Dispatch & Sales Summary Invoice", ln=True, align="C")
+            pdf.cell(190, 10, "Enterprise Sales Order Summary Invoice", ln=True, align="C")
             pdf.set_font("Arial", "", 10)
             pdf.cell(190, 6, f"Generated On (IST): {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align="C")
             pdf.ln(10)
@@ -860,8 +870,8 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
             
             pdf.set_font("Arial", "", 11)
             metrics_list = [
-                ("Total Demand Quantity", f"{kpi['input_qty']:,.0f}"),
-                ("Total Dispatched Quantity", f"{kpi['gen_qty']:,.0f}"),
+                ("Total Input Quantity", f"{kpi['input_qty']:,.0f}"),
+                ("Total Generated Quantity", f"{kpi['gen_qty']:,.0f}"),
                 ("Valid DR Orders", str(kpi['valid_count'])),
                 ("Missing DR Orders (NEW_CUST)", str(kpi['missing_count'])),
                 ("Skipped Rows Logged", str(kpi['skipped_count'])),
@@ -873,33 +883,62 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
                 pdf.cell(90, 8, m_val, border=1, ln=True)
                 
             pdf_bytes = bytes(pdf.output())
-            st.download_button(label="📄 PDF", data=pdf_bytes, file_name=f"Dispatch_Invoice_{get_ist_now().strftime('%Y-%m-%d')}.pdf", mime="application/pdf", key="pdf_invoice_download")
+            st.download_button(
+                label="📄 PDF",
+                data=pdf_bytes,
+                file_name=f"Sales_Invoice_{get_ist_now().strftime('%Y-%m-%d')}.pdf",
+                mime="application/pdf",
+                key="pdf_invoice_download"
+            )
         except Exception as e:
             st.error(f"PDF Error: {str(e)}")
 
     with col_summary:
-        summary_txt = f"""=== ENTERPRISE DISPATCH & SALES SUMMARY (IST) ===
+        summary_txt = f"""=== ENTERPRISE SALES ORDER SUMMARY (IST) ===
 Date/Time: {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}
 ----------------------------------------
-Total Demand Quantity : {kpi['input_qty']:,.0f}
-Total Dispatched Qty  : {kpi['gen_qty']:,.0f}
-Valid DR Orders       : {kpi['valid_count']}
-Missing DR Orders     : {kpi['missing_count']}
-Skipped Rows Logged   : {kpi['skipped_count']}
-Success Rate          : {success_rate:.1f}%
-Demand Health Score   : {demand_health_score:.1f}%
+Total Input Quantity : {kpi['input_qty']:,.0f}
+Total Generated Qty  : {kpi['gen_qty']:,.0f}
+Valid DR Orders      : {kpi['valid_count']}
+Missing DR Orders    : {kpi['missing_count']}
+Skipped Rows Logged  : {kpi['skipped_count']}
+Success Rate         : {success_rate:.1f}%
+Demand Health Score  : {demand_health_score:.1f}%
 ----------------------------------------
-Generated Files Count : {len(st.session_state.processed_files)}
-Status: Successfully Processed & Optimized
+Generated Files Count: {len(st.session_state.processed_files)}
+Status: Successfully Processed & Audited
 ========================================"""
-        st.download_button(label="📄 TXT", data=summary_txt.encode('utf-8'), file_name=f"Dispatch_Summary_Report_{get_ist_now().strftime('%Y-%m-%d')}.txt", mime="text/plain", key="summary_txt_download")
+        st.download_button(
+            label="📄 TXT",
+            data=summary_txt.encode('utf-8'),
+            file_name=f"Summary_Report_{get_ist_now().strftime('%Y-%m-%d')}.txt",
+            mime="text/plain",
+            key="summary_txt_download"
+        )
         
     with col_json:
-        json_data = json.dumps({"timestamp": get_ist_now().strftime('%Y-%m-%d %H:%M:%S'), "metrics": kpi, "success_rate": f"{success_rate:.1f}%", "demand_health_score": f"{demand_health_score:.1f}%"}, indent=4)
-        st.download_button(label="💾 JSON", data=json_data.encode('utf-8'), file_name=f"Audit_Backup_{get_ist_now().strftime('%Y-%m-%d')}.json", mime="application/json", key="json_backup_download")
+        json_data = json.dumps({
+            "timestamp": get_ist_now().strftime('%Y-%m-%d %H:%M:%S'),
+            "metrics": kpi,
+            "success_rate": f"{success_rate:.1f}%",
+            "demand_health_score": f"{demand_health_score:.1f}%"
+        }, indent=4)
+        st.download_button(
+            label="💾 JSON",
+            data=json_data.encode('utf-8'),
+            file_name=f"Audit_Backup_{get_ist_now().strftime('%Y-%m-%d')}.json",
+            mime="application/json",
+            key="json_backup_download"
+        )
         
     with col_print:
-        print_html = '<div style="width:100%; margin:0; padding:0;"><button onclick="parent.window.print()" style="width:100%; height:38px; background:#2563eb; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; font-family:sans-serif; display:flex; align-items:center; justify-content:center;">🖨️ Print</button></div>'
+        print_html = """
+        <div style="width:100%; margin:0; padding:0;">
+            <button onclick="parent.window.print()" style="width:100%; height:38px; background:#2563eb; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; font-family:sans-serif; display:flex; align-items:center; justify-content:center;">
+                🖨️ Print
+            </button>
+        </div>
+        """
         components.html(print_html, height=50)
         
     with col_email:
@@ -914,6 +953,13 @@ Status: Successfully Processed & Optimized
                     df_master_email.to_excel(excel_buffer, index=False, sheet_name="Master Routes")
                     excel_buffer.seek(0)
 
+                    unmapped_email_html = ""
+                    if st.session_state.unmapped_current_batch:
+                        unmapped_email_html = "<h3 style='color: #dc2626;'>🚨 Unmapped Missing DRs Alert List</h3><table style='border-collapse: collapse; width: 100%; margin-top: 10px; border-radius: 6px; overflow: hidden;'><tr style='background-color: #ef4444; color: white;'><th style='padding: 8px; text-align: left;'>File Name</th><th style='padding: 8px; text-align: left;'>Route</th><th style='padding: 8px; text-align: left;'>Agency</th><th style='padding: 8px; text-align: left;'>Status</th></tr>"
+                        for item in st.session_state.unmapped_current_batch:
+                            unmapped_email_html += f"<tr style='background-color: #fef2f2;'><td style='padding: 8px; border-bottom: 1px solid #fee2e2;'>{item['File Name']}</td><td style='padding: 8px; border-bottom: 1px solid #fee2e2;'>{item['Route']}</td><td style='padding: 8px; border-bottom: 1px solid #fee2e2;'>{item['Agency']}</td><td style='padding: 8px; border-bottom: 1px solid #fee2e2; color: #dc2626;'>{item['Status']}</td></tr>"
+                        unmapped_email_html += "</table>"
+
                     msg = EmailMessage()
                     msg['Subject'] = email_subject_custom
                     msg['From'] = email_user
@@ -923,9 +969,9 @@ Status: Successfully Processed & Optimized
                     <html>
                       <body style="font-family: Arial, sans-serif; color: #333; background-color: #f9fafb; padding: 20px;">
                         <div style="max-width: 600px; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-                          <h2 style="color: #10b981; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📊 Dispatch Planning & Sales Order Hub</h2>
+                          <h2 style="color: #10b981; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📊 Sales Order Batch Automation Hub</h2>
                           <p>Hello Team,</p>
-                          <p>The daily inbound demand batch and vehicle dispatch plan have been processed successfully on <b>{get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} IST</b>.</p>
+                          <p>The daily inbound demand batch has been processed successfully on <b>{get_ist_now().strftime('%Y-%m-%d %H:%M:%S')} IST</b>.</p>
                           <p style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 10px; margin: 15px 0;"><b>Remarks:</b> {email_notes_custom}</p>
                           <table style="border-collapse: collapse; width: 100%; margin-top: 15px; border-radius: 6px; overflow: hidden;">
                             <tr style="background-color: #10b981; color: white;">
@@ -933,18 +979,23 @@ Status: Successfully Processed & Optimized
                               <th style="padding: 10px; text-align: left;">Value</th>
                             </tr>
                             <tr style="background-color: #f3f4f6;">
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Total Demand Qty</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Total Input Qty</td>
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{kpi['input_qty']:,.0f}</b></td>
                             </tr>
                             <tr>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Dispatched Qty</td>
-                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{kpi['gen_qty']:,.0f}</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Valid Orders</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{kpi['valid_count']}</td>
                             </tr>
                             <tr style="background-color: #f3f4f6;">
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Missing DR Orders (NEW_CUST)</td>
+                              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{kpi['missing_count']}</b></td>
+                            </tr>
+                            <tr>
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">Demand Health Score</td>
                               <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><b>{demand_health_score:.1f}%</b></td>
                             </tr>
                           </table>
+                          {unmapped_email_html}
                           <p style="margin-top: 25px; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb; paddingTop: 10px;">Master Route-Agency-DR Database attached herewith.</p>
                         </div>
                       </body>
@@ -969,7 +1020,7 @@ Status: Successfully Processed & Optimized
 
     with col_wa:
         if whatsapp_num:
-            wa_text = f"Dispatch & Sales Plan Ready! Total Demand: {kpi['input_qty']}, Dispatched: {kpi['gen_qty']}."
+            wa_text = f"Sales Order Batch Ready! Total Qty: {kpi['input_qty']}, Health Score: {demand_health_score:.1f}%."
             wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
             st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:38px; background:#25D366; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
 
@@ -989,7 +1040,7 @@ Status: Successfully Processed & Optimized
 # 7. MULTI-DATABASE MANAGEMENT & AUDIT PANEL
 # ==========================================
 st.markdown("---")
-with st.expander("🗄️ View, Export & Manage All Databases (Master, Dispatch Planning, Traceability & Audit)"):
+with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs, Dispatch & Audit)"):
     st.markdown("Yahan aap saare databases, vehicle dispatch planning schedules, pending deliverables aur audit ledgers ko manage kar sakte hain.")
     try:
         conn = sqlite3.connect("sales_history.db")
@@ -1010,7 +1061,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Dispatch 
             "🔍 Discrepancy Audit"
         ])
         
-        # --- TAB 1: MASTER ---
+        # --- TAB 1: MASTER DATABASE MANAGEMENT ---
         with tab_m1:
             if not df_master.empty:
                 st.markdown("#### 📊 Master Database Health & Analytics")
@@ -1187,7 +1238,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Dispatch 
             else:
                 st.info("No master records found yet.")
 
-        # --- TAB 2: UNMAPPED LEDGER ---
+        # --- TAB 2: UNMAPPED LEDGER MANAGEMENT ---
         with tab_m2:
             st.markdown("#### 🚨 Unmapped Missing DR Ledger (Generated via Fallback)")
             if not df_unmapped.empty:
@@ -1231,7 +1282,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Dispatch 
             else:
                 st.info("No unmapped missing DR records logged yet.")
 
-        # --- TAB 3: ARCHIVED OUTPUT FILES ---
+        # --- TAB 3: ARCHIVED OUTPUT FILES MANAGEMENT ---
         with tab_m3:
             st.markdown("#### 📦 Archived Output Files (Saved per file without duplication)")
             if not df_outputs.empty:
