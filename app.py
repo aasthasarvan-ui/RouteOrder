@@ -14,94 +14,98 @@ from email.message import EmailMessage
 from fpdf import FPDF
 import streamlit.components.v1 as components
 
-# Page Configuration & Styling (Compact SAP Layout with Multi-Theme Support)
+# Page Configuration & Styling (Professional SAP ERP Layout with Top Control Panel)
 st.set_page_config(
     page_title="Enterprise Sales Order Automation Hub (SAP ERP Edition)", 
     page_icon="💼", 
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# Theme Dictionary for Enterprise Styling
+# Theme Dictionary with Fixed High-Contrast Typography
 THEMES = {
     "💼 SAP Classic Navy": {
-        "bg": "#f4f6f9", "sidebar_bg": "#1e293b", "text": "#1f2937", "sidebar_text": "#cbd5e1",
-        "card_bg": "#ffffff", "border": "#e2e8f0", "btn_bg": "#0f172a", "btn_hover": "#1e293b", "primary": "#2563eb"
+        "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
+        "btn_bg": "#0f172a", "btn_hover": "#1e293b", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
     },
     "🌙 Modern Dark ERP": {
-        "bg": "#0b0f19", "sidebar_bg": "#111827", "text": "#f3f4f6", "sidebar_text": "#9ca3af",
-        "card_bg": "#1f2937", "border": "#374151", "btn_bg": "#374151", "btn_hover": "#4b5563", "primary": "#3b82f6"
+        "bg": "#0b0f19", "text": "#f3f4f6", "card_bg": "#1f2937", "border": "#374151",
+        "btn_bg": "#374151", "btn_hover": "#4b5563", "primary": "#3b82f6", "input_bg": "#111827", "input_text": "#f3f4f6"
     },
     "📊 Corporate Slate": {
-        "bg": "#eef2f5", "sidebar_bg": "#334155", "text": "#0f172a", "sidebar_text": "#e2e8f0",
-        "card_bg": "#ffffff", "border": "#cbd5e1", "btn_bg": "#475569", "btn_hover": "#334155", "primary": "#0284c7"
+        "bg": "#eef2f5", "text": "#0f172a", "card_bg": "#ffffff", "border": "#94a3b8",
+        "btn_bg": "#475569", "btn_hover": "#334155", "primary": "#0284c7", "input_bg": "#ffffff", "input_text": "#0f172a"
     },
     "☀️ Clean Light Minimal": {
-        "bg": "#ffffff", "sidebar_bg": "#f8fafc", "text": "#111827", "sidebar_text": "#475569",
-        "card_bg": "#f9fafb", "border": "#d1d5db", "btn_bg": "#e5e7eb", "btn_hover": "#d1d5db", "primary": "#10b981"
+        "bg": "#ffffff", "text": "#111827", "card_bg": "#f9fafb", "border": "#d1d5db",
+        "btn_bg": "#e5e7eb", "btn_hover": "#d1d5db", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
     }
 }
 
-# Theme Selector in Sidebar
+# Theme Selector in Sidebar (Clean & Minimal)
 st.sidebar.title("🎨 ERP Theme Engine")
 selected_theme_name = st.sidebar.selectbox("Choose Interface Theme", list(THEMES.keys()), label_visibility="collapsed")
 t = THEMES[selected_theme_name]
 
-# Fixed CSS injection without f-string syntax conflict
+# Professional CSS Injection with Dynamic High-Contrast Text Fixes
 st.markdown(
-    """
+    f"""
     <style>
-        #GithubIcon { visibility: hidden !important; display: none !important; }
-        .stAppHeader { background-color: transparent !important; }
-        header[data-testid="stHeader"] { display: none !important; }
+        #GithubIcon {{ visibility: hidden !important; display: none !important; }}
+        .stAppHeader {{ background-color: transparent !important; }}
+        header[data-testid="stHeader"] {{ display: none !important; }}
         
-        .stApp {
-            background-color: """ + t['bg'] + """;
-            color: """ + t['text'] + """;
+        .stApp {{
+            background-color: {t['bg']};
+            color: {t['text']};
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
+        }}
         
-        section[data-testid="stSidebar"] {
-            background-color: """ + t['sidebar_bg'] + """;
-            color: """ + t['sidebar_text'] + """;
-        }
-        section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] label {
-            color: """ + t['sidebar_text'] + """ !important;
-        }
+        /* Force clean font colors for all text elements */
+        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{
+            color: {t['text']} !important;
+        }}
         
-        .stButton>button {
+        /* Inputs & Textareas contrast fix */
+        input, textarea, select {{
+            background-color: {t['input_bg']} !important;
+            color: {t['input_text']} !important;
+            border: 1px solid {t['border']} !important;
+        }}
+        
+        .stButton>button {{
             width: 100%;
             height: 38px;
-            background-color: """ + t['btn_bg'] + """ !important;
+            background-color: {t['btn_bg']} !important;
             color: #ffffff !important;
             font-size: 13px;
             font-weight: 600;
             border-radius: 4px;
-            border: 1px solid """ + t['border'] + """;
+            border: 1px solid {t['border']};
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.2s ease;
-        }
-        .stButton>button:hover {
-            background-color: """ + t['btn_hover'] + """ !important;
-        }
+        }}
+        .stButton>button:hover {{
+            background-color: {t['btn_hover']} !important;
+        }}
         
-        button[kind="primary"] {
-            background-color: """ + t['primary'] + """ !important;
-        }
+        button[kind="primary"] {{
+            background-color: {t['primary']} !important;
+        }}
         
-        div[data-testid="stExpander"] {
-            background-color: """ + t['card_bg'] + """;
-            border: 1px solid """ + t['border'] + """;
+        div[data-testid="stExpander"] {{
+            background-color: {t['card_bg']};
+            border: 1px solid {t['border']};
             border-radius: 4px;
-        }
+        }}
         
-        div[data-testid="stDataFrame"] {
-            border: 1px solid """ + t['border'] + """;
+        div[data-testid="stDataFrame"] {{
+            border: 1px solid {t['border']};
             border-radius: 4px;
-            background-color: """ + t['card_bg'] + """;
-        }
+            background-color: {t['card_bg']};
+        }}
     </style>
     """,
     unsafe_allow_html=True
@@ -211,79 +215,52 @@ for key, val in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
-# Sidebar Settings & Dynamic Mapping with Clear/Restore
-st.sidebar.markdown("---")
-st.sidebar.title("⚙️ ERP Control Panel")
+# --- TOP COLLAPSIBLE ERP CONTROL PANEL (Replaces Left Sidebar Clutter) ---
+with st.expander("⚙️ Enterprise Control Panel & System Settings (Click to Expand)", expanded=False):
+    col_set1, col_set2, col_set3 = st.columns(3)
+    
+    with col_set1:
+        st.subheader("Default Fallback FG Code")
+        st.session_state.fg_code = st.text_input("FG Code Input", value=st.session_state.fg_code, label_visibility="collapsed")
+        c1, c2 = st.columns(2)
+        if c1.button("Clear FG"): st.session_state.fg_code = ""; st.rerun()
+        if c2.button("Restore FG"): st.session_state.fg_code = DEFAULTS["fg_code"]; st.rerun()
+        
+        st.subheader("Default Route Fallback")
+        st.session_state.route = st.text_input("Route Input", value=st.session_state.route, label_visibility="collapsed")
+        c1, c2 = st.columns(2)
+        if c1.button("Clear Route"): st.session_state.route = ""; st.rerun()
+        if c2.button("Restore Route"): st.session_state.route = DEFAULTS["route"]; st.rerun()
 
-if st.sidebar.button("🔄 Reset All to Defaults"):
-    for k, v in DEFAULTS.items():
-        st.session_state[k] = v
-    st.rerun()
+    with col_set2:
+        st.subheader("Direct Column Index Mapping")
+        st.session_state.col_map = st.text_area("Col Map Input", value=st.session_state.col_map, label_visibility="collapsed", help="ColIndex:Code", height=100)
+        c1, c2 = st.columns(2)
+        if c1.button("Clear Map"): st.session_state.col_map = ""; st.rerun()
+        if c2.button("Restore Map"): st.session_state.col_map = DEFAULTS["col_map"]; st.rerun()
 
-st.sidebar.markdown("---")
+    with col_set3:
+        st.subheader("Agency & Column-wise FG Override")
+        st.session_state.agency_override = st.text_area("Agency Override Input", value=st.session_state.agency_override, label_visibility="collapsed", help="Agency:ColIndex:CustomFG", height=100)
+        c1, c2 = st.columns(2)
+        if c1.button("Clear Override"): st.session_state.agency_override = ""; st.rerun()
+        if c2.button("Restore Override"): st.session_state.agency_override = DEFAULTS["agency_override"]; st.rerun()
 
-# 1. Default FG Code
-st.sidebar.subheader("Default Fallback FG Code")
-st.session_state.fg_code = st.sidebar.text_input("FG Code Input", value=st.session_state.fg_code, label_visibility="collapsed")
-c1, c2 = st.sidebar.columns(2)
-if c1.button("Clear FG"): st.session_state.fg_code = ""; st.rerun()
-if c2.button("Restore FG"): st.session_state.fg_code = DEFAULTS["fg_code"]; st.rerun()
-
-# 2. Column Mapping
-st.sidebar.subheader("Direct Column Index Mapping")
-st.session_state.col_map = st.sidebar.text_area("Col Map Input", value=st.session_state.col_map, label_visibility="collapsed", help="ColIndex:Code")
-c1, c2 = st.sidebar.columns(2)
-if c1.button("Clear Map"): st.session_state.col_map = ""; st.rerun()
-if c2.button("Restore Map"): st.session_state.col_map = DEFAULTS["col_map"]; st.rerun()
-
-st.sidebar.markdown("---")
-
-# 3. Agency Override
-st.sidebar.subheader("Agency & Column-wise FG Override")
-st.session_state.agency_override = st.sidebar.text_area("Agency Override Input", value=st.session_state.agency_override, label_visibility="collapsed", help="Agency:ColIndex:CustomFG")
-c1, c2 = st.sidebar.columns(2)
-if c1.button("Clear Override"): st.session_state.agency_override = ""; st.rerun()
-if c2.button("Restore Override"): st.session_state.agency_override = DEFAULTS["agency_override"]; st.rerun()
-
-# 4. Route Fallback
-st.sidebar.subheader("Default Route Fallback")
-st.session_state.route = st.sidebar.text_input("Route Input", value=st.session_state.route, label_visibility="collapsed")
-c1, c2 = st.sidebar.columns(2)
-if c1.button("Clear Route"): st.session_state.route = ""; st.rerun()
-if c2.button("Restore Route"): st.session_state.route = DEFAULTS["route"]; st.rerun()
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("📧 Email Dispatch Settings")
-
-# 5. Sender Email
-st.sidebar.text("Sender Email ID")
-st.session_state.email_user = st.sidebar.text_input("Sender Input", value=st.session_state.email_user, label_visibility="collapsed")
-c1, c2 = st.sidebar.columns(2)
-if c1.button("Clear Email"): st.session_state.email_user = ""; st.rerun()
-if c2.button("Restore Email"): st.session_state.email_user = DEFAULTS["email_user"]; st.rerun()
-
-# 6. Email Password
-st.sidebar.text("Email App Password")
-st.session_state.email_pass = st.sidebar.text_input("Pass Input", type="password", value=st.session_state.email_pass, label_visibility="collapsed")
-c1, c2 = st.sidebar.columns(2)
-if c1.button("Clear Pass"): st.session_state.email_pass = ""; st.rerun()
-if c2.button("Restore Pass"): st.session_state.email_pass = DEFAULTS["email_pass"]; st.rerun()
-
-# 7. Recipient Email
-st.sidebar.text("Recipient Email")
-st.session_state.recipient = st.sidebar.text_input("Recipient Input", value=st.session_state.recipient, label_visibility="collapsed")
-c1, c2 = st.sidebar.columns(2)
-if c1.button("Clear Recipient"): st.session_state.recipient = ""; st.rerun()
-if c2.button("Restore Recipient"): st.session_state.recipient = DEFAULTS["recipient"]; st.rerun()
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("📱 WhatsApp Notification")
-
-# 8. WhatsApp Number
-st.session_state.whatsapp = st.sidebar.text_input("WhatsApp Number (e.g., 919876543210)", value=st.session_state.whatsapp)
-c1, c2 = st.sidebar.columns(2)
-if c1.button("Clear WA"): st.session_state.whatsapp = ""; st.rerun()
-if c2.button("Restore WA"): st.session_state.whatsapp = DEFAULTS["whatsapp"]; st.rerun()
+    st.markdown("---")
+    col_set4, col_set5 = st.columns(2)
+    with col_set4:
+        st.subheader("📧 Email Dispatch Settings")
+        st.session_state.email_user = st.text_input("Sender Email ID", value=st.session_state.email_user)
+        st.session_state.email_pass = st.text_input("Email App Password", type="password", value=st.session_state.email_pass)
+        st.session_state.recipient = st.text_input("Recipient Email", value=st.session_state.recipient)
+    with col_set5:
+        st.subheader("📱 WhatsApp Notification")
+        st.session_state.whatsapp = st.text_input("WhatsApp Number (e.g., 919876543210)", value=st.session_state.whatsapp)
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Reset All Settings to Defaults"):
+            for k, v in DEFAULTS.items():
+                st.session_state[k] = v
+            st.rerun()
 
 # Mapping assignments
 default_fg_code = st.session_state.fg_code
