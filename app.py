@@ -601,7 +601,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                         clean_dr = val_str
                                         break
 
-                        # --- AUTO-LOOKUP MISSING DR FROM DATABASE MASTER ---
+                       # --- AUTO-LOOKUP MISSING DR FROM DATABASE MASTER ---
                         if not has_dr_code:
                             conn_lookup = sqlite3.connect("sales_history.db")
                             cursor_lookup = conn_lookup.cursor()
@@ -633,8 +633,8 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
 
                         final_dr = clean_dr if has_dr_code else f"NEW_CUST_{agency_val}"
                         
-                        if has_dr_code and clean_dr.startswith("DR"):
-                            db_record = (short_filename, str(route_num), str(agency_val), str(clean_dr), ist_now.strftime("%Y-%m-%d %H:%M:%S"))
+                        if has_dr_code and clean_dr.upper().startswith("DR"):
+                            db_record = (short_filename, str(route_num), str(agency_val), str(clean_dr).upper(), ist_now.strftime("%Y-%m-%d %H:%M:%S"))
                             if db_record not in db_records_to_insert:
                                 db_records_to_insert.append(db_record)
 
@@ -651,7 +651,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
                             current_seq = agency_counts_valid[agency_val]
                             ref_number = f"RT-{route_num}-{agency_val}-{today_date}" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-{current_seq}"
-                            target_ws, current_r, order_num, dr_to_use, file_category = ws_valid, valid_row, valid_order_num, clean_dr, "Valid DR"
+                            target_ws, current_r, order_num, dr_to_use, file_category = ws_valid, valid_row, valid_order_num, str(clean_dr).upper(), "Valid DR"
                         else:
                             agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
                             current_seq = agency_counts_missing[agency_val]
@@ -752,7 +752,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                         ).reset_index()
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
-
+                        
                 # --- Update Master DB, Unmapped Ledger, Output Files & Traceability ---
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
