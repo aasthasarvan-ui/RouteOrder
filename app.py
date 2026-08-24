@@ -99,7 +99,6 @@ def init_db():
     cursor.execute("CREATE TABLE IF NOT EXISTS dispatch_planning_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, dispatch_date TEXT, route_no TEXT, vehicle_no TEXT, driver_mobile TEXT, agency_no TEXT, fg_code TEXT, demand_qty REAL, dispatched_qty REAL, pending_qty REAL, status TEXT, created_at TEXT)")
     cursor.execute("CREATE TABLE IF NOT EXISTS inventory_stock_table (id INTEGER PRIMARY KEY AUTOINCREMENT, fg_code TEXT UNIQUE, available_qty REAL, updated_at TEXT)")
     
-    # Safe Column Migrations
     for tbl in ['unique_routes_master', 'dispatch_planning_ledger', 'inventory_stock_table', 'discrepancy_audit_ledger']:
         try:
             cursor.execute(f"PRAGMA table_info({tbl})")
@@ -489,10 +488,10 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
 
                     valid_cols = []
                     for c in range(fg_col, total_col):
-                        fg_code = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
-                        if any(kw in fg_code.upper() for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
+                        fg_code_header = str(df_input.iloc[fg_row, c] if fg_row >= 0 else "").strip()
+                        if any(kw in fg_code_header.upper() for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
                             break
-                        valid_cols.append((c, fg_code))
+                        valid_cols.append((c, fg_code_header))
 
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
                     ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
@@ -533,7 +532,7 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                         
                         valid_row_quantities = []
                         row_total_qty = 0
-                        for c, fg_code in valid_cols:
+                        for c, fg_code_header in valid_cols:
                             if c >= total_col:
                                 continue
                             sku_qty = df_input.iloc[r, c]
@@ -544,8 +543,9 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                                         row_total_qty += qty_val
                                         file_input_qty += qty_val
                                         
-                                        current_fg_code = agency_col_override_map.get((agency_val, c), direct_col_mapping.get(c, fg_code if fg_code else default_fg_code))
-                                        if not current_fg_code or str(current_fg_code).strip() == "":
+                                        # CORRECT FG CODE RESOLUTION
+                                        current_fg_code = agency_col_override_map.get((agency_val, c), direct_col_mapping.get(c, fg_code_header if fg_code_header and str(fg_code_header).upper() != "NAN" else default_fg_code))
+                                        if not current_fg_code or str(current_fg_code).strip() == "" or str(current_fg_code).upper() == "NAN":
                                             current_fg_code = default_fg_code
 
                                         avail_stock = stock_inventory_dict.get(current_fg_code, 99999.0)
@@ -1091,7 +1091,6 @@ with st.expander("🗄️ View, Export & Manage All Databases (Add/Delete Column
             "📋 Master", "🚨 Unmapped", "📦 Outputs", "🚚 Dispatch", "🔗 Trace", "🔍 Audit", "📅 Monthly", "⏳ Pending", "🛠️ DB Schema Editor"
         ])
         
-        # Helper function for universal table manager inside each tab
         def render_table_manager(table_name, df_data):
             st.dataframe(df_data, use_container_width=True)
             col_ed1, col_ed2, col_ed3 = st.columns(3)
@@ -1188,7 +1187,6 @@ with st.expander("🗄️ View, Export & Manage All Databases (Add/Delete Column
                     remaining_cols = [c for c in table_cols if c != col_to_drop and c != 'id']
                     col_str = ", ".join(remaining_cols)
                     
-                    # SQLite does not support direct DROP COLUMN in older versions easily without table recreation, so we perform safe table rebuilding
                     cur_d.execute(f"CREATE TABLE {sel_table_drop}_temp AS SELECT id, {col_str} FROM {sel_table_drop}")
                     cur_d.execute(f"DROP TABLE {sel_table_drop}")
                     cur_d.execute(f"ALTER TABLE {sel_table_drop}_temp RENAME TO {sel_table_drop}")
