@@ -22,23 +22,39 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Enterprise Themes with Fixed High-Contrast Button Visibility
+# 8 Professional ERP Themes with Unique Icons & Color Palettes
 THEMES = {
     "💼 SAP Classic Navy": {
-        "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
+        "icon": "💼", "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
         "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
     },
     "🌙 Modern Dark ERP": {
-        "bg": "#0b0f19", "text": "#f3f4f6", "card_bg": "#1f2937", "border": "#374151",
+        "icon": "🌙", "bg": "#0b0f19", "text": "#f3f4f6", "card_bg": "#1f2937", "border": "#374151",
         "btn_bg": "#374151", "btn_hover": "#4b5563", "primary": "#3b82f6", "input_bg": "#111827", "input_text": "#f3f4f6"
     },
     "📊 Corporate Slate": {
-        "bg": "#eef2f5", "text": "#0f172a", "card_bg": "#ffffff", "border": "#94a3b8",
+        "icon": "📊", "bg": "#eef2f5", "text": "#0f172a", "card_bg": "#ffffff", "border": "#94a3b8",
         "btn_bg": "#475569", "btn_hover": "#334155", "primary": "#0284c7", "input_bg": "#ffffff", "input_text": "#0f172a"
     },
     "☀️ Clean Light Minimal": {
-        "bg": "#ffffff", "text": "#111827", "card_bg": "#f9fafb", "border": "#d1d5db",
+        "icon": "☀️", "bg": "#ffffff", "text": "#111827", "card_bg": "#f9fafb", "border": "#d1d5db",
         "btn_bg": "#0f172a", "btn_hover": "#1e293b", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
+    },
+    "⚡ Oracle Cyber Blue": {
+        "icon": "⚡", "bg": "#f0fdfa", "text": "#042f2e", "card_bg": "#ccfbf1", "border": "#5eead4",
+        "btn_bg": "#0d9488", "btn_hover": "#0f766e", "primary": "#14b8a6", "input_bg": "#ffffff", "input_text": "#042f2e"
+    },
+    "🌲 Emerald Corporate": {
+        "icon": "🌲", "bg": "#f0fdf4", "text": "#14532d", "card_bg": "#dcfce7", "border": "#86efac",
+        "btn_bg": "#16a34a", "btn_hover": "#15803d", "primary": "#22c55e", "input_bg": "#ffffff", "input_text": "#14532d"
+    },
+    "🍇 Executive Burgundy": {
+        "icon": "🍇", "bg": "#fdf2f8", "text": "#500724", "card_bg": "#fce7f3", "border": "#f472b6",
+        "btn_bg": "#db2777", "btn_hover": "#be185d", "primary": "#ec4899", "input_bg": "#ffffff", "input_text": "#500724"
+    },
+    "🪙 Titanium Charcoal": {
+        "icon": "🪙", "bg": "#18181b", "text": "#fafafa", "card_bg": "#27272a", "border": "#52525b",
+        "btn_bg": "#52525b", "btn_hover": "#71717a", "primary": "#e4e4e7", "input_bg": "#09090b", "input_text": "#fafafa"
     }
 }
 
@@ -124,7 +140,7 @@ if not is_healthy:
     st.error(f"❌ **System Integrity Warning:** {health_msg}")
     st.stop()
 
-# --- Session State Defaults for Reset/Clear/Restore & Theme ---
+# --- Session State Defaults ---
 DEFAULTS = {
     "fg_code": "FG500014",
     "col_map": "36:FG500014AJ\n37:FG500014AK",
@@ -150,7 +166,7 @@ for key, val in DEFAULTS.items():
 # Fetch active theme from session state
 t = THEMES[st.session_state.selected_theme]
 
-# Professional CSS Injection with FORCED Bright White Button Text (`!important`)
+# Professional CSS Injection with Forced High-Contrast Visibility
 st.markdown(
     f"""
     <style>
@@ -174,7 +190,6 @@ st.markdown(
             border: 1px solid {t['border']} !important;
         }}
         
-        /* Forced Crystal Clear White Text on All Buttons */
         .stButton>button {{
             width: 100%;
             height: 38px;
@@ -224,10 +239,22 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- TOP COLLAPSIBLE ERP CONTROL PANEL & VISIBLE THEME ENGINE ---
+# --- TOP COLLAPSIBLE ERP CONTROL PANEL & INSTANT THEME SELECTOR ---
 with st.expander("⚙️ Enterprise Control Panel, Theme Engine & System Settings (Click to Expand)", expanded=True):
-    st.subheader("🎨 ERP Theme Engine")
-    st.session_state.selected_theme = st.selectbox("Select Interface Theme", list(THEMES.keys()), index=list(THEMES.keys()).index(st.session_state.selected_theme), label_visibility="collapsed")
+    st.subheader("🎨 ERP Theme Engine (8 Professional Themes)")
+    
+    # Callback to trigger instant rerun on theme change
+    def on_theme_change():
+        st.session_state.selected_theme = st.session_state.theme_selectbox
+
+    st.selectbox(
+        "Select Interface Theme", 
+        list(THEMES.keys()), 
+        key="theme_selectbox",
+        index=list(THEMES.keys()).index(st.session_state.selected_theme),
+        on_change=on_theme_change,
+        label_visibility="collapsed"
+    )
     st.markdown("---")
 
     col_set1, col_set2, col_set3 = st.columns(3)
@@ -302,7 +329,7 @@ for line in agency_fg_override.split('\n'):
         if ag.isdigit() and col_idx.isdigit():
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
-st.title("💼 Enterprise Sales Order Automation Hub (SAP ERP Edition)")
+st.title(f"💼 Enterprise Sales Order Automation Hub ({st.session_state.selected_theme})")
 st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs, log valid unmapped entries, and archive outputs.")
 st.markdown("---")
 
