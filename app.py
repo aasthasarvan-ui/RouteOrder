@@ -16,15 +16,15 @@ import streamlit.components.v1 as components
 
 # Page Configuration & Styling
 st.set_page_config(
-    page_title="Enterprise Sales Order Automation Hub (SAP ERP Edition)", 
+    page_title="Enterprise Sales Order Automation Hub", 
     page_icon="💼", 
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# 8 Professional ERP Themes with Unique Icons & Color Palettes
+# 8 Professional Enterprise Themes with Unique Icons & Color Palettes
 THEMES = {
-    "💼 SAP Classic Navy": {
+    "💼 Classic Enterprise Navy": {
         "icon": "💼", "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
         "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
     },
@@ -40,7 +40,7 @@ THEMES = {
         "icon": "☀️", "bg": "#ffffff", "text": "#111827", "card_bg": "#f9fafb", "border": "#d1d5db",
         "btn_bg": "#0f172a", "btn_hover": "#1e293b", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
     },
-    "⚡ Oracle Cyber Blue": {
+    "⚡ Cyber Blue": {
         "icon": "⚡", "bg": "#f0fdfa", "text": "#042f2e", "card_bg": "#ccfbf1", "border": "#5eead4",
         "btn_bg": "#0d9488", "btn_hover": "#0f766e", "primary": "#14b8a6", "input_bg": "#ffffff", "input_text": "#042f2e"
     },
@@ -177,7 +177,7 @@ DEFAULTS = {
     "email_pass": st.secrets.get("email", {}).get("app_password", ""),
     "recipient": st.secrets.get("email", {}).get("recipient_email", ""),
     "whatsapp": "",
-    "selected_theme": "💼 SAP Classic Navy",
+    "selected_theme": "💼 Classic Enterprise Navy",
     "processed_files": [],
     "comparison_summary": [],
     "skipped_rows_log": [],
@@ -267,7 +267,7 @@ st.markdown(
 
 # --- TOP COLLAPSIBLE ERP CONTROL PANEL & INSTANT THEME SELECTOR ---
 with st.expander("⚙️ Enterprise Control Panel, Theme Engine & System Settings (Click to Expand)", expanded=True):
-    st.subheader("🎨 ERP Theme Engine (8 Professional Themes)")
+    st.subheader("🎨 Theme Engine (8 Professional Themes)")
     
     def on_theme_change():
         st.session_state.selected_theme = st.session_state.theme_selectbox
