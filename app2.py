@@ -1941,3 +1941,103 @@ elif main_menu == "🗄️ In-App Database Builder & Dynamic Linker":
                         st.error("❌ Core system tables cannot be dropped!")
 
     conn.close()
+# ==============================================================================
+# SECTION: APPENDED AT END OF FILE (GLOBAL UNIVERSAL DATE & MULTI-FILTER)
+# ==============================================================================
+
+st.markdown("---")
+with st.expander("🎯 Global Universal Date & Multi-Field Filter Engine (All Modules)", expanded=False):
+    conn_global = get_db_connection()
+
+    MODULE_MAP = {
+        "📖 Daily Dispatch Sale Register": {
+            "table": "daily_dispatch_register",
+            "date_col": "dispatch_date",
+            "filters": ["route_no", "agency_no", "dr_code", "fg_code", "vehicle_no", "transporter_name"]
+        },
+        "🧩 Partial / Split Dispatch Database": {
+            "table": "partial_dispatch_ledger",
+            "date_col": "created_at",
+            "filters": ["route_no", "agency_no", "dr_code", "fg_code", "status"]
+        },
+        "⏳ Pending Orders Ledger": {
+            "table": "pending_orders",
+            "date_col": "uploaded_at",
+            "filters": ["route_no", "agency_no", "dr_code", "fg_code", "status"]
+        },
+        "📋 Loading Slips & Active Trips": {
+            "table": "trip_loading_slips",
+            "date_col": "trip_date",
+            "filters": ["route_no", "vehicle_no", "transporter_name", "status"]
+        },
+        "📋 Unique Master Mapping DB": {
+            "table": "unique_routes_master",
+            "date_col": "created_at",
+            "filters": ["route_no", "agency_no", "dr_code"]
+        },
+        "🚛 Fleet Master": {
+            "table": "fleet_master",
+            "date_col": None,
+            "filters": ["vehicle_type", "transporter_name", "status"]
+        }
+    }
+
+    sel_mod = st.selectbox("Select Table to Filter & Export", list(MODULE_MAP.keys()), key="global_filter_tbl_select")
+    target_info = MODULE_MAP[sel_mod]
+    tbl_name = target_info["table"]
+    d_col = target_info["date_col"]
+    f_cols = target_info["filters"]
+
+    df_raw = pd.read_sql(f"SELECT * FROM {tbl_name}", conn_global)
+
+    if df_raw.empty:
+        st.info("ℹ️ Is table me abhi koi data nahi hai.")
+    else:
+        df_filtered = df_raw.copy()
+
+        # 1. Date Range Filter
+        if d_col and d_col in df_raw.columns:
+            df_filtered["_clean_date"] = pd.to_datetime(df_filtered[d_col].astype(str).str[:10], errors="coerce")
+            valid_dates = df_filtered["_clean_date"].dropna()
+
+            if not valid_dates.empty:
+                col_d1, col_d2 = st.columns(2)
+                with col_d1:
+                    f_start = st.date_input("📅 From Date:", valid_dates.min().date(), key=f"f_start_{tbl_name}")
+                with col_d2:
+                    f_end = st.date_input("📅 To Date:", valid_dates.max().date(), key=f"f_end_{tbl_name}")
+
+                if f_start and f_end:
+                    mask = (df_filtered["_clean_date"].dt.date >= f_start) & (df_filtered["_clean_date"].dt.date <= f_end)
+                    df_filtered = df_filtered[mask]
+
+            df_filtered.drop(columns=["_clean_date"], errors="ignore", inplace=True)
+
+        # 2. Dynamic Column Filters
+        filter_cols_exist = [c for c in f_cols if c in df_filtered.columns]
+        if filter_cols_exist:
+            f_grid = st.columns(min(len(filter_cols_exist), 3))
+            for i, col_name in enumerate(filter_cols_exist):
+                with f_grid[i % 3]:
+                    u_vals = sorted([str(x) for x in df_raw[col_name].dropna().unique() if str(x).strip() != ""])
+                    chosen = st.multiselect(f"Filter {col_name.title()}:", u_vals, key=f"g_flt_{tbl_name}_{col_name}")
+                    if chosen:
+                        df_filtered = df_filtered[df_filtered[col_name].astype(str).isin(chosen)]
+
+        # 3. Text Search
+        search_kw = st.text_input("🔍 Quick Search Text:", "", key=f"g_srch_{tbl_name}")
+        if search_kw:
+            df_filtered = df_filtered[df_filtered.apply(lambda r: r.astype(str).str.contains(search_kw, case=False).any(), axis=1)]
+
+        # 4. Metrics & Table
+        st.metric("Total Filtered Records", f"{len(df_filtered):,} of {len(df_raw):,}")
+        st.dataframe(df_filtered, use_container_width=True)
+
+        # 5. Export
+        col_ex1, col_ex2 = st.columns(2)
+        with col_ex1:
+            st.download_button("📥 Export Filtered Excel", to_excel_download_bytes(df_filtered, "Filtered"), f"{tbl_name}_filtered.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_xl_{tbl_name}")
+        with col_ex2:
+            st.download_button("📄 Export Filtered CSV", df_filtered.to_csv(index=False).encode('utf-8'), f"{tbl_name}_filtered.csv", "text/csv", key=f"dl_csv_{tbl_name}")
+
+    conn_global.close()
