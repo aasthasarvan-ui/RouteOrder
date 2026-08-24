@@ -1815,27 +1815,32 @@ elif main_menu == "📊 Executive KPI & Visual Analytics":
             st.info("No partial orders recorded yet.")
 
 # ==============================================================================
-# MODULE 12: IN-APP DATABASE BUILDER & DYNAMIC LINKER (NEW ADDED MODULE)
 # ==============================================================================
-
-elif main_menu == "🗄️ In-App Database Builder & Dynamic Linker":
+# MODULE 14: IN-APP DATABASE BUILDER & DYNAMIC LINKER (UPDATED WITH ADD/DELETE COLUMNS)
+# ==============================================================================
+elif main_menu == "14. 🗄️ In-App Database Builder & Dynamic Linker":
     st.title("🗄️ In-App Dynamic Database Builder & Universal CRUD")
-    st.markdown("Create custom tables inside the application, add columns dynamically, insert/modify/delete records, and manage relational database schemas.")
+    st.markdown("Create custom tables, **Add or Delete Columns dynamically**, insert/modify/delete records, and manage relational database schemas.")
 
     conn = get_db_connection()
     cur = conn.cursor()
 
-    tab_db1, tab_db2 = st.tabs(["🏗️ Create Table & Add Columns", "📋 Universal Table CRUD & Manager"])
+    # Yahan humne 3 Tabs bana diye hain taaki Add/Delete Column ka alag section ho
+    tab_db1, tab_db2, tab_db3 = st.tabs(["🏗️ Create New Table", "⚙️ Add / Delete Columns", "📋 Universal Table CRUD (Edit Data)"])
 
+    # ---------------------------------------------------------
+    # TAB 1: CREATE NEW TABLE
+    # ---------------------------------------------------------
     with tab_db1:
         st.markdown("##### ➕ Create New Custom Table")
         new_tbl_name = st.text_input("New Table Name (e.g. vendor_master, quality_check)", "").strip().lower()
-        new_tbl_name = re.sub(r'[^a-z0-9_]', '', new_tbl_name)
+        new_tbl_name = re.sub(r'[^a-z0-9_]', '', new_tbl_name) # Name format safety
         
         link_to_existing = st.checkbox("Link with Existing Table (Foreign Key)")
         parent_table = ""
         if link_to_existing:
-            parent_table = st.selectbox("Select Parent Table", ["pending_orders", "fleet_master", "unique_routes_master"])
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+            parent_table = st.selectbox("Select Parent Table", [row[0] for row in cur.fetchall()])
 
         if st.button("🏗️ Build & Create Table", type="primary"):
             if new_tbl_name:
@@ -1864,44 +1869,75 @@ elif main_menu == "🗄️ In-App Database Builder & Dynamic Linker":
                         """)
                     conn.commit()
                     st.success(f"✅ Table '{new_tbl_name}' created successfully!")
-                    st.rerun()
+                    st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
                 except Exception as ex:
                     st.error(f"Error: {ex}")
 
-        st.markdown("---")
-        st.markdown("##### ➕ Add New Column to Existing Table")
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-        all_tables_list = [row[0] for row in cur.fetchall()]
-        
-        col_target_tbl = st.selectbox("Select Table to Alter", all_tables_list, key="alter_tbl_sel")
-        new_col_name = st.text_input("New Column Name (e.g. priority_level, remarks)").strip().lower()
-        new_col_name = re.sub(r'[^a-z0-9_]', '', new_col_name)
-        new_col_type = st.selectbox("Column Data Type", ["TEXT", "REAL", "INTEGER"])
-
-        if st.button("➕ Add Column", type="primary"):
-            if col_target_tbl and new_col_name:
-                try:
-                    cur.execute(f"ALTER TABLE {col_target_tbl} ADD COLUMN {new_col_name} {new_col_type}")
-                    conn.commit()
-                    st.success(f"✅ Column '{new_col_name}' ({new_col_type}) added to '{col_target_tbl}' successfully!")
-                    st.rerun()
-                except Exception as ex:
-                    st.error(f"Error adding column: {ex}")
-
+    # ---------------------------------------------------------
+    # TAB 2: ADD OR DELETE COLUMNS IN ANY TABLE
+    # ---------------------------------------------------------
     with tab_db2:
-        st.markdown("##### 📋 View, Edit, Modify & Delete Records")
+        st.markdown("##### ⚙️ Manage Table Structure (Add or Remove Columns)")
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         all_tables_list = [row[0] for row in cur.fetchall()]
         
-        selected_tbl = st.selectbox("Select Table to View/Edit", all_tables_list, key="crud_tbl_sel")
+        col_target_tbl = st.selectbox("Select Table to Modify Structure", all_tables_list, key="alter_tbl_sel")
+        
+        if col_target_tbl:
+            c_add, c_drop = st.columns(2)
+            
+            # --- FEATURE 1: ADD COLUMN ---
+            with c_add:
+                st.markdown("**➕ Add New Column**")
+                new_col_name = st.text_input("New Column Name (e.g. priority_level)").strip().lower()
+                new_col_name = re.sub(r'[^a-z0-9_]', '', new_col_name)
+                new_col_type = st.selectbox("Column Data Type", ["TEXT", "REAL", "INTEGER"])
 
-        if selected_tbl:
-            df_selected = pd.read_sql(f"SELECT * FROM {selected_tbl}", conn)
-            edited_custom_tbl = st.data_editor(df_selected, use_container_width=True, num_rows="dynamic", key=f"crud_{selected_tbl}")
+                if st.button("➕ Add Column", type="primary"):
+                    if new_col_name:
+                        try:
+                            cur.execute(f"ALTER TABLE {col_target_tbl} ADD COLUMN {new_col_name} {new_col_type}")
+                            conn.commit()
+                            st.success(f"✅ Column '{new_col_name}' added to '{col_target_tbl}' successfully!")
+                            st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
+                        except Exception as ex:
+                            st.error(f"Error adding column: {ex}")
+            
+            # --- FEATURE 2: DELETE COLUMN ---
+            with c_drop:
+                st.markdown("**🗑️ Delete Existing Column**")
+                # Table ke existing columns fetch karna
+                cur.execute(f"PRAGMA table_info({col_target_tbl})")
+                # 'id' column ko delete hone se bachana zaroori hai
+                existing_cols = [col[1] for col in cur.fetchall() if col[1] != 'id'] 
+                
+                col_to_drop = st.selectbox("Select Column to Delete", existing_cols)
+                
+                if st.button("🗑️ Delete Column", type="primary"):
+                    if col_to_drop:
+                        try:
+                            # SQLite version 3.35.0+ supports DROP COLUMN natively
+                            cur.execute(f"ALTER TABLE {col_target_tbl} DROP COLUMN {col_to_drop}")
+                            conn.commit()
+                            st.success(f"✅ Column '{col_to_drop}' deleted from '{col_target_tbl}' successfully!")
+                            st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
+                        except Exception as ex:
+                            st.error(f"Error deleting column: {ex}. (Make sure your SQLite version is 3.35.0+)")
+
+    # ---------------------------------------------------------
+    # TAB 3: UNIVERSAL CRUD (EDIT DATA)
+    # ---------------------------------------------------------
+    with tab_db3:
+        st.markdown("##### 📋 View, Edit, Modify & Delete Records")
+        selected_crud_tbl = st.selectbox("Select Table to View/Edit Data", all_tables_list, key="crud_tbl_sel")
+
+        if selected_crud_tbl:
+            df_selected = pd.read_sql(f"SELECT * FROM {selected_crud_tbl}", conn)
+            edited_custom_tbl = st.data_editor(df_selected, use_container_width=True, num_rows="dynamic", key=f"crud_{selected_crud_tbl}")
 
             col_act1, col_act2, col_act3 = st.columns(3)
             with col_act1:
-                if st.button(f"💾 Save Changes in `{selected_tbl}`", type="primary"):
+                if st.button(f"💾 Save Changes in `{selected_crud_tbl}`", type="primary"):
                     try:
                         for _, row in edited_custom_tbl.iterrows():
                             row_dict = row.to_dict()
@@ -1911,32 +1947,33 @@ elif main_menu == "🗄️ In-App Database Builder & Dynamic Linker":
                                 cols_to_update = [k for k in row_dict.keys() if k != 'id']
                                 set_clause = ", ".join([f"{c}=?" for c in cols_to_update])
                                 vals = [row_dict[c] for c in cols_to_update] + [row_id]
-                                cur.execute(f"UPDATE {selected_tbl} SET {set_clause} WHERE id=?", vals)
+                                cur.execute(f"UPDATE {selected_crud_tbl} SET {set_clause} WHERE id=?", vals)
                             else:
                                 cols_to_insert = [k for k in row_dict.keys() if k != 'id' and pd.notna(row_dict[k])]
                                 placeholders = ", ".join(["?" for _ in cols_to_insert])
                                 cols_str = ", ".join(cols_to_insert)
                                 vals = [row_dict[c] for c in cols_to_insert]
-                                cur.execute(f"INSERT INTO {selected_tbl} ({cols_str}) VALUES ({placeholders})", vals)
+                                cur.execute(f"INSERT INTO {selected_crud_tbl} ({cols_str}) VALUES ({placeholders})", vals)
                         
                         conn.commit()
-                        st.success(f"✅ Table `{selected_tbl}` updated!")
-                        st.rerun()
+                        st.success(f"✅ Table `{selected_crud_tbl}` updated!")
+                        st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
                     except Exception as e:
-                        st.error(f"Failed: {e}")
+                        st.error(f"Failed to update data: {e}")
 
             with col_act2:
                 if not df_selected.empty:
-                    st.download_button("📥 Export Table (.xlsx)", to_excel_download_bytes(df_selected, selected_tbl), f"{selected_tbl}_export.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    st.download_button("📥 Export Table (.xlsx)", to_excel_download_bytes(df_selected, selected_crud_tbl), f"{selected_crud_tbl}_export.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
             with col_act3:
-                if st.button(f"🔥 Drop Table `{selected_tbl}`", type="secondary"):
-                    if selected_tbl not in ["pending_orders", "fleet_master", "unique_routes_master"]:
-                        cur.execute(f"DROP TABLE IF EXISTS {selected_tbl}")
+                if st.button(f"🔥 Drop Entire Table `{selected_crud_tbl}`", type="secondary"):
+                    core_tables = ["pending_orders", "fleet_master", "unique_routes_master", "sap_stock_master", "moga_route_ledger", "trip_loading_slips"]
+                    if selected_crud_tbl not in core_tables:
+                        cur.execute(f"DROP TABLE IF EXISTS {selected_crud_tbl}")
                         conn.commit()
-                        st.warning(f"⚠️ Table `{selected_tbl}` dropped.")
-                        st.rerun()
+                        st.warning(f"⚠️ Table `{selected_crud_tbl}` has been permanently dropped.")
+                        st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
                     else:
-                        st.error("❌ Core system tables cannot be dropped!")
+                        st.error("❌ Core system tables cannot be dropped to prevent software crash!")
 
     conn.close()
