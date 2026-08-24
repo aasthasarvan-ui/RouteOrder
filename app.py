@@ -14,7 +14,7 @@ from email.message import EmailMessage
 from fpdf import FPDF
 import streamlit.components.v1 as components
 
-# Page Configuration & Styling (SAP / Enterprise ERP Look & Feel)
+# Page Configuration & Styling (Compact SAP Layout with Multi-Theme Support)
 st.set_page_config(
     page_title="Enterprise Sales Order Automation Hub (SAP ERP Edition)", 
     page_icon="💼", 
@@ -22,71 +22,83 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.markdown("""
+# Theme Dictionary for Enterprise Styling
+THEMES = {
+    "💼 SAP Classic Navy": {
+        "bg": "#f4f6f9", "sidebar_bg": "#1e293b", "text": "#1f2937", "sidebar_text": "#cbd5e1",
+        "card_bg": "#ffffff", "border": "#e2e8f0", "btn_bg": "#0f172a", "btn_hover": "#1e293b", "primary": "#2563eb"
+    },
+    "🌙 Modern Dark ERP": {
+        "bg": "#0b0f19", "sidebar_bg": "#111827", "text": "#f3f4f6", "sidebar_text": "#9ca3af",
+        "card_bg": "#1f2937", "border": "#374151", "btn_bg": "#374151", "btn_hover": "#4b5563", "primary": "#3b82f6"
+    },
+    "📊 Corporate Slate": {
+        "bg": "#eef2f5", "sidebar_bg": "#334155", "text": "#0f172a", "sidebar_text": "#e2e8f0",
+        "card_bg": "#ffffff", "border": "#cbd5e1", "btn_bg": "#475569", "btn_hover": "#334155", "primary": "#0284c7"
+    },
+    "☀️ Clean Light Minimal": {
+        "bg": "#ffffff", "sidebar_bg": "#f8fafc", "text": "#111827", "sidebar_text": "#475569",
+        "card_bg": "#f9fafb", "border": "#d1d5db", "btn_bg": "#e5e7eb", "btn_hover": "#d1d5db", "primary": "#10b981"
+    }
+}
+
+# Theme Selector in Sidebar
+st.sidebar.title("🎨 ERP Theme Engine")
+selected_theme_name = st.sidebar.selectbox("Choose Interface Theme", list(THEMES.keys()), label_visibility="collapsed")
+t = THEMES[selected_theme_name]
+
+st.markdown(f"""
     <style>
         #GithubIcon { visibility: hidden !important; display: none !important; }
         .stAppHeader { background-color: transparent !important; }
         header[data-testid="stHeader"] { display: none !important; }
         
-        /* SAP / Enterprise ERP Theme Styling */
-        .stApp {
-            background-color: #f4f6f9;
-            color: #1f2937;
+        .stApp {{
+            background-color: {t['bg']};
+            color: {t['text']};
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         
-        /* Sidebar styling */
-        section[data-testid="stSidebar"] {
-            background-color: #1e293b;
-            color: #f8fafc;
+        section[data-testid="stSidebar"] {{
+            background-color: {t['sidebar_bg']};
+            color: {t['sidebar_text']};
         }
-        section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] label {
-            color: #cbd5e1 !important;
+        section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] label {{
+            color: {t['sidebar_text']} !important;
         }
         
-        /* Enterprise Buttons (SAP Corporate Blue / Slate) */
-        .stButton>button {
+        .stButton>button {{
             width: 100%;
-            height: 42px;
-            background-color: #0f172a !important;
+            height: 38px;
+            background-color: {t['btn_bg']} !important;
             color: #ffffff !important;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             border-radius: 4px;
-            border: 1px solid #334155;
+            border: 1px solid {t['border']};
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
             transition: all 0.2s ease;
         }
-        .stButton>button:hover {
-            background-color: #1e293b !important;
-            border-color: #475569 !important;
+        .stButton>button:hover {{
+            background-color: {t['btn_hover']} !important;
+        }}
+        
+        button[kind="primary"] {{
+            background-color: {t['primary']} !important;
+        }}
+        
+        div[data-testid="stExpander"] {{
+            background-color: {t['card_bg']};
+            border: 1px solid {t['border']};
+            border-radius: 4px;
         }
         
-        /* Primary Action Button (SAP Success / Action Green/Blue) */
-        button[kind="primary"] {
-            background-color: #2563eb !important;
-            border-color: #1d4ed8 !important;
-        }
-        button[kind="primary"]:hover {
-            background-color: #1d4ed8 !important;
-        }
-        
-        /* Card & Expander containers */
-        div[data-testid="stExpander"] {
-            background-color: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-        }
-        
-        /* Dataframes */
-        div[data-testid="stDataFrame"] {
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            background-color: #ffffff;
+        div[data-testid="stDataFrame"] {{
+            border: 1px solid {t['border']};
+            border-radius: 4px;
+            background-color: {t['card_bg']};
         }
     </style>
 """, unsafe_allow_html=True)
@@ -107,9 +119,9 @@ def verify_core_integrity():
         conn.close()
         
         required_tables = ['history_logs', 'unique_routes_master', 'output_files_ledger', 'unmapped_missing_dr_ledger']
-        for t in required_tables:
-            if t not in existing_tables:
-                return False, f"Missing critical database table: {t}"
+        for t_name in required_tables:
+            if t_name not in existing_tables:
+                return False, f"Missing critical database table: {t_name}"
         return True, "All Core Integrity Checkpoints Passed Successfully!"
     except Exception as e:
         return False, str(e)
@@ -196,6 +208,7 @@ for key, val in DEFAULTS.items():
         st.session_state[key] = val
 
 # Sidebar Settings & Dynamic Mapping with Clear/Restore
+st.sidebar.markdown("---")
 st.sidebar.title("⚙️ ERP Control Panel")
 
 if st.sidebar.button("🔄 Reset All to Defaults"):
@@ -887,12 +900,12 @@ Status: Successfully Processed & Audited
     with col_print:
         print_html = """
         <div style="width:100%; margin:0; padding:0;">
-            <button onclick="parent.window.print()" style="width:100%; height:50px; background:#3b82f6; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-family:sans-serif; display:flex; align-items:center; justify-content:center;">
+            <button onclick="parent.window.print()" style="width:100%; height:38px; background:#2563eb; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; font-family:sans-serif; display:flex; align-items:center; justify-content:center;">
                 🖨️ Print
             </button>
         </div>
         """
-        components.html(print_html, height=60)
+        components.html(print_html, height=50)
         
     with col_email:
         if st.button("📧 Email"):
@@ -975,7 +988,7 @@ Status: Successfully Processed & Audited
         if whatsapp_num:
             wa_text = f"Sales Order Batch Ready! Total Qty: {kpi['input_qty']}, Health Score: {demand_health_score:.1f}%."
             wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
-            st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:50px; background:#25D366; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:38px; background:#25D366; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("##### Individual File Downloads:")
