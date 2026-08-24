@@ -14,7 +14,7 @@ from email.message import EmailMessage
 from fpdf import FPDF
 import streamlit.components.v1 as components
 
-# Page Configuration & Styling (Professional SAP ERP Layout with Integrated Themes)
+# Page Configuration & Styling
 st.set_page_config(
     page_title="Enterprise Sales Order Automation Hub (SAP ERP Edition)", 
     page_icon="💼", 
@@ -22,23 +22,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Integrated Enterprise Themes with Perfect Contrast & Visibility
+# Enterprise Themes with Fixed High-Contrast Button Visibility
 THEMES = {
     "💼 SAP Classic Navy": {
         "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
-        "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "btn_text": "#ffffff", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
+        "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
     },
     "🌙 Modern Dark ERP": {
         "bg": "#0b0f19", "text": "#f3f4f6", "card_bg": "#1f2937", "border": "#374151",
-        "btn_bg": "#374151", "btn_hover": "#4b5563", "btn_text": "#ffffff", "primary": "#3b82f6", "input_bg": "#111827", "input_text": "#f3f4f6"
+        "btn_bg": "#374151", "btn_hover": "#4b5563", "primary": "#3b82f6", "input_bg": "#111827", "input_text": "#f3f4f6"
     },
     "📊 Corporate Slate": {
         "bg": "#eef2f5", "text": "#0f172a", "card_bg": "#ffffff", "border": "#94a3b8",
-        "btn_bg": "#475569", "btn_hover": "#334155", "btn_text": "#ffffff", "primary": "#0284c7", "input_bg": "#ffffff", "input_text": "#0f172a"
+        "btn_bg": "#475569", "btn_hover": "#334155", "primary": "#0284c7", "input_bg": "#ffffff", "input_text": "#0f172a"
     },
     "☀️ Clean Light Minimal": {
         "bg": "#ffffff", "text": "#111827", "card_bg": "#f9fafb", "border": "#d1d5db",
-        "btn_bg": "#0f172a", "btn_hover": "#1e293b", "btn_text": "#ffffff", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
+        "btn_bg": "#0f172a", "btn_hover": "#1e293b", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
     }
 }
 
@@ -150,7 +150,7 @@ for key, val in DEFAULTS.items():
 # Fetch active theme from session state
 t = THEMES[st.session_state.selected_theme]
 
-# Professional CSS Injection with Integrated Button Styling
+# Professional CSS Injection with FORCED Bright White Button Text (`!important`)
 st.markdown(
     f"""
     <style>
@@ -174,14 +174,14 @@ st.markdown(
             border: 1px solid {t['border']} !important;
         }}
         
-        /* Fully Integrated & Visible Buttons */
+        /* Forced Crystal Clear White Text on All Buttons */
         .stButton>button {{
             width: 100%;
             height: 38px;
             background-color: {t['btn_bg']} !important;
-            color: {t['btn_text']} !important;
-            font-size: 13px;
-            font-weight: 600;
+            color: #ffffff !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
             border-radius: 4px;
             border: 1px solid {t['border']};
             display: flex;
@@ -189,13 +189,22 @@ st.markdown(
             justify-content: center;
             transition: all 0.2s ease;
         }}
+        .stButton>button p {{
+            color: #ffffff !important;
+        }}
         .stButton>button:hover {{
             background-color: {t['btn_hover']} !important;
-            color: {t['btn_text']} !important;
+            color: #ffffff !important;
+        }}
+        .stButton>button:hover p {{
+            color: #ffffff !important;
         }}
         
         button[kind="primary"] {{
             background-color: {t['primary']} !important;
+            color: #ffffff !important;
+        }}
+        button[kind="primary"] p {{
             color: #ffffff !important;
         }}
         
@@ -217,7 +226,6 @@ st.markdown(
 
 # --- TOP COLLAPSIBLE ERP CONTROL PANEL & VISIBLE THEME ENGINE ---
 with st.expander("⚙️ Enterprise Control Panel, Theme Engine & System Settings (Click to Expand)", expanded=True):
-    # Theme Selector right inside the top panel so it's never lost!
     st.subheader("🎨 ERP Theme Engine")
     st.session_state.selected_theme = st.selectbox("Select Interface Theme", list(THEMES.keys()), index=list(THEMES.keys()).index(st.session_state.selected_theme), label_visibility="collapsed")
     st.markdown("---")
