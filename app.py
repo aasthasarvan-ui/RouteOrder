@@ -101,19 +101,23 @@ def init_db():
     
     # Safe Column Migrations
     try:
-        cursor.execute("PRAGMA table_info(unique_routes_master)")
-        columns_master = [col[1] for col in cursor.fetchall()]
-        if "file_name" not in columns_master:
-            cursor.execute("ALTER TABLE unique_routes_master ADD COLUMN file_name TEXT")
-    except Exception:
-        pass
-
-    try:
-        cursor.execute("PRAGMA table_info(dispatch_planning_ledger)")
-        columns_dispatch = [col[1] for col in cursor.fetchall()]
-        if "fg_code" not in columns_dispatch:
-            cursor.execute("ALTER TABLE dispatch_planning_ledger ADD COLUMN fg_code TEXT")
-    except Exception:
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS dispatch_planning_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            dispatch_date TEXT, 
+            route_no TEXT, 
+            vehicle_no TEXT, 
+            driver_mobile TEXT, 
+            agency_no TEXT, 
+            fg_code TEXT, 
+            demand_qty REAL, 
+            dispatched_qty REAL, 
+            pending_qty REAL, 
+            status TEXT, 
+            created_at TEXT,
+            UNIQUE(dispatch_date, route_no, vehicle_no, agency_no, fg_code)
+        )
+    """)    except Exception:
         pass
         
     conn.commit()
@@ -780,11 +784,12 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, discrepancy_records)
 
-                if dispatch_plan_records:
+             if dispatch_plan_records:
                     cursor.executemany("""
-                        INSERT INTO dispatch_planning_ledger (dispatch_date, route_no, vehicle_no, driver_mobile, agency_no, fg_code, demand_qty, dispatched_qty, pending_qty, status, created_at)
+                        INSERT OR REPLACE INTO dispatch_planning_ledger 
+                        (dispatch_date, route_no, vehicle_no, driver_mobile, agency_no, fg_code, demand_qty, dispatched_qty, pending_qty, status, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, dispatch_plan_records)
+                    """, dispatch_plan_records))
                 
                 cursor.execute(
                     "INSERT INTO history_logs (timestamp, files_count, total_qty, status) VALUES (?, ?, ?, ?)",
