@@ -14,7 +14,9 @@ from email.message import EmailMessage
 from fpdf import FPDF
 import streamlit.components.v1 as components
 
-# Page Configuration & Styling
+# ==============================================================================
+# SECTION 1: STREAMLIT PAGE CONFIGURATION & METADATA
+# ==============================================================================
 st.set_page_config(
     page_title="Enterprise Sales Order Automation Hub", 
     page_icon="💼", 
@@ -22,49 +24,119 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 8 Professional Enterprise Themes with Unique Icons & Color Palettes
+# ==============================================================================
+# SECTION 2: 8 ENTERPRISE COLOR PALETTES & THEME DEFINITIONS
+# ==============================================================================
 THEMES = {
     "💼 Classic Enterprise Navy": {
-        "icon": "💼", "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
-        "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
+        "icon": "💼", 
+        "bg": "#f4f6f9", 
+        "text": "#1f2937", 
+        "card_bg": "#ffffff", 
+        "border": "#cbd5e1",
+        "btn_bg": "#1e3a8a", 
+        "btn_hover": "#1d4ed8", 
+        "primary": "#2563eb", 
+        "input_bg": "#ffffff", 
+        "input_text": "#1f2937"
     },
     "🌙 Modern Dark ERP": {
-        "icon": "🌙", "bg": "#0b0f19", "text": "#f3f4f6", "card_bg": "#1f2937", "border": "#374151",
-        "btn_bg": "#374151", "btn_hover": "#4b5563", "primary": "#3b82f6", "input_bg": "#111827", "input_text": "#f3f4f6"
+        "icon": "🌙", 
+        "bg": "#0b0f19", 
+        "text": "#f3f4f6", 
+        "card_bg": "#1f2937", 
+        "border": "#374151",
+        "btn_bg": "#374151", 
+        "btn_hover": "#4b5563", 
+        "primary": "#3b82f6", 
+        "input_bg": "#111827", 
+        "input_text": "#f3f4f6"
     },
     "📊 Corporate Slate": {
-        "icon": "📊", "bg": "#eef2f5", "text": "#0f172a", "card_bg": "#ffffff", "border": "#94a3b8",
-        "btn_bg": "#475569", "btn_hover": "#334155", "primary": "#0284c7", "input_bg": "#ffffff", "input_text": "#0f172a"
+        "icon": "📊", 
+        "bg": "#eef2f5", 
+        "text": "#0f172a", 
+        "card_bg": "#ffffff", 
+        "border": "#94a3b8",
+        "btn_bg": "#475569", 
+        "btn_hover": "#334155", 
+        "primary": "#0284c7", 
+        "input_bg": "#ffffff", 
+        "input_text": "#0f172a"
     },
     "☀️ Clean Light Minimal": {
-        "icon": "☀️", "bg": "#ffffff", "text": "#111827", "card_bg": "#f9fafb", "border": "#d1d5db",
-        "btn_bg": "#0f172a", "btn_hover": "#1e293b", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
+        "icon": "☀️", 
+        "bg": "#ffffff", 
+        "text": "#111827", 
+        "card_bg": "#f9fafb", 
+        "border": "#d1d5db",
+        "btn_bg": "#0f172a", 
+        "btn_hover": "#1e293b", 
+        "primary": "#10b981", 
+        "input_bg": "#ffffff", 
+        "input_text": "#111827"
     },
     "⚡ Cyber Blue": {
-        "icon": "⚡", "bg": "#f0fdfa", "text": "#042f2e", "card_bg": "#ccfbf1", "border": "#5eead4",
-        "btn_bg": "#0d9488", "btn_hover": "#0f766e", "primary": "#14b8a6", "input_bg": "#ffffff", "input_text": "#042f2e"
+        "icon": "⚡", 
+        "bg": "#f0fdfa", 
+        "text": "#042f2e", 
+        "card_bg": "#ccfbf1", 
+        "border": "#5eead4",
+        "btn_bg": "#0d9488", 
+        "btn_hover": "#0f766e", 
+        "primary": "#14b8a6", 
+        "input_bg": "#ffffff", 
+        "input_text": "#042f2e"
     },
     "🌲 Emerald Corporate": {
-        "icon": "🌲", "bg": "#f0fdf4", "text": "#14532d", "card_bg": "#dcfce7", "border": "#86efac",
-        "btn_bg": "#16a34a", "btn_hover": "#15803d", "primary": "#22c55e", "input_bg": "#ffffff", "input_text": "#14532d"
+        "icon": "🌲", 
+        "bg": "#f0fdf4", 
+        "text": "#14532d", 
+        "card_bg": "#dcfce7", 
+        "border": "#86efac",
+        "btn_bg": "#16a34a", 
+        "btn_hover": "#15803d", 
+        "primary": "#22c55e", 
+        "input_bg": "#ffffff", 
+        "input_text": "#14532d"
     },
     "🍇 Executive Burgundy": {
-        "icon": "🍇", "bg": "#fdf2f8", "text": "#500724", "card_bg": "#fce7f3", "border": "#f472b6",
-        "btn_bg": "#db2777", "btn_hover": "#be185d", "primary": "#ec4899", "input_bg": "#ffffff", "input_text": "#500724"
+        "icon": "🍇", 
+        "bg": "#fdf2f8", 
+        "text": "#500724", 
+        "card_bg": "#fce7f3", 
+        "border": "#f472b6",
+        "btn_bg": "#db2777", 
+        "btn_hover": "#be185d", 
+        "primary": "#ec4899", 
+        "input_bg": "#ffffff", 
+        "input_text": "#500724"
     },
     "🪙 Titanium Charcoal": {
-        "icon": "🪙", "bg": "#18181b", "text": "#fafafa", "card_bg": "#27272a", "border": "#52525b",
-        "btn_bg": "#52525b", "btn_hover": "#71717a", "primary": "#e4e4e7", "input_bg": "#09090b", "input_text": "#fafafa"
+        "icon": "🪙", 
+        "bg": "#18181b", 
+        "text": "#fafafa", 
+        "card_bg": "#27272a", 
+        "border": "#52525b",
+        "btn_bg": "#52525b", 
+        "btn_hover": "#71717a", 
+        "primary": "#e4e4e7", 
+        "input_bg": "#09090b", 
+        "input_text": "#fafafa"
     }
 }
 
-# IST Timezone Helper via pytz
+# ==============================================================================
+# SECTION 3: TIMEZONE CONFIGURATION (IST)
+# ==============================================================================
 IST = pytz.timezone('Asia/Kolkata')
 
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# --- UNIQUE CHECKPOINT: Core Logic & Integrity Verification Guard ---
+# ==============================================================================
+# SECTION 4: DATABASE INTEGRITY VERIFICATION & INITIALIZATION
+# ==============================================================================
 def verify_core_integrity():
     try:
         conn = sqlite3.connect("sales_history.db")
@@ -73,7 +145,14 @@ def verify_core_integrity():
         existing_tables = [row[0] for row in cursor.fetchall()]
         conn.close()
         
-        required_tables = ['history_logs', 'unique_routes_master', 'output_files_ledger', 'unmapped_missing_dr_ledger', 'input_output_traceability', 'discrepancy_audit_ledger']
+        required_tables = [
+            'history_logs', 
+            'unique_routes_master', 
+            'output_files_ledger', 
+            'unmapped_missing_dr_ledger', 
+            'input_output_traceability', 
+            'discrepancy_audit_ledger'
+        ]
         for t_name in required_tables:
             if t_name not in existing_tables:
                 return False, f"Missing critical database table: {t_name}"
@@ -81,10 +160,11 @@ def verify_core_integrity():
     except Exception as e:
         return False, str(e)
 
-# SQLite Database Initialization with Extended Enterprise Traceability & Audit Ledgers
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
+    
+    # 1. History Logs Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS history_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,6 +174,8 @@ def init_db():
             status TEXT
         )
     """)
+    
+    # 2. Master Route-Agency-DR Mapping Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS unique_routes_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,6 +187,8 @@ def init_db():
             UNIQUE(route_no, agency_no, dr_code)
         )
     """)
+    
+    # 3. Generated Output Files Storage Ledger (Binary format for Dispatch Hub)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS output_files_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,6 +198,8 @@ def init_db():
             created_at TEXT
         )
     """)
+    
+    # 4. Unmapped Fallback Missing DR Records Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,6 +211,8 @@ def init_db():
             UNIQUE(route_no, agency_no)
         )
     """)
+    
+    # 5. Inbound File to Output File Traceability Ledger
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS input_output_traceability (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,6 +226,8 @@ def init_db():
             created_at TEXT
         )
     """)
+    
+    # 6. Discrepancy & Variance Audit Reconciliation Ledger
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS discrepancy_audit_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,6 +242,8 @@ def init_db():
             logged_at TEXT
         )
     """)
+    
+    # Migration Guard: file_name column in unique_routes_master
     cursor.execute("PRAGMA table_info(unique_routes_master)")
     columns = [col[1] for col in cursor.fetchall()]
     if "file_name" not in columns:
@@ -167,7 +259,25 @@ if not is_healthy:
     st.error(f"❌ **System Integrity Warning:** {health_msg}")
     st.stop()
 
-# --- Session State Defaults ---
+def save_output_file_to_db(file_name: str, file_bytes: bytes, file_type: str = "Valid Output"):
+    try:
+        conn = sqlite3.connect("sales_history.db")
+        cursor = conn.cursor()
+        current_time = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("""
+            INSERT OR REPLACE INTO output_files_ledger (file_name, file_type, file_data, created_at)
+            VALUES (?, ?, ?, ?)
+        """, (file_name, file_type, file_bytes, current_time))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Error saving to sales_history.db: {str(e)}")
+        return False
+
+# ==============================================================================
+# SECTION 5: SESSION STATE DEFAULTS
+# ==============================================================================
 DEFAULTS = {
     "fg_code": "FG500014",
     "col_map": "36:FG500014AJ\n37:FG500014AK",
@@ -192,7 +302,9 @@ for key, val in DEFAULTS.items():
 
 t = THEMES[st.session_state.selected_theme]
 
-# Professional CSS Injection with Forced High-Contrast Visibility
+# ==============================================================================
+# SECTION 6: HIGH CONTRAST CSS INJECTION
+# ==============================================================================
 st.markdown(
     f"""
     <style>
@@ -265,7 +377,9 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- TOP COLLAPSIBLE ERP CONTROL PANEL & INSTANT THEME SELECTOR ---
+# ==============================================================================
+# SECTION 7: CONTROL PANEL & ERP SYSTEM SETTINGS
+# ==============================================================================
 with st.expander("⚙️ Enterprise Control Panel, Theme Engine & System Settings (Click to Expand)", expanded=True):
     st.subheader("🎨 Theme Engine (8 Professional Themes)")
     
@@ -354,6 +468,9 @@ for line in agency_fg_override.split('\n'):
         if ag.isdigit() and col_idx.isdigit():
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
+# ==============================================================================
+# SECTION 8: PRIMARY WORKFLOW: INBOUND DEMAND EXTRACTION & PROCESSING
+# ==============================================================================
 st.title(f"💼 Enterprise Sales Order Automation Hub ({st.session_state.selected_theme})")
 st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs, log valid unmapped entries, and archive outputs.")
 st.markdown("---")
@@ -601,7 +718,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                         clean_dr = val_str
                                         break
 
-                       # --- AUTO-LOOKUP MISSING DR FROM DATABASE MASTER ---
+                        # --- AUTO-LOOKUP MISSING DR FROM DATABASE MASTER ---
                         if not has_dr_code:
                             conn_lookup = sqlite3.connect("sales_history.db")
                             cursor_lookup = conn_lookup.cursor()
@@ -766,9 +883,10 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     VALUES (?, ?, ?, ?, ?)
                 """, unmapped_records_to_insert)
                 
+                # Dynamic store & overwrite outputs (INSERT OR REPLACE prevents duplicate lock)
                 for fname, ftype, fdata, fdate in output_files_to_store:
                     cursor.execute("""
-                        INSERT OR IGNORE INTO output_files_ledger (file_name, file_type, file_data, created_at)
+                        INSERT OR REPLACE INTO output_files_ledger (file_name, file_type, file_data, created_at)
                         VALUES (?, ?, ?, ?)
                     """, (fname, ftype, fdata, fdate))
 
@@ -805,7 +923,9 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
     else:
         st.warning("⚠️ Kripya pehle demand files upload karein!")
 
-# Display KPI Summary Cards & Advanced Visual Analytics
+# ==============================================================================
+# SECTION 9: KPI METRIC CARDS & AI VELOCITY SCORECARD
+# ==============================================================================
 if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("---")
     st.markdown("### 📈 Batch Performance & KPI Summary")
@@ -824,7 +944,6 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     if kpi['skipped_count'] > 5:
         st.warning(f"⚠️ **Smart Audit Alert:** {kpi['skipped_count']} rows skipped check exception logs.")
 
-    # --- AI Sales Demand Forecasting & Velocity Health Scorecard ---
     st.markdown("---")
     st.markdown("### 🤖 AI Sales Demand Forecasting & Velocity Health Scorecard")
     
@@ -836,7 +955,6 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     f_col2.metric("Forecast Confidence Status", forecast_confidence)
     f_col3.metric("Projected Next-Cycle Qty", f"{kpi['gen_qty'] * 1.05:,.0f} Units", delta="+5% Trend")
 
-    # --- AI Anomaly & Unmapped Missing DR Alerts ---
     if st.session_state.anomaly_logs:
         st.markdown("---")
         st.markdown("### 🤖 AI Demand Spike & Anomaly Detector Alerts")
@@ -849,7 +967,6 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         st.error("⚠️ The following agencies had valid quantity (>0) but no DR code in file or Master DB. They were successfully processed using `NEW_CUST` fallback and logged into the Unmapped Ledger:")
         st.dataframe(pd.DataFrame(st.session_state.unmapped_current_batch), use_container_width=True)
 
-    # --- ADVANCED TABBED VISUAL ANALYTICS ---
     if st.session_state.comparison_summary:
         st.markdown("---")
         st.markdown("### 📊 Advanced Visual Analytics Dashboard")
@@ -861,10 +978,12 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         with tab2:
             st.bar_chart(combined_df_chart.groupby("FG Code")["Generated Qty"].sum())
 
+    # ==============================================================================
+    # SECTION 10: MULTI-CHANNEL EXPORT & DISPATCH HUB
+    # ==============================================================================
     st.markdown("---")
     st.markdown("### 📥 Bulk Download & Notifications")
     
-    # --- Advanced Email Config Expander ---
     with st.expander("✉️ Advanced Email Dispatch Options (Custom Subject & Note)"):
         email_subject_custom = st.text_input("Custom Email Subject Line", f"🚀 Sales Orders Batch Execution Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}")
         email_notes_custom = st.text_area("Custom Remarks / Notes to Include in Email Body", "All routes verified and processed successfully.")
@@ -1067,7 +1186,9 @@ Status: Successfully Processed & Audited
         ):
             st.toast(f"🎉 '{item['filename']}' downloaded!", icon="📥")
 
-# --- ALL DATABASES MANAGEMENT PANEL (RESTORED WITH FULL KPI & DELETION TOOLS) ---
+# ==============================================================================
+# SECTION 11: 5-TAB ENTERPRISE DATABASES & LEDGERS MANAGEMENT PANEL
+# ==============================================================================
 st.markdown("---")
 with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs, Traceability & Audit)"):
     st.markdown("Yahan aap saare databases ke records dekh sakte hain, manual/bulk DR code upload kar sakte hain, aur record delete karne par ID auto-reset kar sakte hain.")
@@ -1362,7 +1483,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
             else:
                 st.info("No output files archived yet.")
 
-        # --- TAB 4: INPUT-OUTPUT TRACEABILITY MANAGEMENT (WITH DELETE & RESET) ---
+        # --- TAB 4: INPUT-OUTPUT TRACEABILITY MANAGEMENT ---
         with tab_m4:
             st.markdown("#### 🔗 Input File to Output File Traceability & Version History")
             if not df_trace.empty:
@@ -1395,7 +1516,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
             else:
                 st.info("No traceability mapping records found yet.")
 
-        # --- TAB 5: DISCREPANCY AUDIT LEDGER MANAGEMENT (WITH DELETE & RESET) ---
+        # --- TAB 5: DISCREPANCY AUDIT LEDGER MANAGEMENT ---
         with tab_m5:
             st.markdown("#### 🔍 Discrepancy & Variance Audit Ledger")
             if not df_audit.empty:
@@ -1431,7 +1552,9 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
     except Exception as e:
         st.error(f"Error loading databases: {str(e)}")
 
-# Tables and Logs with Search & Filter Feature
+# ==============================================================================
+# SECTION 12: AUDIT RECONCILIATION, SEARCH & HISTORICAL TREND VIEWER
+# ==============================================================================
 if st.session_state.comparison_summary:
     st.markdown("---")
     st.markdown("### 📋 Agency-wise Material & Input Comparison")
@@ -1480,7 +1603,6 @@ if st.session_state.comparison_summary:
         key="audit_csv_download"
     )
 
-# --- Historical Trend Analysis View ---
 st.markdown("---")
 with st.expander("🕒 View Historical Trend Analysis (SQLite Database - IST)"):
     try:
