@@ -509,6 +509,8 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                             continue
                         
                         agency_str = str(agency).replace('.0','').strip()
+                        
+                        # STRICT FILTER: Skip bottom summary/total rows (e.g., where agency column says TOTAL)
                         if any(kw in agency_str.upper() for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
                             continue
 
@@ -1087,7 +1089,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
             "⏳ Master Pending File"
         ])
         
-        # --- TAB 1: MASTER ---
+        # --- TAB 1: MASTER DATABASE MANAGEMENT ---
         with tab_m1:
             if not df_master.empty:
                 st.markdown("#### 📊 Master Database Health & Analytics")
