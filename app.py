@@ -213,17 +213,29 @@ with st.expander("⚙️ Enterprise Control Panel, Vehicle Capacity & System Set
     with col_set1:
         st.subheader("Default Fallback FG Code")
         st.session_state.fg_code = st.text_input("FG Code Input", value=st.session_state.fg_code, label_visibility="collapsed")
+        c1, c2 = st.columns(2)
+        if c1.button("Clear FG"): st.session_state.fg_code = ""; st.rerun()
+        if c2.button("Restore FG"): st.session_state.fg_code = DEFAULTS["fg_code"]; st.rerun()
         
         st.subheader("Default Route Fallback")
         st.session_state.route = st.text_input("Route Input", value=st.session_state.route, label_visibility="collapsed")
+        c1, c2 = st.columns(2)
+        if c1.button("Clear Route"): st.session_state.route = ""; st.rerun()
+        if c2.button("Restore Route"): st.session_state.route = DEFAULTS["route"]; st.rerun()
 
     with col_set2:
         st.subheader("Direct Column Index Mapping")
-        st.session_state.col_map = st.text_area("Col Map Input", value=st.session_state.col_map, label_visibility="collapsed", height=100)
+        st.session_state.col_map = st.text_area("Col Map Input", value=st.session_state.col_map, label_visibility="collapsed", help="ColIndex:Code", height=100)
+        c1, c2 = st.columns(2)
+        if c1.button("Clear Map"): st.session_state.col_map = ""; st.rerun()
+        if c2.button("Restore Map"): st.session_state.col_map = DEFAULTS["col_map"]; st.rerun()
 
     with col_set3:
         st.subheader("Agency & Column-wise FG Override")
-        st.session_state.agency_override = st.text_area("Agency Override Input", value=st.session_state.agency_override, label_visibility="collapsed", height=100)
+        st.session_state.agency_override = st.text_area("Agency Override Input", value=st.session_state.agency_override, label_visibility="collapsed", help="Agency:ColIndex:CustomFG", height=100)
+        c1, c2 = st.columns(2)
+        if c1.button("Clear Override"): st.session_state.agency_override = ""; st.rerun()
+        if c2.button("Restore Override"): st.session_state.agency_override = DEFAULTS["agency_override"]; st.rerun()
 
     st.markdown("---")
     col_set4, col_set5 = st.columns(2)
