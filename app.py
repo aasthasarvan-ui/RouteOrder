@@ -64,9 +64,6 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# ==========================================
-# 2. DATABASE INTEGRITY & INITIALIZATION
-# ==========================================
 def verify_core_integrity():
     try:
         conn = sqlite3.connect("sales_history.db")
@@ -113,9 +110,6 @@ if not is_healthy:
     st.error(f"❌ **System Integrity Warning:** {health_msg}")
     st.stop()
 
-# ==========================================
-# 3. SESSION STATE DEFAULTS
-# ==========================================
 DEFAULTS = {
     "fg_code": "FG500014",
     "col_map": "36:FG500014AJ\n37:FG500014AK",
@@ -481,12 +475,17 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                             continue
                         
                         agency_str = str(agency).replace('.0','').strip()
+                        
+                        # STRICT FILTER: Skip Total/Sum rows appearing in agency column
+                        if any(kw in agency_str.upper() for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
+                            continue
+
                         if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
                             st.session_state.skipped_rows_log.append({
                                 "File Name": short_filename,
                                 "Row Index": r + 1,
                                 "Agency Value": str(agency),
-                                "Reason": "Invalid or Non-numeric Agency Number"
+                                "Reason": "Invalid or Non-numeric Agency Number / Summary Row"
                             })
                             total_skipped_rows += 1
                             continue
