@@ -543,7 +543,6 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                                         row_total_qty += qty_val
                                         file_input_qty += qty_val
                                         
-                                        # CORRECT FG CODE RESOLUTION
                                         current_fg_code = agency_col_override_map.get((agency_val, c), direct_col_mapping.get(c, fg_code_header if fg_code_header and str(fg_code_header).upper() != "NAN" else default_fg_code))
                                         if not current_fg_code or str(current_fg_code).strip() == "" or str(current_fg_code).upper() == "NAN":
                                             current_fg_code = default_fg_code
