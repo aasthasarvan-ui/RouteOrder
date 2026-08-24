@@ -787,18 +787,18 @@ if st.button("🚀 Process Batch Orders & Generate Dispatch Plan", type="primary
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, traceability_records)
 
-                if discrepancy_records:
+               if discrepancy_records:
                     cursor.executemany("""
                         INSERT INTO discrepancy_audit_ledger (batch_timestamp, file_name, agency_no, dr_code, fg_code, input_qty, generated_qty, difference, logged_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, discrepancy_records)
 
-             if dispatch_plan_records:
+                if dispatch_plan_records:
                     cursor.executemany("""
                         INSERT OR REPLACE INTO dispatch_planning_ledger 
                         (dispatch_date, route_no, vehicle_no, driver_mobile, agency_no, fg_code, demand_qty, dispatched_qty, pending_qty, status, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, dispatch_plan_records))
+                    """, dispatch_plan_records)
                 
                 cursor.execute(
                     "INSERT INTO history_logs (timestamp, files_count, total_qty, status) VALUES (?, ?, ?, ?)",
