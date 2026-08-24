@@ -1,6 +1,6 @@
 # ==============================================================================
 # ENTERPRISE LOGISTICS, DISPATCH ENGINE & SALES AUTOMATION SUITE
-# ENHANCED DISPATCH PLANNER WITH SKU-LEVEL PARTIAL DISPATCH & EXCEL IMPORTERS
+# ENHANCED DISPATCH PLANNER WITH DYNAMIC IN-APP DATABASE BUILDER & CRUD OPERATIONS
 # ==============================================================================
 
 import datetime
@@ -177,7 +177,7 @@ st.markdown(
 )
 
 # ==============================================================================
-# SECTION 4: UNIFIED DATABASE ARCHITECTURE (ALL 14 TABLES)
+# SECTION 4: UNIFIED DATABASE ARCHITECTURE (ALL CORE TABLES)
 # ==============================================================================
 
 def get_db_connection():
@@ -512,7 +512,8 @@ with st.sidebar:
             "📋 Master DB & Unmapped Ledger",
             "🚛 Fleet & Loading Bay Master",
             "🔍 Traceability & Audit Ledgers",
-            "📊 Executive KPI & Visual Analytics"
+            "📊 Executive KPI & Visual Analytics",
+            "🗄️ In-App Database Builder & Dynamic Linker" # NEW MODULE ADDED
         ]
     )
     st.markdown("---")
@@ -529,6 +530,11 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📱 Notification Config")
     st.session_state.whatsapp_num = st.text_input("WhatsApp Alert Mobile No", value=st.session_state.whatsapp_num)
+
+# ==============================================================================
+# ENTERPRISE LOGISTICS, DISPATCH ENGINE & SALES AUTOMATION SUITE
+# PART 2: INBOUND DEMAND ENGINE, TRIP PLANNER & LOADING SLIPS
+# ==============================================================================
 
 # ==============================================================================
 # MODULE 1: INBOUND DEMAND & SALES ORDER AUTOMATION ENGINE
@@ -1225,12 +1231,17 @@ elif main_menu == "📋 Loading Slips & Active Trips":
                 st.success("✅ Dispatched & recorded in Daily Dispatch Register!")
                 st.rerun()
     conn.close()
+# ==============================================================================
+# ENTERPRISE LOGISTICS, DISPATCH ENGINE & SALES AUTOMATION SUITE
+# PART 3: REGISTERS, PARTIALS, PENDING, ARCHIVE, MASTER DB, FLEET, AUDIT, KPI
+# & IN-APP DYNAMIC DATABASE BUILDER / CRUD MANAGER
+# ==============================================================================
 
 # ==============================================================================
 # MODULE 4: DAILY DISPATCH SALE REGISTER
 # ==============================================================================
 
-elif main_menu == "📖 Daily Dispatch Sale Register":
+if main_menu == "📖 Daily Dispatch Sale Register":
     st.title("📖 Daily Dispatch Sale Register Database")
 
     conn = get_db_connection()
@@ -1803,4 +1814,129 @@ elif main_menu == "📊 Executive KPI & Visual Analytics":
         else:
             st.info("No partial orders recorded yet.")
 
+# ==============================================================================
+# MODULE 12: IN-APP DATABASE BUILDER & DYNAMIC LINKER (NEW ADDED MODULE)
+# ==============================================================================
 
+elif main_menu == "🗄️ In-App Database Builder & Dynamic Linker":
+    st.title("🗄️ In-App Dynamic Database Builder & Universal CRUD")
+    st.markdown("Create custom tables inside the application, add columns dynamically, insert/modify/delete records, and manage relational database schemas.")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    tab_db1, tab_db2 = st.tabs(["🏗️ Create Table & Add Columns", "📋 Universal Table CRUD & Manager"])
+
+    with tab_db1:
+        st.markdown("##### ➕ Create New Custom Table")
+        new_tbl_name = st.text_input("New Table Name (e.g. vendor_master, quality_check)", "").strip().lower()
+        new_tbl_name = re.sub(r'[^a-z0-9_]', '', new_tbl_name)
+        
+        link_to_existing = st.checkbox("Link with Existing Table (Foreign Key)")
+        parent_table = ""
+        if link_to_existing:
+            parent_table = st.selectbox("Select Parent Table", ["pending_orders", "fleet_master", "unique_routes_master"])
+
+        if st.button("🏗️ Build & Create Table", type="primary"):
+            if new_tbl_name:
+                try:
+                    if link_to_existing and parent_table:
+                        cur.execute(f"""
+                            CREATE TABLE IF NOT EXISTS {new_tbl_name} (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                linked_parent_id INTEGER,
+                                custom_key TEXT,
+                                custom_value TEXT,
+                                notes TEXT,
+                                created_at TEXT,
+                                FOREIGN KEY (linked_parent_id) REFERENCES {parent_table}(id) ON DELETE CASCADE
+                            )
+                        """)
+                    else:
+                        cur.execute(f"""
+                            CREATE TABLE IF NOT EXISTS {new_tbl_name} (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                custom_key TEXT,
+                                custom_value TEXT,
+                                notes TEXT,
+                                created_at TEXT
+                            )
+                        """)
+                    conn.commit()
+                    st.success(f"✅ Table '{new_tbl_name}' created successfully!")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Error: {ex}")
+
+        st.markdown("---")
+        st.markdown("##### ➕ Add New Column to Existing Table")
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        all_tables_list = [row[0] for row in cur.fetchall()]
+        
+        col_target_tbl = st.selectbox("Select Table to Alter", all_tables_list, key="alter_tbl_sel")
+        new_col_name = st.text_input("New Column Name (e.g. priority_level, remarks)").strip().lower()
+        new_col_name = re.sub(r'[^a-z0-9_]', '', new_col_name)
+        new_col_type = st.selectbox("Column Data Type", ["TEXT", "REAL", "INTEGER"])
+
+        if st.button("➕ Add Column", type="primary"):
+            if col_target_tbl and new_col_name:
+                try:
+                    cur.execute(f"ALTER TABLE {col_target_tbl} ADD COLUMN {new_col_name} {new_col_type}")
+                    conn.commit()
+                    st.success(f"✅ Column '{new_col_name}' ({new_col_type}) added to '{col_target_tbl}' successfully!")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Error adding column: {ex}")
+
+    with tab_db2:
+        st.markdown("##### 📋 View, Edit, Modify & Delete Records")
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        all_tables_list = [row[0] for row in cur.fetchall()]
+        
+        selected_tbl = st.selectbox("Select Table to View/Edit", all_tables_list, key="crud_tbl_sel")
+
+        if selected_tbl:
+            df_selected = pd.read_sql(f"SELECT * FROM {selected_tbl}", conn)
+            edited_custom_tbl = st.data_editor(df_selected, use_container_width=True, num_rows="dynamic", key=f"crud_{selected_tbl}")
+
+            col_act1, col_act2, col_act3 = st.columns(3)
+            with col_act1:
+                if st.button(f"💾 Save Changes in `{selected_tbl}`", type="primary"):
+                    try:
+                        for _, row in edited_custom_tbl.iterrows():
+                            row_dict = row.to_dict()
+                            row_id = row_dict.get('id')
+                            
+                            if pd.notna(row_id):
+                                cols_to_update = [k for k in row_dict.keys() if k != 'id']
+                                set_clause = ", ".join([f"{c}=?" for c in cols_to_update])
+                                vals = [row_dict[c] for c in cols_to_update] + [row_id]
+                                cur.execute(f"UPDATE {selected_tbl} SET {set_clause} WHERE id=?", vals)
+                            else:
+                                cols_to_insert = [k for k in row_dict.keys() if k != 'id' and pd.notna(row_dict[k])]
+                                placeholders = ", ".join(["?" for _ in cols_to_insert])
+                                cols_str = ", ".join(cols_to_insert)
+                                vals = [row_dict[c] for c in cols_to_insert]
+                                cur.execute(f"INSERT INTO {selected_tbl} ({cols_str}) VALUES ({placeholders})", vals)
+                        
+                        conn.commit()
+                        st.success(f"✅ Table `{selected_tbl}` updated!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed: {e}")
+
+            with col_act2:
+                if not df_selected.empty:
+                    st.download_button("📥 Export Table (.xlsx)", to_excel_download_bytes(df_selected, selected_tbl), f"{selected_tbl}_export.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+            with col_act3:
+                if st.button(f"🔥 Drop Table `{selected_tbl}`", type="secondary"):
+                    if selected_tbl not in ["pending_orders", "fleet_master", "unique_routes_master"]:
+                        cur.execute(f"DROP TABLE IF EXISTS {selected_tbl}")
+                        conn.commit()
+                        st.warning(f"⚠️ Table `{selected_tbl}` dropped.")
+                        st.rerun()
+                    else:
+                        st.error("❌ Core system tables cannot be dropped!")
+
+    conn.close()
