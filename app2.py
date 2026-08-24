@@ -63,7 +63,7 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# --- SQLite Database Initialization with Dispatch Plan Ledger ---
+# --- SQLite Database Initialization ---
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
@@ -76,7 +76,6 @@ def init_db():
             status TEXT
         )
     """)
-    # Master Dispatch & Unique Routes Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS unique_routes_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,7 +91,6 @@ def init_db():
             created_at TEXT
         )
     """)
-    # Dedicated Dispatch Plan Database (Route, Date, Vehicle base)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS dispatch_plans_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,15 +133,12 @@ init_db()
 # Session State Defaults
 DEFAULTS = {
     "fg_code": "FG500014",
-    "col_map": "36:FG500014AJ\n37:FG500014AK",
-    "agency_override": "101:36:FG500014N01\n101:37:FG500014N02",
     "route": "22",
     "vehicle_no": "PB29AH2491",
     "selected_theme": "💼 Classic Enterprise Navy",
     "processed_files": [],
     "comparison_summary": [],
-    "skipped_rows_log": [],
-    "kpi_data": {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0, "skipped_count": 0}
+    "skipped_rows_log": []
 }
 
 for key, val in DEFAULTS.items():
@@ -210,13 +205,13 @@ with st.expander("⚙️ Enterprise Dispatch & Vehicle Settings Hub", expanded=F
     with col_c3:
         st.session_state.fg_code = st.text_input("Default FG Code", value=st.session_state.fg_code)
 
-st.title(f"🚚 Multi-Vehicle Enterprise Dispatch & Screenshot-Style Plan Hub ({st.session_state.selected_theme})")
+st.title(f"🚚 Multi-Vehicle Enterprise Dispatch Plan Hub ({st.session_state.selected_theme})")
 st.markdown("Upload demand files, assign specific **Vehicle Numbers**, **Routes**, and **Dispatch Dates**, and manage/print route-wise dispatch plans.")
 st.markdown("---")
 
 uploaded_inputs = st.file_uploader("Upload Inbound Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
 
-# Dispatch Planning Form (Vehicle & Date Assignment)
+# Dispatch Planning Form
 with st.form("dispatch_plan_form"):
     st.subheader("🚛 Assign Vehicle & Dispatch Plan Parameters")
     f_col1, f_col2, f_col3 = st.columns(3)
@@ -237,8 +232,6 @@ if process_btn:
         
         total_input_qty = 0
         total_gen_qty = 0
-        total_valid_orders = 0
-        total_skipped_rows = 0
         
         dispatch_records_to_insert = []
         input_files_archive_records = []
@@ -299,7 +292,6 @@ if process_btn:
                     wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
                     ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
                     
-                    valid_row = 6
                     file_comp = []
 
                     for r in range(fg_row + 1, df_input.shape[0]):
@@ -313,8 +305,8 @@ if process_btn:
                         ag_name = str(df_input.iloc[r, max(0, agency_name_col)]).strip() if agency_name_col >= 0 else f"Agency_{agency_val}"
                         mob_no = str(df_input.iloc[r, max(0, mobile_col)]).strip() if mobile_col >= 0 else "N/A"
                         
-                        row_quantities = []
                         row_tot = 0
+                        row_quantities = []
                         for c, fg_code in valid_cols:
                             qty = df_input.iloc[r, c]
                             if pd.notna(qty) and str(qty).strip() != "":
@@ -329,7 +321,6 @@ if process_btn:
 
                         if row_tot == 0: continue
 
-                        # Extract or assign DR code
                         final_dr = f"DR{agency_val}"
                         if dr_code_col >= 0:
                             d_val = str(df_input.iloc[r, dr_code_col]).strip()
@@ -338,7 +329,6 @@ if process_btn:
                         for fg_code, q_val in row_quantities:
                             clean_fg = fg_code if str(fg_code).upper().startswith("FG") else st.session_state.fg_code
                             
-                            # Insert into Dispatch Plan Database
                             dispatch_records_to_insert.append((
                                 date_str,
                                 str(assigned_route),
