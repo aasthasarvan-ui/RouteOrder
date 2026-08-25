@@ -2716,10 +2716,10 @@ st.markdown("---")
 with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
     render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
     # ==============================================================================
-# SECTION 16: ULTIMATE ENTERPRISE ENGINE (DYNAMIC MODULES, FONT/THEME & RESET)
+# SECTION 17: ULTIMATE PROTECTED ENTERPRISE ENGINE & FULL RECOVERY SUITE
 # ==============================================================================
 
-def init_enterprise_dynamic_db():
+def init_ultimate_enterprise_db():
     try:
         conn = sqlite3.connect("sales_history.db")
         cursor = conn.cursor()
@@ -2736,35 +2736,40 @@ def init_enterprise_dynamic_db():
                 deleted_at TEXT
             )
         """)
+        # Migration safeguard
+        cursor.execute("PRAGMA table_info(dynamic_modules_ledger)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if "is_permanent_deleted" not in columns:
+            cursor.execute("ALTER TABLE dynamic_modules_ledger ADD COLUMN is_permanent_deleted INTEGER DEFAULT 0")
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"Error init enterprise ledger: {str(e)}")
+        print(f"Error ultimate init: {str(e)}")
 
-init_enterprise_dynamic_db()
+init_ultimate_enterprise_db()
 
-# --- DYNAMIC MODULE BUILDER EXPANDER ---
+# --- DYNAMIC MODULE BUILDER EXPANDER (PROTECTED) ---
 st.markdown("---")
-with st.expander("🔌 Add New Dynamic Module / Feature (Enterprise Engine)", expanded=False):
-    st.markdown("Yahan aap naya module create kar sakte hain. Yeh database mein permanent save hoga aur refresh par nahi hatega.")
+with st.expander("🔌 Add New Dynamic Module / Feature (Permanent & Refresh-Proof)", expanded=False):
+    st.markdown("Yahan aap naya module create kar sakte hain. Yeh database mein save hoga, page refresh par nahi hatega, aur Factory Reset par hamesha wapas recover ho jayega.")
 
-    with st.form("enterprise_dynamic_form"):
+    with st.form("ultimate_dynamic_form"):
         col_m1, col_m2 = st.columns(2)
         with col_m1:
-            mod_name = st.text_input("Module / Feature Name", placeholder="e.g., Advanced Ledger Suite")
+            mod_name = st.text_input("Module / Feature Name", placeholder="e.g., Enterprise Inventory Inspector")
             mod_category = st.selectbox("Module Category", ["Analytics", "Automation", "Reporting", "Integration", "Custom Utility"])
         with col_m2:
             mod_icon = st.text_input("Module Icon (Emoji)", placeholder="📊")
         
         mod_code = st.text_area(
             "Module Python Logic (Streamlit Code)", 
-            placeholder="st.subheader('Custom Dynamic Workspace')\nst.write('Running successfully!')",
+            placeholder="st.subheader('Custom Dynamic Module')\nst.write('Running successfully!')",
             height=120
         )
         
-        submit_mod_ent = st.form_submit_button("⚡ Create & Mount Feature Permanently")
+        submit_mod_ult = st.form_submit_button("⚡ Create & Permanently Mount Feature")
         
-        if submit_mod_ent:
+        if submit_mod_ult:
             if mod_name and mod_code:
                 try:
                     conn = sqlite3.connect("sales_history.db")
@@ -2775,147 +2780,193 @@ with st.expander("🔌 Add New Dynamic Module / Feature (Enterprise Engine)", ex
                     """, (mod_name, mod_category, mod_icon if mod_icon else "🧩", mod_code, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
                     conn.commit()
                     conn.close()
-                    st.success(f"✅ Module '{mod_name}' successfully created and saved!")
+                    st.success(f"✅ Module '{mod_name}' permanently created and saved!")
                     st.rerun()
                 except Exception as ex:
                     st.error(f"❌ Error: {str(ex)}")
             else:
-                st.warning("⚠️ Kripya Name aur Code dono bharein.")
+                st.warning("⚠️ Kripya Module Name aur Python Logic dono enter karein.")
 
-# --- SIDEBAR & ISOLATED WORKSPACE ROUTER ---
+# --- FETCH MODULES FROM DATABASE ---
 try:
     conn = sqlite3.connect("sales_history.db")
-    df_ent_hub = pd.read_sql("SELECT * FROM dynamic_modules_ledger", conn)
+    df_ult_hub = pd.read_sql("SELECT * FROM dynamic_modules_ledger", conn)
     conn.close()
 except:
-    df_ent_hub = pd.DataFrame()
+    df_ult_hub = pd.DataFrame()
 
-active_ent_mods = df_ent_hub[(df_ent_hub['is_trashed'] == 0) & (df_ent_hub['is_permanent_deleted'] == 0)].to_dict('records') if not df_ent_hub.empty and 'is_trashed' in df_ent_hub.columns else []
+active_ult_mods = df_ult_hub[(df_ult_hub['is_trashed'] == 0) & (df_ult_hub['is_permanent_deleted'] == 0)].to_dict('records') if not df_ult_hub.empty and 'is_trashed' in df_ult_hub.columns else []
+trashed_ult_mods = df_ult_hub[(df_ult_hub['is_trashed'] == 1) & (df_ult_hub['is_permanent_deleted'] == 0)].to_dict('records') if not df_ult_hub.empty and 'is_trashed' in df_ult_hub.columns else []
 
-if not df_ent_hub.empty:
+# --- SIDEBAR & ULTIMATE ROUTER ---
+if not df_ult_hub.empty or True:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### ⚡ Dynamic Modules Hub")
     
-    ent_options_list = ["🏠 Main Dashboard"] + [f"{m['icon']} {m['name']}" for m in active_ent_mods] + ["🛠️ Enterprise Factory Reset & Control Center"]
-    ent_nav_choice = st.sidebar.radio("Select Enterprise Workspace", ent_options_list, key="ent_sidebar_router")
+    ult_options_list = ["🏠 Main Dashboard"]
+    if active_ult_mods:
+        ult_options_list += [f"{m['icon']} {m['name']}" for m in active_ult_mods]
+    if trashed_ult_mods:
+        ult_options_list += ["🗑️ Recycle Bin (Trash)"]
     
-    if ent_nav_choice == "🛠️ Enterprise Factory Reset & Control Center":
+    ult_options_list += ["🛠️ Ultimate Enterprise Control & Recovery Center"]
+    
+    ult_nav_choice = st.sidebar.radio("Select Workspace", ult_options_list, key="ultimate_sidebar_router")
+    
+    if ult_nav_choice == "🗑️ Recycle Bin (Trash)":
         st.markdown("---")
-        st.markdown("# 🛠️ Enterprise Factory Reset, Color, Font & Data Control Center")
-        st.markdown("Yahan se aap saara stock/sales data wipe kar sakte hain, delete modules wapas restore kar sakte hain, aur Advanced Theme, Font & Colors customize kar sakte hain.")
+        st.markdown("# 🗑️ Deleted Modules & Recycle Bin")
+        st.markdown("Yahan se aap deleted modules ko **Restore** kar sakte hain ya unhe permanent archive vault mein bhej sakte hain (jo Factory Reset par wapas aa jayenge).")
         st.markdown("---")
 
-        tab_ec1, tab_ec2, tab_ec3 = st.tabs([
-            "🧹 Data Wipe & Complete Recovery", 
-            "🎨 Advanced Custom Colors", 
+        if trashed_ult_mods:
+            for t_m in trashed_ult_mods:
+                c_inf, c_res, c_per = st.columns([3, 1, 1])
+                with c_inf:
+                    st.markdown(f"**{t_m['icon']} {t_m['name']}** (`{t_m['category']}`)")
+                    st.caption(f"Deleted at: {t_m.get('deleted_at', 'N/A')}")
+                with c_res:
+                    if st.button("♻️ Restore", key=f"ult_restore_{t_m['id']}"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 0, deleted_at = NULL WHERE id = ?", (t_m['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"Module '{t_m['name']}' successfully restored!")
+                        st.rerun()
+                with c_per:
+                    if st.button("🔥 Delete Forever", key=f"ult_perm_{t_m['id']}"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE dynamic_modules_ledger SET is_permanent_deleted = 1 WHERE id = ?", (t_m['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.warning(f"Module '{t_m['name']}' moved to permanent archive! (Factory Reset par wapas aa jayega)")
+                        st.rerun()
+                st.markdown("---")
+        else:
+            st.info("Recycle Bin bilkul khali hai.")
+
+    elif ult_nav_choice == "🛠️ Ultimate Enterprise Control & Recovery Center":
+        st.markdown("---")
+        st.markdown("# 🛠️ Ultimate Enterprise Control & Recovery Center")
+        st.markdown("Yahan se aap auto-detect karke kisi bhi operational table ko wipe kar sakte hain, Factory Reset chala sakte hain, aur Custom Colors & Typography Font style customize kar sakte hain.")
+        st.markdown("---")
+
+        tab_u1, tab_u2, tab_u3 = st.tabs([
+            "🧹 Auto-Detect Table Wiping & Factory Reset", 
+            "🎨 Advanced Custom Colors & Button Text", 
             "🔤 Font Style & Typography Engine"
         ])
 
-        # --- TAB 1: DATA WIPE & RECOVERY ---
-        with tab_ec1:
-            st.markdown("#### 🚨 Granular Data Wipe & Module Restoration")
-            col_rw1, col_rw2 = st.columns(2)
+        # --- TAB 1: AUTO-DETECT WIPE & FACTORY RESET ---
+        with tab_u1:
+            st.markdown("#### 🔍 Auto-Detected Database Tables & Safe Wiping")
             
-            with col_rw1:
-                st.markdown("##### 1. Wipe Specific Tables / Logs")
-                try:
-                    conn_t = sqlite3.connect("sales_history.db")
-                    cur_t = conn_t.cursor()
-                    cur_t.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                    db_tbls = [row[0] for row in cur_t.fetchall()]
-                    conn_t.close()
-                except:
-                    db_tbls = []
+            try:
+                conn_u = sqlite3.connect("sales_history.db")
+                cur_u = conn_u.cursor()
+                cur_u.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                all_db_tbls = [row[0] for row in cur_u.fetchall()]
+                conn_u.close()
+            except:
+                all_db_tbls = []
+            
+            # Protect core dynamic modules table from accidental complete deletion
+            safe_op_tbls = [t for t in all_db_tbls if t != "dynamic_modules_ledger"]
+
+            if safe_op_tbls:
+                col_uw1, col_uw2 = st.columns(2)
                 
-                sel_tbl_clean = st.selectbox("Select Table to Clear", ["-- Select Table --"] + db_tbls, key="sel_tbl_clean_ent")
-                if st.button("🗑️ Delete Selected Table Data & Reset IDs"):
-                    if sel_tbl_clean != "-- Select Table --":
+                with col_uw1:
+                    st.markdown("##### Wipe Specific Operational Table")
+                    sel_op_tbl = st.selectbox("Detected Tables", ["-- Select Table --"] + safe_op_tbls, key="sel_op_tbl_wipe_ult")
+                    if st.button("🗑️ Wipe Selected Table Data & Reset IDs"):
+                        if sel_op_tbl != "-- Select Table --":
+                            try:
+                                conn = sqlite3.connect("sales_history.db")
+                                cursor = conn.cursor()
+                                cursor.execute(f"DELETE FROM {sel_op_tbl}")
+                                try:
+                                    cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{sel_op_tbl}'")
+                                except:
+                                    pass
+                                conn.commit()
+                                conn.close()
+                                st.success(f"✅ Table '{sel_op_tbl}' successfully wiped and IDs reset!")
+                                st.rerun()
+                            except Exception as ex:
+                                st.error(f"Error wiping table: {str(ex)}")
+                        else:
+                            st.warning("⚠️ Kripya table select karein.")
+
+                with col_uw2:
+                    st.markdown("##### Master Factory Reset (Wipe Stock + Restore ALL Modules)")
+                    st.info("ℹ️ Yeh saara stock aur operational data wipe kar dega, aur aaj tak banaye gaye **saare active, trashed ya permanently deleted modules ko 100% wapas restore** kar dega.")
+                    if st.button("⚡ EXECUTE ULTIMATE FACTORY RESET", type="primary", key="btn_ult_factory_reset"):
                         try:
                             conn = sqlite3.connect("sales_history.db")
                             cursor = conn.cursor()
-                            cursor.execute(f"DELETE FROM {sel_tbl_clean}")
-                            try:
-                                cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{sel_tbl_clean}'")
-                            except:
-                                pass
-                            conn.commit()
-                            conn.close()
-                            st.success(f"✅ Table '{sel_tbl_clean}' cleared successfully!")
-                            st.rerun()
-                        except Exception as ex:
-                            st.error(f"Error: {str(ex)}")
-                    else:
-                        st.warning("⚠️ Kripya table select karein.")
-
-            with col_rw2:
-                st.markdown("##### 2. Master Factory Reset (Wipe Stock + Restore All Modules)")
-                if st.button("⚡ EXECUTE FULL FACTORY RESET", type="primary", key="btn_exec_full_factory_reset"):
-                    try:
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                        all_tbls = [row[0] for row in cursor.fetchall()]
-                        
-                        # Wipe all sales/stock data
-                        for t in all_tbls:
-                            if t != "dynamic_modules_ledger":
+                            # 1. Wipe operational tables safely
+                            for t in safe_op_tbls:
                                 cursor.execute(f"DELETE FROM {t}")
                                 try:
                                     cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{t}'")
                                 except:
                                     pass
-                        
-                        # Restore all dynamic modules (active + trashed + permanent deleted)
-                        if "dynamic_modules_ledger" in all_tbls:
+                            
+                            # 2. Master Restore for all dynamic modules
                             cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 0, is_permanent_deleted = 0, deleted_at = NULL")
-                        
-                        conn.commit()
-                        conn.close()
-                        
-                        # Clear session & custom styles
-                        for k, v in LOCAL_DEFAULTS.items() if 'LOCAL_DEFAULTS' in locals() else []:
-                            st.session_state[k] = v
-                        for c_key in ["ent_bg", "ent_txt", "ent_btn_bg", "ent_btn_txt", "ent_font"]:
-                            if c_key in st.session_state:
-                                del st.session_state[c_key]
-                                
-                        st.success("🚀 Full Factory Reset Completed! Stock wiped, all features restored, and themes reset.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Reset Error: {str(e)}")
+                            
+                            conn.commit()
+                            conn.close()
+                            
+                            # 3. Reset session defaults
+                            for k, v in LOCAL_DEFAULTS.items() if 'LOCAL_DEFAULTS' in locals() else []:
+                                st.session_state[k] = v
+                            for c_key in ["ult_bg", "ult_txt", "ult_btn_bg", "ult_btn_txt", "ult_font"]:
+                                if c_key in st.session_state:
+                                    del st.session_state[c_key]
+                                    
+                            st.success("🚀 Ultimate Factory Reset Completed! Stock wiped cleanly, and ALL deleted modules fully restored.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Reset Error: {str(e)}")
+            else:
+                st.info("Koi bhi operational table detect nahi hui hai.")
 
         # --- TAB 2: ADVANCED CUSTOM COLORS ---
-        with tab_ec2:
-            st.markdown("#### 🎨 Advanced Custom Color Overrider")
-            c_col1, c_col2 = st.columns(2)
-            with c_col1:
-                ent_bg_val = st.color_picker("Background Color", st.session_state.get("ent_bg", "#f4f6f9"), key="pick_ent_bg")
-                ent_txt_val = st.color_picker("Main Text Color", st.session_state.get("ent_txt", "#1f2937"), key="pick_ent_txt")
-            with c_col2:
-                ent_btn_bg_val = st.color_picker("Button Background Color", st.session_state.get("ent_btn_bg", "#1e3a8a"), key="pick_ent_btn_bg")
-                ent_btn_txt_val = st.color_picker("Button Text Color", st.session_state.get("ent_btn_txt", "#ffffff"), key="pick_ent_btn_txt")
+        with tab_u2:
+            st.markdown("#### 🎨 Advanced Custom Color & Button Text Overrider")
+            uc1, uc2 = st.columns(2)
+            with uc1:
+                ult_bg_val = st.color_picker("App Background Color", st.session_state.get("ult_bg", "#f4f6f9"), key="pick_ult_bg")
+                ult_txt_val = st.color_picker("Main Text Color", st.session_state.get("ult_txt", "#1f2937"), key="pick_ult_txt")
+            with uc2:
+                ult_btn_bg_val = st.color_picker("Button Background Color", st.session_state.get("ult_btn_bg", "#1e3a8a"), key="pick_ult_btn_bg")
+                ult_btn_txt_val = st.color_picker("Button Text Color", st.session_state.get("ult_btn_txt", "#ffffff"), key="pick_ult_btn_txt")
 
-            col_a1, col_a2 = st.columns(2)
-            with col_a1:
-                if st.button("✨ Apply Custom Colors", type="primary", key="apply_ent_colors"):
-                    st.session_state["ent_bg"] = ent_bg_val
-                    st.session_state["ent_txt"] = ent_txt_val
-                    st.session_state["ent_btn_bg"] = ent_btn_bg_val
-                    st.session_state["ent_btn_txt"] = ent_btn_txt_val
-                    st.success("✅ Custom colors applied!")
+            ua1, ua2 = st.columns(2)
+            with ua1:
+                if st.button("✨ Apply Custom Colors", type="primary", key="apply_ult_colors"):
+                    st.session_state["ult_bg"] = ult_bg_val
+                    st.session_state["ult_txt"] = ult_txt_val
+                    st.session_state["ult_btn_bg"] = ult_btn_bg_val
+                    st.session_state["ult_btn_txt"] = ult_btn_txt_val
+                    st.success("✅ Custom colors applied successfully!")
                     st.rerun()
-            with col_a2:
-                if st.button("🔄 Reset Custom Colors", key="reset_ent_colors"):
-                    for c_key in ["ent_bg", "ent_txt", "ent_btn_bg", "ent_btn_txt"]:
+            with ua2:
+                if st.button("🔄 Reset Custom Colors", key="reset_ult_colors"):
+                    for c_key in ["ult_bg", "ult_txt", "ult_btn_bg", "ult_btn_txt"]:
                         if c_key in st.session_state:
                             del st.session_state[c_key]
-                    st.success("✅ Colors reset!")
+                    st.success("✅ Colors reset to default theme!")
                     st.rerun()
 
-        # --- TAB 3: FONT STYLE & TYPOGRAPHY ENGINE ---
-        with tab_ec3:
-            st.markdown("#### 🔤 Font Style & Typography Customizer")
-            font_options = [
+        # --- TAB 3: TYPOGRAPHY ENGINE ---
+        with tab_u3:
+            st.markdown("#### 🔤 Font Style & Typography Engine")
+            ult_font_options = [
                 "Segoe UI, Tahoma, Geneva, Verdana, sans-serif",
                 "Arial, Helvetica, sans-serif",
                 "Courier New, Courier, monospace",
@@ -2923,68 +2974,69 @@ if not df_ent_hub.empty:
                 "Times New Roman, Times, serif",
                 "Trebuchet MS, sans-serif"
             ]
-            selected_font = st.selectbox("Select Application Font Family", font_options, key="sel_ent_font")
+            sel_ult_font = st.selectbox("Select Application Font Family", ult_font_options, key="sel_ult_font_fam")
             
-            if st.button("✨ Apply Font Style", type="primary", key="apply_font_btn"):
-                st.session_state["ent_font"] = selected_font
+            if st.button("✨ Apply Font Style", type="primary", key="apply_ult_font_btn"):
+                st.session_state["ult_font"] = sel_ult_font
                 st.success("✅ Font style updated successfully!")
                 st.rerun()
 
-    elif ent_nav_choice != "🏠 Main Dashboard":
-        active_ent_names = [f"{m['icon']} {m['name']}" for m in active_ent_mods]
-        if ent_nav_choice in active_ent_names:
-            idx_em = active_ent_names.index(ent_nav_choice)
-            cur_ent_mod = active_ent_mods[idx_em]
+    elif ult_nav_choice != "🏠 Main Dashboard":
+        active_ult_names = [f"{m['icon']} {m['name']}" for m in active_ult_mods]
+        if ult_nav_choice in active_ult_names:
+            idx_um = active_ult_names.index(ult_nav_choice)
+            cur_ult_mod = active_ult_mods[idx_um]
             
             st.empty()
-            st.markdown(f"# {cur_ent_mod['icon']} {cur_ent_mod['name']}")
-            st.markdown(f"**Category:** `{cur_ent_mod['category']}` | **Created At:** `{cur_ent_mod['created_at']}`")
+            st.markdown(f"# {cur_ult_mod['icon']} {cur_ult_mod['name']}")
+            st.markdown(f"**Category:** `{cur_ult_mod['category']}` | **Created At:** `{cur_ult_mod['created_at']}`")
             st.markdown("---")
             
             try:
-                local_scope_ent = {"st": st, "pd": pd, "io": io, "sqlite3": sqlite3, "datetime": datetime}
-                exec(cur_ent_mod['code'], globals(), local_scope_ent)
+                local_scope_ult = {"st": st, "pd": pd, "io": io, "sqlite3": sqlite3, "datetime": datetime}
+                exec(cur_ult_mod['code'], globals(), local_scope_ult)
             except Exception as e_err:
                 st.error(f"❌ Error in module code: {str(e_err)}")
                 
             st.markdown("<br><br>", unsafe_allow_html=True)
-            if st.button(f"🗑️ Delete Module '{cur_ent_mod['name']}'", key=f"del_ent_mod_{cur_ent_mod['id']}"):
+            if st.button(f"🗑️ Move Module '{cur_ult_mod['name']}' to Trash", key=f"del_ult_mod_{cur_ult_mod['id']}"):
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
-                cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 1, deleted_at = ? WHERE id = ?", (get_ist_now().strftime("%Y-%m-%d %H:%M:%S"), cur_ent_mod['id']))
+                cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 1, deleted_at = ? WHERE id = ?", (get_ist_now().strftime("%Y-%m-%d %H:%M:%S"), cur_ult_mod['id']))
                 conn.commit()
                 conn.close()
-                st.warning(f"Module '{cur_ent_mod['name']}' delete kar diya gaya hai!")
+                st.warning(f"Module '{cur_ult_mod['name']}' moved to Recycle Bin!")
                 st.rerun()
 
-# --- GLOBAL STYLING INJECTION (COLORS & FONT) ---
-css_injection = ""
-if "ent_bg" in st.session_state or "ent_font" in st.session_state:
-    bg_c = st.session_state.get("ent_bg", "#f4f6f9")
-    txt_c = st.session_state.get("ent_txt", "#1f2937")
-    btn_bg_c = st.session_state.get("ent_btn_bg", "#1e3a8a")
-    btn_txt_c = st.session_state.get("ent_btn_txt", "#ffffff")
-    font_f = st.session_state.get("ent_font", "Segoe UI, sans-serif")
+# --- GLOBAL STYLING & TYPOGRAPHY INJECTION ---
+if "ult_bg" in st.session_state or "ult_font" in st.session_state:
+    u_bg = st.session_state.get("ult_bg", "#f4f6f9")
+    u_txt = st.session_state.get("ult_txt", "#1f2937")
+    u_btn_bg = st.session_state.get("ult_btn_bg", "#1e3a8a")
+    u_btn_txt = st.session_state.get("ult_btn_txt", "#ffffff")
+    u_font = st.session_state.get("ult_font", "Segoe UI, sans-serif")
     
-    css_injection = f"""
-    <style>
-        .stApp {{
-            background-color: {bg_c} !important;
-            color: {txt_c} !important;
-            font-family: {font_f} !important;
-        }}
-        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{
-            color: {txt_c} !important;
-            font-family: {font_f} !important;
-        }}
-        .stButton>button {{
-            background-color: {btn_bg_c} !important;
-            color: {btn_txt_c} !important;
-            font-family: {font_f} !important;
-        }}
-        .stButton>button p {{
-            color: {btn_txt_c} !important;
-        }}
-    </style>
-    """
-    st.markdown(css_injection, unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <style>
+            .stApp {{
+                background-color: {u_bg} !important;
+                color: {u_txt} !important;
+                font-family: {u_font} !important;
+            }}
+            h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{
+                color: {u_txt} !important;
+                font-family: {u_font} !important;
+            }}
+            .stButton>button {{
+                background-color: {u_btn_bg} !important;
+                color: {u_btn_txt} !important;
+                font-family: {u_font} !important;
+            }}
+            .stButton>button p {{
+                color: {u_btn_txt} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
