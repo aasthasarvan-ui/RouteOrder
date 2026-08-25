@@ -2700,3 +2700,157 @@ if main_menu in ["🎯 Universal Date & Multi-Field Filter Center", "Universal D
             )
 
     conn_filter_master.close()
+# ==============================================================================
+# UNIVERSAL DATE & MULTI-FIELD FILTER ENGINE (FOOLPROOF & BLANK-SCREEN SAFE)
+# (APPENDED AT END OF FILE)
+# ==============================================================================
+
+# Case-insensitive & Fuzzy Match to prevent blank screens
+if any(keyword in str(main_menu).lower() for keyword in ["universal date", "filter center", "filter engine", "multi-field"]):
+    st.title("🎯 Universal Date & Multi-Field Filter Engine")
+    st.markdown("Live database tables ko **Date Range** aur **Specific Dropdowns** ke sath filter karein.")
+
+    conn_flt_safe = get_db_connection()
+    cur_flt_safe = conn_flt_safe.cursor()
+
+    # 1. Fetch All Tables Dynamically
+    cur_flt_safe.execute("""
+        SELECT name FROM sqlite_master 
+        WHERE type='table' 
+          AND name NOT LIKE 'sqlite_%' 
+        ORDER BY name ASC
+    """)
+    all_available_tables = [r[0] for r in cur_flt_safe.fetchall()]
+
+    if not all_available_tables:
+        st.warning("⚠️ Database me abhi koi tables create nahi hui hain.")
+    else:
+        # Table Selection
+        sel_table = st.selectbox("1. Select Module / Database Table to Inspect:", all_available_tables, key="flt_safe_tbl_sel")
+
+        # Column & Schema Read
+        cur_flt_safe.execute(f"PRAGMA table_info({sel_table})")
+        col_tuples = cur_flt_safe.fetchall()
+        all_cols = [c[1] for c in col_tuples]
+
+        df_target_data = pd.read_sql(f"SELECT * FROM {sel_table}", conn_flt_safe)
+
+        st.markdown("---")
+
+        if df_target_data.empty:
+            st.info(f"ℹ️ Table `{sel_table}` create ho chuki hai lekin isme abhi koi data (rows) nahi hai.")
+            # Empty Table Preview
+            st.dataframe(pd.DataFrame(columns=all_cols), use_container_width=True)
+        else:
+            df_filtered_view = df_target_data.copy()
+
+            # 2. Smart Date Detection
+            date_col_candidates = [
+                c for c in all_cols 
+                if any(k in c.lower() for k in ["date", "time", "created", "logged", "upload", "at", "dispatch"])
+            ]
+
+            st.subheader("📅 Date Range Filter")
+            if date_col_candidates:
+                c_d1, c_d2, c_d3 = st.columns([1, 1, 1])
+                with c_d1:
+                    chosen_date_col = st.selectbox("Active Date Column:", date_col_candidates, key=f"safe_dt_col_{sel_table}")
+
+                df_filtered_view["_clean_eval_dt"] = pd.to_datetime(df_filtered_view[chosen_date_col].astype(str).str[:10], errors="coerce")
+                valid_date_rows = df_filtered_view["_clean_eval_dt"].dropna()
+
+                if not valid_date_rows.empty:
+                    min_d = valid_date_rows.min().date()
+                    max_d = valid_date_rows.max().date()
+
+                    with c_d2:
+                        from_d = st.date_input("From Date:", min_d, key=f"safe_from_dt_{sel_table}")
+                    with c_d3:
+                        to_d = st.date_input("To Date:", max_d, key=f"safe_to_dt_{sel_table}")
+
+                    if from_d and to_d:
+                        if from_d <= to_d:
+                            mask_d = (df_filtered_view["_clean_eval_dt"].dt.date >= from_d) & (df_filtered_view["_clean_eval_dt"].dt.date <= to_d)
+                            df_filtered_view = df_filtered_view[mask_d]
+                        else:
+                            st.error("⚠️ 'From Date' must be before or equal to 'To Date'.")
+
+                df_filtered_view.drop(columns=["_clean_eval_dt"], errors="ignore", inplace=True)
+            else:
+                st.info("ℹ️ Is table me date field nahi hai (Static Master). Niche diye gaye column filters use karein.")
+
+            # 3. Dynamic Column Filters
+            st.markdown("##### 🔍 Column Filters:")
+            usable_filter_cols = [
+                c for c in all_cols 
+                if c not in ["id", "file_blob", "input_file_blob", "file_data", "file_hash"]
+            ][:6]
+
+            if usable_filter_cols:
+                flt_cols_grid = st.columns(min(len(usable_filter_cols), 3))
+                for f_idx, f_col_name in enumerate(usable_filter_cols):
+                    with flt_cols_grid[f_idx % 3]:
+                        distinct_opts = sorted([str(x) for x in df_target_data[f_col_name].dropna().unique() if str(x).strip() != ""])
+                        if distinct_opts and len(distinct_opts) <= 200:
+                            selected_vals = st.multiselect(
+                                f"Filter {f_col_name.replace('_', ' ').title()}:",
+                                distinct_opts,
+                                key=f"safe_flt_{sel_table}_{f_col_name}"
+                            )
+                            if selected_vals:
+                                df_filtered_view = df_filtered_view[df_filtered_view[f_col_name].astype(str).isin(selected_vals)]
+
+            # 4. Global Text Search
+            txt_query = st.text_input("🔎 Search text across all columns:", "", key=f"safe_txt_srch_{sel_table}")
+            if txt_query:
+                df_filtered_view = df_filtered_view[df_filtered_view.apply(
+                    lambda row: row.astype(str).str.contains(txt_query, case=False).any(), axis=1
+                )]
+
+            # 5. Metrics
+            st.markdown("---")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Filtered Records", f"{len(df_filtered_view):,} of {len(df_target_data):,}")
+
+            numeric_cols = df_filtered_view.select_dtypes(include=['float', 'int']).columns.tolist()
+            numeric_cols = [c for c in numeric_cols if c not in ['id', 'delivery_seq', 'version_no', 'pack_size_kg']]
+
+            if len(numeric_cols) >= 1:
+                col_n1 = numeric_cols[0]
+                m2.metric(f"Sum {col_n1.title()}", f"{df_filtered_view[col_n1].sum():,.2f}")
+            else:
+                m2.metric("Total Columns", len(all_cols))
+
+            if len(numeric_cols) >= 2:
+                col_n2 = numeric_cols[1]
+                m3.metric(f"Sum {col_n2.title()}", f"{df_filtered_view[col_n2].sum():,.2f}")
+            else:
+                match_p = (len(df_filtered_view) / len(df_target_data) * 100) if len(df_target_data) > 0 else 0
+                m3.metric("Match Rate", f"{match_p:.1f}%")
+
+            m4.metric("Status", "🟢 Live Ready")
+
+            # 6. Table & Export
+            st.markdown(f"##### 📋 Results in `{sel_table}`:")
+            st.dataframe(df_filtered_view, use_container_width=True)
+
+            c_exp1, c_exp2 = st.columns(2)
+            with c_exp1:
+                st.download_button(
+                    "📥 Export Filtered Excel (.xlsx)",
+                    to_excel_download_bytes(df_filtered_view, sel_table),
+                    f"{sel_table}_Filtered_{get_ist_date_str()}.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key=f"safe_btn_xl_{sel_table}"
+                )
+            with c_exp2:
+                st.download_button(
+                    "📄 Export Filtered CSV (.csv)",
+                    df_filtered_view.to_csv(index=False).encode('utf-8'),
+                    f"{sel_table}_Filtered_{get_ist_date_str()}.csv",
+                    "text/csv",
+                    key=f"safe_btn_csv_{sel_table}"
+                )
+
+    conn_flt_safe.close()
+
