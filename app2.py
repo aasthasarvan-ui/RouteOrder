@@ -2715,105 +2715,147 @@ if any(term in str(main_menu).lower() for term in ["universal date", "filter cen
 st.markdown("---")
 with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
     render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
-    # ==============================================================================
-# SECTION 13: DYNAMIC MODULE & FEATURE SIDEBAR NAVIGATION WITH TRASH & RESTORE
 # ==============================================================================
+# SECTION 13: ULTIMATE PERMANENT DYNAMIC MODULE HUB & RECOVERY SYSTEM
+# ==============================================================================
+
+def init_dynamic_modules_db():
+    try:
+        conn = sqlite3.connect("sales_history.db")
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dynamic_modules_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                category TEXT,
+                icon TEXT,
+                code TEXT,
+                is_trashed INTEGER DEFAULT 0,
+                is_permanent_deleted INTEGER DEFAULT 0,
+                created_at TEXT,
+                deleted_at TEXT
+            )
+        """)
+        # Migration safety for older databases
+        cursor.execute("PRAGMA table_info(dynamic_modules_ledger)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if "is_permanent_deleted" not in columns:
+            cursor.execute("ALTER TABLE dynamic_modules_ledger ADD COLUMN is_permanent_deleted INTEGER DEFAULT 0")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error init dynamic modules table: {str(e)}")
+
+init_dynamic_modules_db()
+
 st.markdown("---")
-with st.expander("🔌 Add New Dynamic Module / Feature (Code Builder)", expanded=False):
-    st.markdown("Yahan aap naya module create kar sakte hain. Naya module bante hi automatically sidebar navigation menu mein jud jayega.")
+with st.expander("🔌 Add New Dynamic Module / Feature (Permanent Storage)", expanded=False):
+    st.markdown("Yahan aap naya module create kar sakte hain. Yeh database mein save rahega aur Factory Reset par hamesha wapas aa jayega.")
 
-    if "dynamic_modules" not in st.session_state:
-        st.session_state.dynamic_modules = []
-    if "trashed_modules" not in st.session_state:
-        st.session_state.trashed_modules = []
-
-    with st.form("dynamic_module_form"):
+    with st.form("dynamic_module_form_perm"):
         col_m1, col_m2 = st.columns(2)
         with col_m1:
-            mod_name = st.text_input("Module / Feature Name", placeholder="e.g., Moga Stock Analyzer")
+            mod_name = st.text_input("Module / Feature Name", placeholder="e.g., Advanced Report Generator")
             mod_category = st.selectbox("Module Category", ["Analytics", "Automation", "Reporting", "Integration", "Custom Utility"])
         with col_m2:
             mod_icon = st.text_input("Module Icon (Emoji)", placeholder="📊")
         
         mod_code = st.text_area(
             "Module Python Logic (Streamlit Code)", 
-            placeholder="st.info('Hello from Dynamic Module!')\n# Aap yahan apna streamlit/pandas code likhein",
+            placeholder="st.info('Hello from Permanent Module!')\n# Aap yahan apna python/streamlit code likhein",
             height=120
         )
         
-        submit_module = st.form_submit_button("⚡ Create & Mount Module to Sidebar")
+        submit_module = st.form_submit_button("⚡ Create & Permanently Save Module")
         
         if submit_module:
             if mod_name and mod_code:
-                new_mod = {
-                    "id": len(st.session_state.dynamic_modules) + len(st.session_state.trashed_modules) + 1,
-                    "name": mod_name,
-                    "category": mod_category,
-                    "icon": mod_icon if mod_icon else "🧩",
-                    "code": mod_code,
-                    "created_at": get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                st.session_state.dynamic_modules.append(new_mod)
-                st.success(f"✅ Module '{mod_name}' successfully created and added to Sidebar Navigation!")
-                st.rerun()
+                try:
+                    conn = sqlite3.connect("sales_history.db")
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO dynamic_modules_ledger (name, category, icon, code, is_trashed, is_permanent_deleted, created_at, deleted_at)
+                        VALUES (?, ?, ?, ?, 0, 0, ?, NULL)
+                    """, (mod_name, mod_category, mod_icon if mod_icon else "🧩", mod_code, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Module '{mod_name}' permanently saved and linked to Sidebar!")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"❌ Error saving module: {str(ex)}")
             else:
                 st.warning("⚠️ Kripya Module Name aur Python Logic dono enter karein.")
 
+# Fetch modules from database
+try:
+    conn = sqlite3.connect("sales_history.db")
+    df_dyn = pd.read_sql("SELECT * FROM dynamic_modules_ledger", conn)
+    conn.close()
+except:
+    df_dyn = pd.DataFrame()
+
+active_modules = df_dyn[(df_dyn['is_trashed'] == 0) & (df_dyn['is_permanent_deleted'] == 0)].to_dict('records') if not df_dyn.empty and 'is_trashed' in df_dyn.columns else []
+trashed_modules = df_dyn[(df_dyn['is_trashed'] == 1) & (df_dyn['is_permanent_deleted'] == 0)].to_dict('records') if not df_dyn.empty and 'is_trashed' in df_dyn.columns else []
+
 # --- SIDEBAR NAVIGATION FOR DYNAMIC MODULES ---
-if st.session_state.get("dynamic_modules") or st.session_state.get("trashed_modules"):
+if not df_dyn.empty:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### ⚡ Dynamic Modules Hub")
     
     mod_options = ["🏠 Main Dashboard"]
-    if st.session_state.dynamic_modules:
-        mod_options += [f"{m['icon']} {m['name']}" for m in st.session_state.dynamic_modules]
-    if st.session_state.trashed_modules:
+    if active_modules:
+        mod_options += [f"{m['icon']} {m['name']}" for m in active_modules]
+    if trashed_modules:
         mod_options += ["🗑️ Recycle Bin (Trash)"]
 
-    selected_nav = st.sidebar.radio("Select Active Workspace", mod_options, key="dynamic_sidebar_nav")
+    selected_nav = st.sidebar.radio("Select Active Workspace", mod_options, key="dynamic_sidebar_nav_perm")
     
     if selected_nav == "🗑️ Recycle Bin (Trash)":
         st.markdown("---")
         st.markdown("# 🗑️ Deleted Modules & Recycle Bin")
-        st.markdown("Yahan aapke deleted modules safed hain. Aap chahein toh unhe **Restore** kar sakte hain ya **Permanently Delete** kar sakte hain.")
+        st.markdown("Yahan se aap deleted modules ko **Restore** kar sakte hain ya unhe hidden vault mein bhej sakte hain (jo Factory reset par wapas aa jayenge).")
         st.markdown("---")
 
-        if st.session_state.trashed_modules:
-            for t_idx, t_mod in enumerate(st.session_state.trashed_modules):
+        if trashed_modules:
+            for t_mod in trashed_modules:
                 col_info, col_res, col_perm = st.columns([3, 1, 1])
                 with col_info:
                     st.markdown(f"**{t_mod['icon']} {t_mod['name']}** (`{t_mod['category']}`)")
                     st.caption(f"Deleted at: {t_mod.get('deleted_at', 'N/A')}")
                 with col_res:
-                    if st.button("♻️ Restore", key=f"restore_mod_{t_mod['id']}"):
-                        # Move back to active modules
-                        restored = st.session_state.trashed_modules.pop(t_idx)
-                        st.session_state.dynamic_modules.append(restored)
+                    if st.button("♻️ Restore", key=f"db_restore_{t_mod['id']}"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 0, deleted_at = NULL WHERE id = ?", (t_mod['id'],))
+                        conn.commit()
+                        conn.close()
                         st.success(f"Module '{t_mod['name']}' successfully restored!")
                         st.rerun()
                 with col_perm:
-                    if st.button("🔥 Delete Forever", key=f"perm_del_{t_mod['id']}"):
-                        st.session_state.trashed_modules.pop(t_idx)
-                        st.success(f"Module '{t_mod['name']}' permanently deleted!")
+                    # Permanent delete button ab module ko archive vault mein bhejega taaki factory reset par wapas aa sake
+                    if st.button("🔥 Delete Forever", key=f"db_perm_{t_mod['id']}"):
+                        conn = sqlite3.connect("sales_history.db")
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE dynamic_modules_ledger SET is_permanent_deleted = 1 WHERE id = ?", (t_mod['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.warning(f"Module '{t_mod['name']}' permanently deleted to archive! (Factory Reset par wapas aa jayega)")
                         st.rerun()
                 st.markdown("---")
         else:
             st.info("Recycle Bin bilkul khali hai.")
 
     elif selected_nav != "🏠 Main Dashboard":
-        # Find which module was selected
-        # Adjust index accounting for Main Dashboard offset
-        active_options = [f"{m['icon']} {m['name']}" for m in st.session_state.dynamic_modules]
-        if selected_nav in active_options:
-            selected_index = active_options.index(selected_nav)
-            active_mod = st.session_state.dynamic_modules[selected_index]
+        active_names = [f"{m['icon']} {m['name']}" for m in active_modules]
+        if selected_nav in active_names:
+            sel_idx = active_names.index(selected_nav)
+            active_mod = active_modules[sel_idx]
             
             st.markdown("---")
             st.markdown(f"# {active_mod['icon']} {active_mod['name']}")
             st.markdown(f"**Category:** `{active_mod['category']}` | **Mounted At:** `{active_mod['created_at']}`")
             st.markdown("---")
             
-            # Execute selected module's code securely
             try:
                 local_vars = {"st": st, "pd": pd, "io": io, "sqlite3": sqlite3, "datetime": datetime}
                 exec(active_mod['code'], globals(), local_vars)
@@ -2821,10 +2863,190 @@ if st.session_state.get("dynamic_modules") or st.session_state.get("trashed_modu
                 st.error(f"❌ Error executing module code: {str(ex)}")
                 
             st.markdown("<br><br>", unsafe_allow_html=True)
-            if st.button(f"🗑️ Move Module '{active_mod['name']}' to Trash", key=f"del_sidebar_mod_{active_mod['id']}"):
-                # Move to trash instead of permanent delete
-                removed = st.session_state.dynamic_modules.pop(selected_index)
-                removed["deleted_at"] = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
-                st.session_state.trashed_modules.append(removed)
+            if st.button(f"🗑️ Move Module '{active_mod['name']}' to Trash", key=f"db_trash_{active_mod['id']}"):
+                conn = sqlite3.connect("sales_history.db")
+                cursor = conn.cursor()
+                cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 1, deleted_at = ? WHERE id = ?", (get_ist_now().strftime("%Y-%m-%d %H:%M:%S"), active_mod['id']))
+                conn.commit()
+                conn.close()
                 st.warning(f"Module '{active_mod['name']}' moved to Recycle Bin!")
                 st.rerun()
+                # ==============================================================================
+# SECTION 14: MASTER FACTORY RESET & FULL MODULE MASTER RECOVERY ENGINE
+# ==============================================================================
+st.markdown("---")
+with st.expander("🛠️ Master Factory Reset, Database Cleanup & Custom Color Theme Hub", expanded=False):
+    st.markdown("Yahan se aap poori application ko fresh state par laa sakte hain, saari databases wipe kar sakte hain, aur **delete kiye gaye saare dynamic modules ko wapas restore** kar sakte hain.")
+
+    LOCAL_DEFAULTS = globals().get("DEFAULTS", {
+        "fg_code": "FG500014",
+        "col_map": "36:FG500014AJ\n37:FG500014AK",
+        "agency_override": "101:36:FG500014N01\n101:37:FG500014N02",
+        "route": "22",
+        "email_user": "",
+        "email_pass": "",
+        "recipient": "",
+        "whatsapp": "",
+        "selected_theme": "💼 Classic Enterprise Navy",
+        "processed_files": [],
+        "comparison_summary": [],
+        "skipped_rows_log": [],
+        "anomaly_logs": [],
+        "unmapped_current_batch": [],
+        "kpi_data": {"input_qty": 0, "gen_qty": 0, "valid_count": 0, "missing_count": 0, "skipped_count": 0}
+    })
+
+    tab_r1, tab_r2 = st.tabs(["🧹 Factory Reset & Complete Recovery", "🎨 Custom Color & Theme Overrider"])
+
+    # --- TAB 1: RESET & DATABASE WIPE ---
+    with tab_r1:
+        st.markdown("#### 🚨 Danger Zone: Complete Data Wipe & Total Module Recovery")
+        st.warning("⚠️ Yeh action sales data wipe karega, lekin aaj tak banaye gaye **saare active, trashed, aur permanently deleted dynamic modules ko wapas 100% restore** kar dega.")
+
+        col_w1, col_w2 = st.columns(2)
+        
+        with col_w1:
+            st.markdown("##### 1. Clear Session State & Memory")
+            if st.button("🔄 Reset Session Memory & UI State", key="btn_reset_session_v5"):
+                for k, v in LOCAL_DEFAULTS.items():
+                    st.session_state[k] = v
+                st.success("✅ Session memory successfully reset to defaults!")
+                st.rerun()
+
+        with col_w2:
+            st.markdown("##### 2. Fresh Sales Database & Ledger Wipe")
+            if st.button("🔥 Wipe Sales Databases & Reset IDs", key="btn_wipe_db_v5", type="secondary"):
+                try:
+                    conn = sqlite3.connect("sales_history.db")
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                    existing_tables = [row[0] for row in cursor.fetchall()]
+                    
+                    tables_to_wipe = [
+                        'history_logs', 'unique_routes_master', 'output_files_ledger', 
+                        'unmapped_missing_dr_ledger', 'input_output_traceability', 'discrepancy_audit_ledger'
+                    ]
+                    for tbl in tables_to_wipe:
+                        if tbl in existing_tables:
+                            cursor.execute(f"DELETE FROM {tbl}")
+                            try:
+                                cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{tbl}'")
+                            except:
+                                pass
+                    conn.commit()
+                    conn.close()
+                    st.success("✅ Sales databases wiped successfully!")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"❌ Error wiping databases: {str(ex)}")
+
+        st.markdown("---")
+        if st.button("⚡ EXECUTE FULL FACTORY RESET (Restore ALL Deleted Modules + Wipe DB)", key="btn_full_factory_reset_v5", type="primary"):
+            for k, v in LOCAL_DEFAULTS.items():
+                st.session_state[k] = v
+            for k_col in ["custom_bg", "custom_text", "custom_btn_bg", "custom_btn_text"]:
+                if k_col in st.session_state:
+                    del st.session_state[k_col]
+            
+            try:
+                conn = sqlite3.connect("sales_history.db")
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                existing_tables = [row[0] for row in cursor.fetchall()]
+                
+                # A. Wipe Sales Data
+                tables_to_wipe = [
+                    'history_logs', 'unique_routes_master', 'output_files_ledger', 
+                    'unmapped_missing_dr_ledger', 'input_output_traceability', 'discrepancy_audit_ledger'
+                ]
+                for tbl in tables_to_wipe:
+                    if tbl in existing_tables:
+                        cursor.execute(f"DELETE FROM {tbl}")
+                        try:
+                            cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{tbl}'")
+                        except:
+                            pass
+                
+                # B. MASTER RESTORE: BRING BACK EVERY SINGLE DYNAMIC MODULE (EVEN PERMANENTLY DELETED ONES)
+                if "dynamic_modules_ledger" in existing_tables:
+                    cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 0, is_permanent_deleted = 0, deleted_at = NULL")
+                
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"Factory reset error: {str(e)}")
+
+            st.success("🚀 Full Factory Reset Completed! Saare purane aur permanently deleted modules wapas sidebar mein restore kar diye gaye hain.")
+            st.rerun()
+
+    # --- TAB 2: CUSTOM COLOR & THEME OVERRIDER ---
+    with tab_r2:
+        st.markdown("#### 🎨 Custom Background, Text & Button Color Picker")
+        
+        current_themes_dict = globals().get("THEMES", {
+            "💼 Classic Enterprise Navy": {"bg": "#f4f6f9", "text": "#1f2937", "btn_bg": "#1e3a8a"}
+        })
+        active_theme_name = st.session_state.get("selected_theme", "💼 Classic Enterprise Navy")
+        current_theme_dict = current_themes_dict.get(active_theme_name, {"bg": "#f4f6f9", "text": "#1f2937", "btn_bg": "#1e3a8a"})
+
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            default_bg_val = st.session_state.get("custom_bg", current_theme_dict["bg"])
+            selected_bg = st.color_picker("App Background Color", default_bg_val, key="picker_bg_v5")
+        with col_c2:
+            default_txt_val = st.session_state.get("custom_text", current_theme_dict["text"])
+            selected_txt = st.color_picker("Main Text Color", default_txt_val, key="picker_txt_v5")
+
+        col_c3, col_c4 = st.columns(2)
+        with col_c3:
+            default_btn_bg_val = st.session_state.get("custom_btn_bg", current_theme_dict["btn_bg"])
+            selected_btn_bg = st.color_picker("Button Background Color", default_btn_bg_val, key="picker_btn_bg_v5")
+        with col_c4:
+            default_btn_txt_val = st.session_state.get("custom_btn_text", "#ffffff")
+            selected_btn_txt = st.color_picker("Button Text Color", default_btn_txt_val, key="picker_btn_txt_v5")
+
+        col_act1, col_act2 = st.columns(2)
+        with col_act1:
+            if st.button("✨ Apply Custom Colors", key="btn_apply_colors_v5", type="primary"):
+                st.session_state["custom_bg"] = selected_bg
+                st.session_state["custom_text"] = selected_txt
+                st.session_state["custom_btn_bg"] = selected_btn_bg
+                st.session_state["custom_btn_text"] = selected_btn_txt
+                st.success("✅ Custom colors applied successfully!")
+                st.rerun()
+                
+        with col_act2:
+            if st.button("🔄 Reset to Default Theme Colors", key="btn_reset_colors_v5"):
+                for k_col in ["custom_bg", "custom_text", "custom_btn_bg", "custom_btn_text"]:
+                    if k_col in st.session_state:
+                        del st.session_state[k_col]
+                st.success("✅ Colors reset to default theme palette!")
+                st.rerun()
+
+if "custom_bg" in st.session_state:
+    c_bg = st.session_state["custom_bg"]
+    c_txt = st.session_state["custom_text"]
+    c_btn_bg = st.session_state["custom_btn_bg"]
+    c_btn_txt = st.session_state["custom_btn_text"]
+    
+    st.markdown(
+        f"""
+        <style>
+            .stApp {{
+                background-color: {c_bg} !important;
+                color: {c_txt} !important;
+            }}
+            h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{
+                color: {c_txt} !important;
+            }}
+            .stButton>button {{
+                background-color: {c_btn_bg} !important;
+                color: {c_btn_txt} !important;
+            }}
+            .stButton>button p {{
+                color: {c_btn_txt} !important;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True
+                )
