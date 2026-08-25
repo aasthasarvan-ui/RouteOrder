@@ -2715,32 +2715,31 @@ if any(term in str(main_menu).lower() for term in ["universal date", "filter cen
 st.markdown("---")
 with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
     render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
-# ==============================================================================
-# SECTION 13: DYNAMIC MODULE & FEATURE AUTOMATIC IMPLEMENTATION HUB
+    # ==============================================================================
+# SECTION 13: DYNAMIC MODULE & FEATURE SIDEBAR NAVIGATION & IMPLEMENTATION HUB
 # ==============================================================================
 st.markdown("---")
-with st.expander("🔌 Dynamic Module & Feature Integration Hub (Auto-Implement & Link)", expanded=True):
-    st.markdown("Yahan aap koi bhi naya module ya feature add kar sakte hain. Yeh module automatically project ke session state, navigation aur execution pipeline mein link ho jayega.")
+with st.expander("🔌 Add New Dynamic Module / Feature (Code Builder)", expanded=False):
+    st.markdown("Yahan aap naya module create kar sakte hain. Naya module bante hi automatically sidebar navigation menu mein jud jayega.")
 
-    # Initialize dynamic modules ledger in session state if not present
     if "dynamic_modules" not in st.session_state:
         st.session_state.dynamic_modules = []
 
     with st.form("dynamic_module_form"):
         col_m1, col_m2 = st.columns(2)
         with col_m1:
-            mod_name = st.text_input("Module / Feature Name", placeholder="e.g., Advanced Tax Calculator")
+            mod_name = st.text_input("Module / Feature Name", placeholder="e.g., Moga Stock Analyzer")
             mod_category = st.selectbox("Module Category", ["Analytics", "Automation", "Reporting", "Integration", "Custom Utility"])
         with col_m2:
             mod_icon = st.text_input("Module Icon (Emoji)", placeholder="📊")
         
         mod_code = st.text_area(
             "Module Python Logic (Streamlit Code)", 
-            placeholder="st.info('Hello from Dynamic Module!')\n# Aap yahan apna koi bhi custom pandas/streamlit code likh sakte hain",
+            placeholder="st.info('Hello from Dynamic Module!')\n# Aap yahan apna streamlit/pandas code likhein",
             height=120
         )
         
-        submit_module = st.form_submit_button("⚡ Implement & Mount Module Automatically")
+        submit_module = st.form_submit_button("⚡ Create & Mount Module to Sidebar")
         
         if submit_module:
             if mod_name and mod_code:
@@ -2753,37 +2752,39 @@ with st.expander("🔌 Dynamic Module & Feature Integration Hub (Auto-Implement 
                     "created_at": get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
                 }
                 st.session_state.dynamic_modules.append(new_mod)
-                st.success(f"✅ Module '{mod_name}' successfully implemented and linked to the project hub!")
+                st.success(f"✅ Module '{mod_name}' successfully created and added to Sidebar Navigation!")
                 st.rerun()
             else:
                 st.warning("⚠️ Kripya Module Name aur Python Logic dono enter karein.")
 
-    # Render all dynamically mounted modules automatically
-    if st.session_state.dynamic_modules:
+# --- SIDEBAR NAVIGATION FOR DYNAMIC MODULES ---
+if st.session_state.get("dynamic_modules"):
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### ⚡ Dynamic Modules Hub")
+    
+    # Create options list for sidebar radio navigation
+    mod_options = ["🏠 Main Dashboard"] + [f"{m['icon']} {m['name']}" for m in st.session_state.dynamic_modules]
+    selected_nav = st.sidebar.radio("Select Active Workspace", mod_options, key="dynamic_sidebar_nav")
+    
+    if selected_nav != "🏠 Main Dashboard":
+        # Find which module was selected
+        selected_index = mod_options.index(selected_nav) - 1
+        active_mod = st.session_state.dynamic_modules[selected_index]
+        
         st.markdown("---")
-        st.markdown("### 🚀 Active Dynamically Implemented Modules")
+        st.markdown(f"# {active_mod['icon']} {active_mod['name']}")
+        st.markdown(f"**Category:** `{active_mod['category']}` | **Mounted At:** `{active_mod['created_at']}`")
+        st.markdown("---")
         
-        tabs_list = [f"{m['icon']} {m['name']}" for m in st.session_state.dynamic_modules]
-        active_tabs = st.tabs(tabs_list)
-        
-        for idx, mod in enumerate(st.session_state.dynamic_modules):
-            with active_tabs[idx]:
-                st.markdown(f"**Category:** `{mod['category']}` | **Mounted At:** `{mod['created_at']}`")
-                st.markdown("---")
-                
-                # Safe execution container for dynamic module code
-                try:
-                    # Executing user defined snippet inside local scope with streamlit/pandas context available
-                    local_vars = {"st": st, "pd": pd, "io": io, "sqlite3": sqlite3, "datetime": datetime}
-                    exec(mod['code'], globals(), local_vars)
-                except Exception as ex:
-                    st.error(f"❌ Error executing dynamic module code: {str(ex)}")
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button(f"🗑️ Remove Module #{mod['id']} ({mod['name']})", key=f"del_mod_{mod['id']}"):
-                    st.session_state.dynamic_modules.pop(idx)
-                    st.success(f"Module '{mod['name']}' unmounted successfully!")
-                    st.rerun()
-    else:
-        st.info("💡 Koi bhi dynamic module abhi mounted nahi hai. Upar diye gaye form ka use karke naye features add karein.")
-
+        # Execute selected module's code securely
+        try:
+            local_vars = {"st": st, "pd": pd, "io": io, "sqlite3": sqlite3, "datetime": datetime}
+            exec(active_mod['code'], globals(), local_vars)
+        except Exception as ex:
+            st.error(f"❌ Error executing module code: {str(ex)}")
+            
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        if st.button(f"🗑️ Delete / Unmount Module '{active_mod['name']}'", key=f"del_sidebar_mod_{active_mod['id']}"):
+            st.session_state.dynamic_modules.pop(selected_index)
+            st.success(f"Module '{active_mod['name']}' removed successfully!")
+            st.rerun()
