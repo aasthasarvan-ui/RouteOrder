@@ -2214,3 +2214,223 @@ if main_menu in ["⚡ Smart Multi-Truck Load Optimizer Pro", "Smart Multi-Truck 
                     st.warning(f"⚠️ **Remaining Unpacked Load:** {len(plan['unallocated'])} Agencies fit nahi ho saki kyunki trucks ki capacity full ho gayi thi. Unko Agle batch ya bade truck me allocate karein.")
 
     conn.close()
+
+# ==============================================================================
+# UNIVERSAL DATABASE SCHEMA PATCHER & GLOBAL DATE FILTER FOR ALL MODULES
+# (APPENDED AT END OF FILE)
+# ==============================================================================
+
+def patch_all_tables_with_dates():
+    """Ensure every single table in database has a valid, filterable Date Column"""
+    conn_patch = get_db_connection()
+    cur_patch = conn_patch.cursor()
+    today_ist = get_ist_date_str()
+    now_ist = get_ist_timestamp_full()
+
+    # List of all tables and their respective primary date columns
+    tables_date_schema = {
+        "daily_dispatch_register": "dispatch_date",
+        "partial_dispatch_ledger": "created_at",
+        "pending_orders": "uploaded_at",
+        "trip_loading_slips": "trip_date",
+        "unique_routes_master": "created_at",
+        "unmapped_missing_dr_ledger": "created_at",
+        "uploaded_files_archive": "upload_timestamp",
+        "input_output_traceability": "created_at",
+        "output_files_ledger": "created_at",
+        "discrepancy_audit_ledger": "logged_at",
+        "history_logs": "timestamp",
+        "fleet_master": "created_at",
+        "loading_bays": "created_at"
+    }
+
+    for t_name, d_col in tables_date_schema.items():
+        # 1. Check if table exists
+        cur_patch.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{t_name}'")
+        if cur_patch.fetchone():
+            # 2. Check if column exists
+            cur_patch.execute(f"PRAGMA table_info({t_name})")
+            cols = [info[1] for info in cur_patch.fetchall()]
+            
+            # If date column missing, ADD IT
+            if d_col not in cols:
+                try:
+                    cur_patch.execute(f"ALTER TABLE {t_name} ADD COLUMN {d_col} TEXT")
+                except Exception:
+                    pass
+
+            # 3. Backfill missing/NULL/blank dates with today's IST Date
+            try:
+                cur_patch.execute(f"UPDATE {t_name} SET {d_col}=? WHERE {d_col} IS NULL OR {d_col}=''", (today_ist if "date" in d_col else now_ist,))
+            except Exception:
+                pass
+
+    conn_patch.commit()
+    conn_patch.close()
+
+# Auto-execute schema patch
+patch_all_tables_with_dates()
+
+# ------------------------------------------------------------------------------
+# UNIVERSAL DATE & MULTI-FIELD FILTER ENGINE (WORKS FOR 100% MODULES)
+# ------------------------------------------------------------------------------
+
+if main_menu in ["🎯 Universal Date & Multi-Field Filter Center", "Universal Date & Multi-Field Filter Center"]:
+    st.title("🎯 Universal Date & Multi-Field Filter Engine")
+    st.markdown("Ab **Har Module & Har Table** me date active hai. Date Range aur Specific Column dropdowns se live filter karein.")
+
+    conn_flt = get_db_connection()
+
+    ALL_MODULES_CONFIG = {
+        "📖 Daily Dispatch Sale Register": {
+            "table": "daily_dispatch_register",
+            "date_col": "dispatch_date",
+            "filters": ["route_no", "agency_no", "dr_code", "fg_code", "vehicle_no", "transporter_name", "bay_no"]
+        },
+        "🧩 Partial / Split Dispatch Database": {
+            "table": "partial_dispatch_ledger",
+            "date_col": "created_at",
+            "filters": ["route_no", "agency_no", "dr_code", "fg_code", "status", "trip_id"]
+        },
+        "⏳ Pending Orders Ledger": {
+            "table": "pending_orders",
+            "date_col": "uploaded_at",
+            "filters": ["route_no", "agency_no", "dr_code", "fg_code", "status", "source_file"]
+        },
+        "📋 Loading Slips & Active Trips": {
+            "table": "trip_loading_slips",
+            "date_col": "trip_date",
+            "filters": ["route_no", "vehicle_no", "transporter_name", "loading_bay", "status"]
+        },
+        "📋 Unique Master Routes DB": {
+            "table": "unique_routes_master",
+            "date_col": "created_at",
+            "filters": ["route_no", "agency_no", "dr_code"]
+        },
+        "🚛 Transporter Fleet Master": {
+            "table": "fleet_master",
+            "date_col": "created_at",
+            "filters": ["vehicle_type", "transporter_name", "status"]
+        },
+        "🏭 Plant Loading Bays": {
+            "table": "loading_bays",
+            "date_col": "created_at",
+            "filters": ["bay_no", "status"]
+        },
+        "🔍 Traceability Ledger": {
+            "table": "input_output_traceability",
+            "date_col": "created_at",
+            "filters": ["input_file_name", "generated_output_file", "output_type"]
+        },
+        "🗄️ Upload Archive History": {
+            "table": "uploaded_files_archive",
+            "date_col": "upload_timestamp",
+            "filters": ["file_name", "batch_status"]
+        }
+    }
+
+    sel_mod_name = st.selectbox("1. Select Module / Table to Filter:", list(ALL_MODULES_CONFIG.keys()), key="sel_mod_master_flt")
+    m_info = ALL_MODULES_CONFIG[sel_mod_name]
+    tbl_name = m_info["table"]
+    d_col = m_info["date_col"]
+    filter_cols = m_info["filters"]
+
+    df_active = pd.read_sql(f"SELECT * FROM {tbl_name}", conn_flt)
+
+    if df_active.empty:
+        st.info(f"ℹ️ '{sel_mod_name}' table me abhi koi data nahi hai.")
+    else:
+        df_filtered = df_active.copy()
+
+        # Date Filtering Logic (Guaranteed to work for every module)
+        st.markdown("---")
+        st.subheader("📅 Date Range Selector")
+
+        df_filtered["_clean_dt"] = pd.to_datetime(df_filtered[d_col].astype(str).str[:10], errors="coerce")
+        valid_dates = df_filtered["_clean_dt"].dropna()
+
+        col_d1, col_d2 = st.columns(2)
+        if not valid_dates.empty:
+            min_d = valid_dates.min().date()
+            max_d = valid_dates.max().date()
+
+            with col_d1:
+                f_from = st.date_input("From Date (IST):", min_d, key=f"f_from_{tbl_name}")
+            with col_d2:
+                f_to = st.date_input("To Date (IST):", max_d, key=f"f_to_{tbl_name}")
+
+            if f_from and f_to:
+                if f_from <= f_to:
+                    mask_range = (df_filtered["_clean_dt"].dt.date >= f_from) & (df_filtered["_clean_dt"].dt.date <= f_to)
+                    df_filtered = df_filtered[mask_range]
+                else:
+                    st.error("⚠️ 'From Date' must be less than or equal to 'To Date'.")
+        else:
+            with col_d1:
+                st.date_input("Date Range:", get_ist_now().date(), disabled=True)
+
+        df_filtered.drop(columns=["_clean_dt"], errors="ignore", inplace=True)
+
+        # Multi-Column Dropdowns
+        st.markdown("##### 🔍 Multi-Column Value Filters:")
+        cols_present = [c for c in filter_cols if c in df_filtered.columns]
+
+        if cols_present:
+            g_cols = st.columns(min(len(cols_present), 3))
+            for i, col_key in enumerate(cols_present):
+                with g_cols[i % 3]:
+                    u_vals = sorted([str(x) for x in df_active[col_key].dropna().unique() if str(x).strip() != ""])
+                    picked = st.multiselect(
+                        f"Filter by {col_key.replace('_', ' ').title()}:",
+                        u_vals,
+                        default=[],
+                        key=f"flt_box_{tbl_name}_{col_key}"
+                    )
+                    if picked:
+                        df_filtered = df_filtered[df_filtered[col_key].astype(str).isin(picked)]
+
+        # Global Search Box
+        txt_q = st.text_input("🔎 Search any keyword in table:", "", key=f"srch_txt_{tbl_name}")
+        if txt_q:
+            df_filtered = df_filtered[df_filtered.apply(lambda r: r.astype(str).str.contains(txt_q, case=False).any(), axis=1)]
+
+        # Metrics Bar
+        st.markdown("---")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Filtered Records", f"{len(df_filtered):,} of {len(df_active):,}")
+
+        if "dispatched_bags" in df_filtered.columns:
+            m2.metric("Dispatched Bags", f"{df_filtered['dispatched_bags'].sum():,.0f}")
+            m3.metric("Dispatched MT", f"{df_filtered['dispatched_weight_mt'].sum():,.2f}")
+        elif "bags_qty" in df_filtered.columns:
+            m2.metric("Pending Bags", f"{df_filtered['bags_qty'].sum():,.0f}")
+            m3.metric("Total Weight MT", f"{df_filtered['weight_mt'].sum():,.2f}")
+        else:
+            match_pct = (len(df_filtered) / len(df_active) * 100) if len(df_active) > 0 else 0
+            m2.metric("Match Rate", f"{match_pct:.1f}%")
+            m3.metric("Columns Active", len(cols_present))
+
+        m4.metric("Status", "🟢 Ready")
+
+        # Live Filtered Table & Direct Download Buttons
+        st.dataframe(df_filtered, use_container_width=True)
+
+        exp_c1, exp_c2 = st.columns(2)
+        with exp_c1:
+            st.download_button(
+                "📥 Export Filtered Excel",
+                to_excel_download_bytes(df_filtered, "Filtered"),
+                f"{tbl_name}_Filtered_{get_ist_date_str()}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"btn_xl_exp_{tbl_name}"
+            )
+        with exp_c2:
+            st.download_button(
+                "📄 Export Filtered CSV",
+                df_filtered.to_csv(index=False).encode("utf-8"),
+                f"{tbl_name}_Filtered_{get_ist_date_str()}.csv",
+                "text/csv",
+                key=f"btn_csv_exp_{tbl_name}"
+            )
+
+    conn_flt.close()
