@@ -2715,3 +2715,75 @@ if any(term in str(main_menu).lower() for term in ["universal date", "filter cen
 st.markdown("---")
 with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
     render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
+# ==============================================================================
+# SECTION 13: DYNAMIC MODULE & FEATURE AUTOMATIC IMPLEMENTATION HUB
+# ==============================================================================
+st.markdown("---")
+with st.expander("🔌 Dynamic Module & Feature Integration Hub (Auto-Implement & Link)", expanded=True):
+    st.markdown("Yahan aap koi bhi naya module ya feature add kar sakte hain. Yeh module automatically project ke session state, navigation aur execution pipeline mein link ho jayega.")
+
+    # Initialize dynamic modules ledger in session state if not present
+    if "dynamic_modules" not in st.session_state:
+        st.session_state.dynamic_modules = []
+
+    with st.form("dynamic_module_form"):
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            mod_name = st.text_input("Module / Feature Name", placeholder="e.g., Advanced Tax Calculator")
+            mod_category = st.selectbox("Module Category", ["Analytics", "Automation", "Reporting", "Integration", "Custom Utility"])
+        with col_m2:
+            mod_icon = st.text_input("Module Icon (Emoji)", placeholder="📊")
+        
+        mod_code = st.text_area(
+            "Module Python Logic (Streamlit Code)", 
+            placeholder="st.info('Hello from Dynamic Module!')\n# Aap yahan apna koi bhi custom pandas/streamlit code likh sakte hain",
+            height=120
+        )
+        
+        submit_module = st.form_submit_button("⚡ Implement & Mount Module Automatically")
+        
+        if submit_module:
+            if mod_name and mod_code:
+                new_mod = {
+                    "id": len(st.session_state.dynamic_modules) + 1,
+                    "name": mod_name,
+                    "category": mod_category,
+                    "icon": mod_icon if mod_icon else "🧩",
+                    "code": mod_code,
+                    "created_at": get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                st.session_state.dynamic_modules.append(new_mod)
+                st.success(f"✅ Module '{mod_name}' successfully implemented and linked to the project hub!")
+                st.rerun()
+            else:
+                st.warning("⚠️ Kripya Module Name aur Python Logic dono enter karein.")
+
+    # Render all dynamically mounted modules automatically
+    if st.session_state.dynamic_modules:
+        st.markdown("---")
+        st.markdown("### 🚀 Active Dynamically Implemented Modules")
+        
+        tabs_list = [f"{m['icon']} {m['name']}" for m in st.session_state.dynamic_modules]
+        active_tabs = st.tabs(tabs_list)
+        
+        for idx, mod in enumerate(st.session_state.dynamic_modules):
+            with active_tabs[idx]:
+                st.markdown(f"**Category:** `{mod['category']}` | **Mounted At:** `{mod['created_at']}`")
+                st.markdown("---")
+                
+                # Safe execution container for dynamic module code
+                try:
+                    # Executing user defined snippet inside local scope with streamlit/pandas context available
+                    local_vars = {"st": st, "pd": pd, "io": io, "sqlite3": sqlite3, "datetime": datetime}
+                    exec(mod['code'], globals(), local_vars)
+                except Exception as ex:
+                    st.error(f"❌ Error executing dynamic module code: {str(ex)}")
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button(f"🗑️ Remove Module #{mod['id']} ({mod['name']})", key=f"del_mod_{mod['id']}"):
+                    st.session_state.dynamic_modules.pop(idx)
+                    st.success(f"Module '{mod['name']}' unmounted successfully!")
+                    st.rerun()
+    else:
+        st.info("💡 Koi bhi dynamic module abhi mounted nahi hai. Upar diye gaye form ka use karke naye features add karein.")
+
