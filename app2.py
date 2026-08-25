@@ -2961,14 +2961,3 @@ def render_advanced_universal_data_hub(is_full_page=True, key_scope="univ_hub"):
 
 
 # ------------------------------------------------------------------------------
-# TRIGGER 1: DEDICATED FULL-PAGE VIEW (WHEN SELECTED IN SIDEBAR NAVIGATION)
-# ------------------------------------------------------------------------------
-if any(term in str(main_menu).lower() for term in ["universal date", "filter center", "filter engine", "multi-field"]):
-    render_advanced_universal_data_hub(is_full_page=True, key_scope="fullpage_hub")
-
-# ------------------------------------------------------------------------------
-# TRIGGER 2: EMBEDDED GLOBAL FILTER PANEL (AVAILABLE AT BOTTOM OF ALL MODULES)
-# ------------------------------------------------------------------------------
-st.markdown("---")
-with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
-    render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
