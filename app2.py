@@ -2744,3 +2744,359 @@ if main_menu in ["📦 Live Inventory Stock & ERP Demand Matcher", "Live Invento
                     st.rerun()
 
     conn.close()
+# ==============================================================================
+# PART 1: DYNAMIC UNIVERSAL AUTO-DISCOVERY DATE & MULTI-FIELD FILTER CENTER
+# (AUTO-DETECTS 100% EXISTING & FUTURE TABLES - APPENDED AT END OF FILE)
+# ==============================================================================
+
+if main_menu in ["🎯 Universal Date & Multi-Field Filter Center", "Universal Date & Multi-Field Filter Center"]:
+    st.title("🎯 Dynamic Auto-Discovery Date & Multi-Field Filter Center")
+    st.markdown("Yeh filter engine database ki **har table (Stock, Dispatch, Pending, Fleet etc.)** ko live auto-detect karke Date Range aur Dropdowns ke sath filter karta hai.")
+
+    conn_dyn = get_db_connection()
+    cur_dyn = conn_dyn.cursor()
+
+    # 1. Fetch all existing tables dynamically from SQLite master
+    cur_dyn.execute("""
+        SELECT name FROM sqlite_master 
+        WHERE type='table' 
+          AND name NOT LIKE 'sqlite_%' 
+        ORDER BY name ASC
+    """)
+    all_live_tables = [r[0] for r in cur_dyn.fetchall()]
+
+    if not all_live_tables:
+        st.warning("⚠️ Database me koi table nahi mili.")
+    else:
+        sel_dyn_table = st.selectbox("1. Select Module / Database Table to Filter:", all_live_tables, key="dyn_tbl_select_box")
+
+        # Fetch Columns info
+        cur_dyn.execute(f"PRAGMA table_info({sel_dyn_table})")
+        col_info = cur_dyn.fetchall()
+        all_col_names = [col[1] for col in col_info]
+
+        df_target = pd.read_sql(f"SELECT * FROM {sel_dyn_table}", conn_dyn)
+
+        if df_target.empty:
+            st.info(f"ℹ️ Table `{sel_dyn_table}` me abhi koi data nahi hai.")
+        else:
+            df_filtered_live = df_target.copy()
+
+            # 2. Date Column Auto-Detection
+            date_col_candidates = [
+                c for c in all_col_names 
+                if any(k in c.lower() for k in ["date", "time", "created", "logged", "upload", "at", "dispatch"])
+            ]
+
+            st.markdown("---")
+            st.subheader("📅 Date Range Filtering")
+
+            c_dt1, c_dt2, c_dt3 = st.columns([1, 1, 1])
+
+            if date_col_candidates:
+                with c_dt1:
+                    detected_date_col = st.selectbox("Detected Date Column:", date_col_candidates, key=f"dt_col_pick_{sel_dyn_table}")
+
+                df_filtered_live["_temp_eval_date"] = pd.to_datetime(df_filtered_live[detected_date_col].astype(str).str[:10], errors="coerce")
+                valid_date_series = df_filtered_live["_temp_eval_date"].dropna()
+
+                if not valid_date_series.empty:
+                    min_dt_val = valid_date_series.min().date()
+                    max_dt_val = valid_date_series.max().date()
+
+                    with c_dt2:
+                        from_dt = st.date_input("From Date (IST):", min_dt_val, key=f"from_dt_{sel_dyn_table}")
+                    with c_dt3:
+                        to_dt = st.date_input("To Date (IST):", max_dt_val, key=f"to_dt_{sel_dyn_table}")
+
+                    if from_dt and to_dt:
+                        if from_dt <= to_dt:
+                            mask_date_range = (df_filtered_live["_temp_eval_date"].dt.date >= from_dt) & (df_filtered_live["_temp_eval_date"].dt.date <= to_dt)
+                            df_filtered_live = df_filtered_live[mask_date_range]
+                        else:
+                            st.error("⚠️ 'From Date' must be before or equal to 'To Date'.")
+                else:
+                    st.info("ℹ️ Is column me valid date format nahi mila.")
+
+                df_filtered_live.drop(columns=["_temp_eval_date"], errors="ignore", inplace=True)
+            else:
+                st.info("ℹ️ Is table me koi date column detect nahi hua.")
+
+            # 3. Dynamic Dropdown Filters
+            st.markdown("##### 🔍 Multi-Column Dynamic Dropdown Filters:")
+            usable_filter_cols = [
+                c for c in all_col_names 
+                if c not in ["id", "file_blob", "input_file_blob", "file_data", "file_hash"]
+            ]
+
+            if usable_filter_cols:
+                display_flt_cols = usable_filter_cols[:6]
+                flt_grid = st.columns(min(len(display_flt_cols), 3))
+
+                for f_idx, f_col in enumerate(display_flt_cols):
+                    with flt_grid[f_idx % 3]:
+                        distinct_vals = sorted([str(x) for x in df_target[f_col].dropna().unique() if str(x).strip() != ""])
+                        if len(distinct_vals) > 0 and len(distinct_vals) <= 100:
+                            chosen_flts = st.multiselect(
+                                f"Filter {f_col.replace('_', ' ').title()}:",
+                                distinct_vals,
+                                key=f"dyn_flt_{sel_dyn_table}_{f_col}"
+                            )
+                            if chosen_flts:
+                                df_filtered_live = df_filtered_live[df_filtered_live[f_col].astype(str).isin(chosen_flts)]
+
+            # 4. Global Keyword Search
+            global_search_q = st.text_input("🔎 Search text across all fields:", "", key=f"dyn_txt_srch_{sel_dyn_table}")
+            if global_search_q:
+                df_filtered_live = df_filtered_live[df_filtered_live.apply(
+                    lambda r: r.astype(str).str.contains(global_search_q, case=False).any(), axis=1
+                )]
+
+            # 5. Metrics
+            st.markdown("---")
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("Total Records Found", f"{len(df_filtered_live):,} of {len(df_target):,}")
+
+            numeric_cols = df_filtered_live.select_dtypes(include=['float', 'int']).columns.tolist()
+            numeric_cols = [c for c in numeric_cols if c not in ['id', 'delivery_seq', 'version_no', 'pack_size_kg']]
+
+            if len(numeric_cols) >= 1:
+                col_n1 = numeric_cols[0]
+                k2.metric(f"Sum {col_n1.title()}", f"{df_filtered_live[col_n1].sum():,.2f}")
+            else:
+                k2.metric("Columns", len(all_col_names))
+
+            if len(numeric_cols) >= 2:
+                col_n2 = numeric_cols[1]
+                k3.metric(f"Sum {col_n2.title()}", f"{df_filtered_live[col_n2].sum():,.2f}")
+            else:
+                match_p = (len(df_filtered_live) / len(df_target) * 100) if len(df_target) > 0 else 0
+                k3.metric("Match Rate", f"{match_p:.1f}%")
+
+            k4.metric("Status", "🟢 Live Connected")
+
+            # 6. Table & Export
+            st.markdown(f"##### 📋 Filtered Records in `{sel_dyn_table}`:")
+            st.dataframe(df_filtered_live, use_container_width=True)
+
+            c_e1, c_e2 = st.columns(2)
+            with c_e1:
+                st.download_button(
+                    "📥 Export Filtered Data to Excel (.xlsx)",
+                    to_excel_download_bytes(df_filtered_live, sel_dyn_table),
+                    f"{sel_dyn_table}_Filtered_{get_ist_date_str()}.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key=f"dyn_exp_xl_{sel_dyn_table}"
+                )
+            with c_e2:
+                st.download_button(
+                    "📄 Export Filtered Data to CSV (.csv)",
+                    df_filtered_live.to_csv(index=False).encode('utf-8'),
+                    f"{sel_dyn_table}_Filtered_{get_ist_date_str()}.csv",
+                    "text/csv",
+                    key=f"dyn_exp_csv_{sel_dyn_table}"
+                )
+
+    conn_dyn.close()
+
+
+# ==============================================================================
+# PART 2: LIVE INVENTORY STOCK & ERP DEMAND RECONCILIATION ENGINE
+# (ANY-LAYOUT UPLOADER, 25/50 KG DETECTION & CRUD - APPENDED AT END OF FILE)
+# ==============================================================================
+
+if main_menu in ["📦 Live Inventory Stock & ERP Demand Matcher", "Live Inventory Stock & ERP Demand Matcher"]:
+    st.title("📦 Live Plant Stock, SKU Packaging & Demand Reconciliation Engine")
+    st.markdown("Upload any **ERP / SAP MB52 Stock Sheet**, auto-calculate **Stock vs Pending Demand**, manage **50 KG vs 25 KG Packaging**, and track Safety Stock.")
+
+    conn_stk = get_db_connection()
+    cur_stk = conn_stk.cursor()
+
+    # Create table with packaging, dates & unique constraint
+    cur_stk.execute("""
+        CREATE TABLE IF NOT EXISTS plant_inventory_stock (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            upload_batch_id TEXT,
+            source_file TEXT,
+            file_hash TEXT,
+            material_code TEXT,
+            material_desc TEXT,
+            pack_size_kg INTEGER DEFAULT 50,
+            unit_weight_mt REAL DEFAULT 0.05,
+            plant_stock_qty REAL DEFAULT 0.0,
+            safety_stock_qty REAL DEFAULT 100.0,
+            allocated_qty REAL DEFAULT 0.0,
+            stock_date TEXT,
+            created_at TEXT,
+            UNIQUE(material_code, stock_date)
+        )
+    """)
+    conn_stk.commit()
+
+    tab_stk1, tab_stk2, tab_stk3 = st.tabs([
+        "📥 Upload & Auto-Detect Stock File",
+        "⚖️ Live Stock vs Order Demand Balance",
+        "✏️ Dynamic Stock Grid, Formulas & Schema Manager"
+    ])
+
+    # --------------------------------------------------------------------------
+    # TAB 1: ANY LAYOUT UPLOADER & PACK SIZE DETECTION
+    # --------------------------------------------------------------------------
+    with tab_stk1:
+        st.subheader("📥 Upload Plant Stock Inventory (Any ERP / SAP Layout)")
+        up_stock_file = st.file_uploader("Upload Stock Excel / CSV File:", type=["xlsx", "xls", "csv"], key="stock_uploader_input")
+
+        if up_stock_file:
+            import hashlib
+            file_bytes = up_stock_file.getvalue()
+            file_hash = hashlib.md5(file_bytes).hexdigest()
+
+            cur_stk.execute("SELECT source_file, created_at FROM plant_inventory_stock WHERE file_hash=?", (file_hash,))
+            dup_record = cur_stk.fetchone()
+            if dup_record:
+                st.warning(f"⚠️ Duplicate File: Yeh file pehle upload ho chuki hai (`{dup_record[0]}`).")
+
+            try:
+                if up_stock_file.name.endswith(".csv"):
+                    df_raw_stock = pd.read_csv(io.BytesIO(file_bytes))
+                else:
+                    df_raw_stock = pd.read_excel(io.BytesIO(file_bytes))
+
+                st.dataframe(df_raw_stock.head(5), use_container_width=True)
+
+                col_names = [str(c).strip() for c in df_raw_stock.columns]
+                mat_guess = next((c for c in col_names if any(k in c.upper() for k in ["MAT", "FG", "SKU", "ITEM", "CODE", "PRODUCT"])), col_names[0])
+                qty_guess = next((c for c in col_names if any(k in c.upper() for k in ["QTY", "STOCK", "UNRESTRICTED", "BAGS", "BALANCE", "AVAIL"])), col_names[-1])
+                desc_guess = next((c for c in col_names if any(k in c.upper() for k in ["DESC", "NAME", "SPEC", "TEXT"])), "None")
+
+                c_m1, c_m2, c_m3 = st.columns(3)
+                with c_m1: sel_mat_col = st.selectbox("Select Material Column:", col_names, index=col_names.index(mat_guess))
+                with c_m2: sel_qty_col = st.selectbox("Select Stock Qty Column:", col_names, index=col_names.index(qty_guess))
+                with c_m3: sel_desc_col = st.selectbox("Select Description (Optional):", ["None"] + col_names, index=(["None"] + col_names).index(desc_guess))
+
+                if st.button("🚀 Ingest & Process Stock into Live Inventory", type="primary"):
+                    now_ts = get_ist_timestamp_full()
+                    today_dt = get_ist_date_str()
+                    batch_id = f"STK-{get_ist_now().strftime('%Y%m%d%H%M%S')}"
+
+                    stock_entries = []
+                    for _, s_row in df_raw_stock.iterrows():
+                        raw_mat = str(s_row[sel_mat_col]).strip()
+                        if pd.isna(raw_mat) or raw_mat in ["", "nan", "None", "0", "Total"]:
+                            continue
+
+                        raw_qty = s_row[sel_qty_col]
+                        try:
+                            clean_qty = float(re.sub(r'[^\d.]', '', str(raw_qty)))
+                        except Exception:
+                            clean_qty = 0.0
+
+                        mat_desc = str(s_row[sel_desc_col]).strip() if sel_desc_col != "None" else raw_mat
+
+                        # Packaging Auto-Detection (25 KG vs 50 KG)
+                        combined_text = (raw_mat + " " + mat_desc).upper()
+                        if any(k in combined_text for k in ["25KG", "25 KG", "25-KG"]):
+                            pack_kg, unit_mt = 25, 0.025
+                        else:
+                            pack_kg, unit_mt = 50, 0.050
+
+                        stock_entries.append((
+                            batch_id, up_stock_file.name, file_hash, raw_mat, mat_desc,
+                            pack_kg, unit_mt, clean_qty, 100.0, 0.0, today_dt, now_ts
+                        ))
+
+                    if stock_entries:
+                        cur_stk.executemany("""
+                            INSERT OR REPLACE INTO plant_inventory_stock (
+                                upload_batch_id, source_file, file_hash, material_code, material_desc,
+                                pack_size_kg, unit_weight_mt, plant_stock_qty, safety_stock_qty, allocated_qty, stock_date, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, stock_entries)
+                        conn_stk.commit()
+                        st.success(f"✅ Ingested {len(stock_entries)} records with 25/50 KG detection!")
+                        st.rerun()
+            except Exception as ex:
+                st.error(f"Upload error: {ex}")
+
+    # --------------------------------------------------------------------------
+    # TAB 2: LIVE RECONCILIATION ENGINE
+    # --------------------------------------------------------------------------
+    with tab_stk2:
+        st.subheader("⚖️ Stock vs Pending Demand Reconciliation")
+
+        df_inv = pd.read_sql("SELECT * FROM plant_inventory_stock ORDER BY id DESC", conn_stk)
+        df_ord = pd.read_sql("SELECT fg_code, SUM(bags_qty) as total_demand_bags FROM pending_orders WHERE status='Pending' GROUP BY fg_code", conn_stk)
+
+        if df_inv.empty:
+            st.info("ℹ️ Koi stock upload nahi hua hai.")
+        else:
+            df_reconcile = pd.merge(df_inv, df_ord, left_on="material_code", right_on="fg_code", how="left")
+            df_reconcile["total_demand_bags"] = df_reconcile["total_demand_bags"].fillna(0.0)
+            df_reconcile["net_available_bags"] = df_reconcile["plant_stock_qty"] - df_reconcile["total_demand_bags"]
+            df_reconcile["total_stock_mt"] = df_reconcile["plant_stock_qty"] * df_reconcile["unit_weight_mt"]
+            df_reconcile["demand_mt"] = df_reconcile["total_demand_bags"] * df_reconcile["unit_weight_mt"]
+            df_reconcile["net_mt"] = df_reconcile["net_available_bags"] * df_reconcile["unit_weight_mt"]
+
+            def get_health(r):
+                if r["net_available_bags"] < 0: return "🚨 SHORTAGE"
+                elif r["net_available_bags"] < r["safety_stock_qty"]: return "⚠️ LOW SAFETY"
+                return "🟢 HEALTHY"
+
+            df_reconcile["Status"] = df_reconcile.apply(get_health, axis=1)
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Plant Stock", f"{df_reconcile['plant_stock_qty'].sum():,.0f} Bags", f"{df_reconcile['total_stock_mt'].sum():,.2f} MT")
+            m2.metric("Pending Demand", f"{df_reconcile['total_demand_bags'].sum():,.0f} Bags", f"{df_reconcile['demand_mt'].sum():,.2f} MT")
+            m3.metric("Free Stock", f"{df_reconcile['net_available_bags'].sum():,.0f} Bags", f"{df_reconcile['net_mt'].sum():,.2f} MT")
+            m4.metric("Shortage SKUs", int((df_reconcile["net_available_bags"] < 0).sum()))
+
+            display_cols = [
+                "material_code", "material_desc", "pack_size_kg", "unit_weight_mt",
+                "plant_stock_qty", "total_demand_bags", "net_available_bags", "safety_stock_qty",
+                "total_stock_mt", "demand_mt", "Status", "stock_date"
+            ]
+            st.dataframe(df_reconcile[display_cols], use_container_width=True)
+
+            st.download_button(
+                "📥 Export Reconciliation (.xlsx)",
+                to_excel_download_bytes(df_reconcile[display_cols], "StockVsOrder"),
+                f"Stock_Reconciliation_{get_ist_date_str()}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    # --------------------------------------------------------------------------
+    # TAB 3: DYNAMIC GRID & FORMULAS
+    # --------------------------------------------------------------------------
+    with tab_stk3:
+        st.subheader("✏️ Dynamic Stock Grid & Column/Formula Engine")
+        df_grid = pd.read_sql("SELECT * FROM plant_inventory_stock", conn_stk)
+
+        with st.expander("➕ Add Dynamic Column"):
+            c1, c2, c3 = st.columns(3)
+            with c1: new_c = re.sub(r'[^a-z0-9_]', '', st.text_input("New Column Name:").strip().lower())
+            with c2: new_t = st.selectbox("Type:", ["TEXT", "REAL", "INTEGER"])
+            with c3:
+                if st.button("Add Column") and new_c:
+                    cur_stk.execute(f"ALTER TABLE plant_inventory_stock ADD COLUMN {new_c} {new_t}")
+                    conn_stk.commit()
+                    st.rerun()
+
+        edited_stock = st.data_editor(df_grid, use_container_width=True, num_rows="dynamic", key="stock_grid_editor")
+
+        if st.button("💾 Commit Grid Edits", type="primary"):
+            for _, r in edited_stock.iterrows():
+                r_dict = r.to_dict()
+                r_id = r_dict.get("id")
+                r_dict["unit_weight_mt"] = 0.025 if int(r_dict.get("pack_size_kg", 50)) == 25 else 0.050
+                if pd.notna(r_id):
+                    up_cols = [k for k in r_dict.keys() if k != "id"]
+                    set_str = ", ".join([f"{c}=?" for c in up_cols])
+                    cur_stk.execute(f"UPDATE plant_inventory_stock SET {set_str} WHERE id=?", [r_dict[c] for c in up_cols] + [r_id])
+                else:
+                    ins_cols = [k for k in r_dict.keys() if k != "id" and pd.notna(r_dict[k])]
+                    cur_stk.execute(f"INSERT INTO plant_inventory_stock ({', '.join(ins_cols)}) VALUES ({', '.join(['?' for _ in ins_cols])})", [r_dict[c] for c in ins_cols])
+            conn_stk.commit()
+            st.success("Changes saved!")
+            st.rerun()
+
+    conn_stk.close()
