@@ -2716,327 +2716,259 @@ st.markdown("---")
 with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
     render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
     # ==============================================================================
-# SECTION 17: ULTIMATE PROTECTED ENTERPRISE ENGINE & FULL RECOVERY SUITE
+# SECTION: NEXT-GEN ENTERPRISE UNIVERSAL DATA HUB & DYNAMIC FILTER ENGINE
+# (FULLY LINKED TO ALL MODULES + RUNTIME CUSTOM FILTER BUILDER + ZERO DUPLICATES)
 # ==============================================================================
 
-def init_ultimate_enterprise_db():
-    try:
-        conn = sqlite3.connect("sales_history.db")
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS dynamic_modules_ledger (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                category TEXT,
-                icon TEXT,
-                code TEXT,
-                is_trashed INTEGER DEFAULT 0,
-                is_permanent_deleted INTEGER DEFAULT 0,
-                created_at TEXT,
-                deleted_at TEXT
-            )
-        """)
-        # Migration safeguard
-        cursor.execute("PRAGMA table_info(dynamic_modules_ledger)")
-        columns = [col[1] for col in cursor.fetchall()]
-        if "is_permanent_deleted" not in columns:
-            cursor.execute("ALTER TABLE dynamic_modules_ledger ADD COLUMN is_permanent_deleted INTEGER DEFAULT 0")
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"Error ultimate init: {str(e)}")
+def render_advanced_universal_data_hub(is_full_page=True, key_scope="univ_hub"):
+    conn_hub = get_db_connection()
+    cur_hub = conn_hub.cursor()
 
-init_ultimate_enterprise_db()
+    # 1. Fetch All Tables Dynamically (Existing + Future Custom DB Tables)
+    cur_hub.execute("""
+        SELECT name FROM sqlite_master 
+        WHERE type='table' 
+          AND name NOT LIKE 'sqlite_%' 
+        ORDER BY name ASC
+    """)
+    available_tables = [r[0] for r in cur_hub.fetchall()]
 
-# --- DYNAMIC MODULE BUILDER EXPANDER (PROTECTED) ---
-st.markdown("---")
-with st.expander("🔌 Add New Dynamic Module / Feature (Permanent & Refresh-Proof)", expanded=False):
-    st.markdown("Yahan aap naya module create kar sakte hain. Yeh database mein save hoga, page refresh par nahi hatega, aur Factory Reset par hamesha wapas recover ho jayega.")
+    if not available_tables:
+        st.warning("⚠️ Database me abhi koi tables uplabdh nahi hain.")
+        conn_hub.close()
+        return
 
-    with st.form("ultimate_dynamic_form"):
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            mod_name = st.text_input("Module / Feature Name", placeholder="e.g., Enterprise Inventory Inspector")
-            mod_category = st.selectbox("Module Category", ["Analytics", "Automation", "Reporting", "Integration", "Custom Utility"])
-        with col_m2:
-            mod_icon = st.text_input("Module Icon (Emoji)", placeholder="📊")
-        
-        mod_code = st.text_area(
-            "Module Python Logic (Streamlit Code)", 
-            placeholder="st.subheader('Custom Dynamic Module')\nst.write('Running successfully!')",
-            height=120
-        )
-        
-        submit_mod_ult = st.form_submit_button("⚡ Create & Permanently Mount Feature")
-        
-        if submit_mod_ult:
-            if mod_name and mod_code:
-                try:
-                    conn = sqlite3.connect("sales_history.db")
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO dynamic_modules_ledger (name, category, icon, code, is_trashed, is_permanent_deleted, created_at, deleted_at)
-                        VALUES (?, ?, ?, ?, 0, 0, ?, NULL)
-                    """, (mod_name, mod_category, mod_icon if mod_icon else "🧩", mod_code, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
-                    conn.commit()
-                    conn.close()
-                    st.success(f"✅ Module '{mod_name}' permanently created and saved!")
-                    st.rerun()
-                except Exception as ex:
-                    st.error(f"❌ Error: {str(ex)}")
-            else:
-                st.warning("⚠️ Kripya Module Name aur Python Logic dono enter karein.")
+    if is_full_page:
+        st.title("🎯 Enterprise Universal Data Hub & Dynamic Filter Center")
+        st.markdown("Sabhi modules, plant stock, sales orders aur dispatch registers ko **Date Range**, **Custom Filter Builder**, aur **Live Search** ke sath inspect aur export karein.")
 
-# --- FETCH MODULES FROM DATABASE ---
-try:
-    conn = sqlite3.connect("sales_history.db")
-    df_ult_hub = pd.read_sql("SELECT * FROM dynamic_modules_ledger", conn)
-    conn.close()
-except:
-    df_ult_hub = pd.DataFrame()
+    # Friendly Display Names Mapping
+    TABLE_DISPLAY_NAMES = {
+        "daily_dispatch_register": "📖 Daily Dispatch Sale Register",
+        "plant_inventory_stock": "📦 Plant Stock & Inventory Ledger (50KG/25KG)",
+        "pending_orders": "⏳ Pending Orders Database",
+        "partial_dispatch_ledger": "🧩 Partial / Split Dispatch Database",
+        "trip_loading_slips": "📋 Trip Loading Slips & Gate Passes",
+        "trip_order_items": "📑 Trip Order Item Manifests",
+        "unique_routes_master": "🗺️ Route-Agency-DR Master DB",
+        "fleet_master": "🚛 Transporter Fleet Master",
+        "loading_bays": "🏭 Plant Loading Bays",
+        "input_output_traceability": "🔍 Input-Output Traceability Ledger",
+        "uploaded_files_archive": "🗄️ File Upload Archive History",
+        "unmapped_missing_dr_ledger": "🚨 Unmapped Missing DR Ledger"
+    }
 
-active_ult_mods = df_ult_hub[(df_ult_hub['is_trashed'] == 0) & (df_ult_hub['is_permanent_deleted'] == 0)].to_dict('records') if not df_ult_hub.empty and 'is_trashed' in df_ult_hub.columns else []
-trashed_ult_mods = df_ult_hub[(df_ult_hub['is_trashed'] == 1) & (df_ult_hub['is_permanent_deleted'] == 0)].to_dict('records') if not df_ult_hub.empty and 'is_trashed' in df_ult_hub.columns else []
+    def format_table_label(t):
+        return TABLE_DISPLAY_NAMES.get(t, f"🗄️ Custom Table: {t}")
 
-# --- SIDEBAR & ULTIMATE ROUTER ---
-if not df_ult_hub.empty or True:
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### ⚡ Dynamic Modules Hub")
-    
-    ult_options_list = ["🏠 Main Dashboard"]
-    if active_ult_mods:
-        ult_options_list += [f"{m['icon']} {m['name']}" for m in active_ult_mods]
-    if trashed_ult_mods:
-        ult_options_list += ["🗑️ Recycle Bin (Trash)"]
-    
-    ult_options_list += ["🛠️ Ultimate Enterprise Control & Recovery Center"]
-    
-    ult_nav_choice = st.sidebar.radio("Select Workspace", ult_options_list, key="ultimate_sidebar_router")
-    
-    if ult_nav_choice == "🗑️ Recycle Bin (Trash)":
-        st.markdown("---")
-        st.markdown("# 🗑️ Deleted Modules & Recycle Bin")
-        st.markdown("Yahan se aap deleted modules ko **Restore** kar sakte hain ya unhe permanent archive vault mein bhej sakte hain (jo Factory Reset par wapas aa jayenge).")
-        st.markdown("---")
-
-        if trashed_ult_mods:
-            for t_m in trashed_ult_mods:
-                c_inf, c_res, c_per = st.columns([3, 1, 1])
-                with c_inf:
-                    st.markdown(f"**{t_m['icon']} {t_m['name']}** (`{t_m['category']}`)")
-                    st.caption(f"Deleted at: {t_m.get('deleted_at', 'N/A')}")
-                with c_res:
-                    if st.button("♻️ Restore", key=f"ult_restore_{t_m['id']}"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 0, deleted_at = NULL WHERE id = ?", (t_m['id'],))
-                        conn.commit()
-                        conn.close()
-                        st.success(f"Module '{t_m['name']}' successfully restored!")
-                        st.rerun()
-                with c_per:
-                    if st.button("🔥 Delete Forever", key=f"ult_perm_{t_m['id']}"):
-                        conn = sqlite3.connect("sales_history.db")
-                        cursor = conn.cursor()
-                        cursor.execute("UPDATE dynamic_modules_ledger SET is_permanent_deleted = 1 WHERE id = ?", (t_m['id'],))
-                        conn.commit()
-                        conn.close()
-                        st.warning(f"Module '{t_m['name']}' moved to permanent archive! (Factory Reset par wapas aa jayega)")
-                        st.rerun()
-                st.markdown("---")
-        else:
-            st.info("Recycle Bin bilkul khali hai.")
-
-    elif ult_nav_choice == "🛠️ Ultimate Enterprise Control & Recovery Center":
-        st.markdown("---")
-        st.markdown("# 🛠️ Ultimate Enterprise Control & Recovery Center")
-        st.markdown("Yahan se aap auto-detect karke kisi bhi operational table ko wipe kar sakte hain, Factory Reset chala sakte hain, aur Custom Colors & Typography Font style customize kar sakte hain.")
-        st.markdown("---")
-
-        tab_u1, tab_u2, tab_u3 = st.tabs([
-            "🧹 Auto-Detect Table Wiping & Factory Reset", 
-            "🎨 Advanced Custom Colors & Button Text", 
-            "🔤 Font Style & Typography Engine"
-        ])
-
-        # --- TAB 1: AUTO-DETECT WIPE & FACTORY RESET ---
-        with tab_u1:
-            st.markdown("#### 🔍 Auto-Detected Database Tables & Safe Wiping")
-            
-            try:
-                conn_u = sqlite3.connect("sales_history.db")
-                cur_u = conn_u.cursor()
-                cur_u.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                all_db_tbls = [row[0] for row in cur_u.fetchall()]
-                conn_u.close()
-            except:
-                all_db_tbls = []
-            
-            # Protect core dynamic modules table from accidental complete deletion
-            safe_op_tbls = [t for t in all_db_tbls if t != "dynamic_modules_ledger"]
-
-            if safe_op_tbls:
-                col_uw1, col_uw2 = st.columns(2)
-                
-                with col_uw1:
-                    st.markdown("##### Wipe Specific Operational Table")
-                    sel_op_tbl = st.selectbox("Detected Tables", ["-- Select Table --"] + safe_op_tbls, key="sel_op_tbl_wipe_ult")
-                    if st.button("🗑️ Wipe Selected Table Data & Reset IDs"):
-                        if sel_op_tbl != "-- Select Table --":
-                            try:
-                                conn = sqlite3.connect("sales_history.db")
-                                cursor = conn.cursor()
-                                cursor.execute(f"DELETE FROM {sel_op_tbl}")
-                                try:
-                                    cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{sel_op_tbl}'")
-                                except:
-                                    pass
-                                conn.commit()
-                                conn.close()
-                                st.success(f"✅ Table '{sel_op_tbl}' successfully wiped and IDs reset!")
-                                st.rerun()
-                            except Exception as ex:
-                                st.error(f"Error wiping table: {str(ex)}")
-                        else:
-                            st.warning("⚠️ Kripya table select karein.")
-
-                with col_uw2:
-                    st.markdown("##### Master Factory Reset (Wipe Stock + Restore ALL Modules)")
-                    st.info("ℹ️ Yeh saara stock aur operational data wipe kar dega, aur aaj tak banaye gaye **saare active, trashed ya permanently deleted modules ko 100% wapas restore** kar dega.")
-                    if st.button("⚡ EXECUTE ULTIMATE FACTORY RESET", type="primary", key="btn_ult_factory_reset"):
-                        try:
-                            conn = sqlite3.connect("sales_history.db")
-                            cursor = conn.cursor()
-                            # 1. Wipe operational tables safely
-                            for t in safe_op_tbls:
-                                cursor.execute(f"DELETE FROM {t}")
-                                try:
-                                    cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{t}'")
-                                except:
-                                    pass
-                            
-                            # 2. Master Restore for all dynamic modules
-                            cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 0, is_permanent_deleted = 0, deleted_at = NULL")
-                            
-                            conn.commit()
-                            conn.close()
-                            
-                            # 3. Reset session defaults
-                            for k, v in LOCAL_DEFAULTS.items() if 'LOCAL_DEFAULTS' in locals() else []:
-                                st.session_state[k] = v
-                            for c_key in ["ult_bg", "ult_txt", "ult_btn_bg", "ult_btn_txt", "ult_font"]:
-                                if c_key in st.session_state:
-                                    del st.session_state[c_key]
-                                    
-                            st.success("🚀 Ultimate Factory Reset Completed! Stock wiped cleanly, and ALL deleted modules fully restored.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Reset Error: {str(e)}")
-            else:
-                st.info("Koi bhi operational table detect nahi hui hai.")
-
-        # --- TAB 2: ADVANCED CUSTOM COLORS ---
-        with tab_u2:
-            st.markdown("#### 🎨 Advanced Custom Color & Button Text Overrider")
-            uc1, uc2 = st.columns(2)
-            with uc1:
-                ult_bg_val = st.color_picker("App Background Color", st.session_state.get("ult_bg", "#f4f6f9"), key="pick_ult_bg")
-                ult_txt_val = st.color_picker("Main Text Color", st.session_state.get("ult_txt", "#1f2937"), key="pick_ult_txt")
-            with uc2:
-                ult_btn_bg_val = st.color_picker("Button Background Color", st.session_state.get("ult_btn_bg", "#1e3a8a"), key="pick_ult_btn_bg")
-                ult_btn_txt_val = st.color_picker("Button Text Color", st.session_state.get("ult_btn_txt", "#ffffff"), key="pick_ult_btn_txt")
-
-            ua1, ua2 = st.columns(2)
-            with ua1:
-                if st.button("✨ Apply Custom Colors", type="primary", key="apply_ult_colors"):
-                    st.session_state["ult_bg"] = ult_bg_val
-                    st.session_state["ult_txt"] = ult_txt_val
-                    st.session_state["ult_btn_bg"] = ult_btn_bg_val
-                    st.session_state["ult_btn_txt"] = ult_btn_txt_val
-                    st.success("✅ Custom colors applied successfully!")
-                    st.rerun()
-            with ua2:
-                if st.button("🔄 Reset Custom Colors", key="reset_ult_colors"):
-                    for c_key in ["ult_bg", "ult_txt", "ult_btn_bg", "ult_btn_txt"]:
-                        if c_key in st.session_state:
-                            del st.session_state[c_key]
-                    st.success("✅ Colors reset to default theme!")
-                    st.rerun()
-
-        # --- TAB 3: TYPOGRAPHY ENGINE ---
-        with tab_u3:
-            st.markdown("#### 🔤 Font Style & Typography Engine")
-            ult_font_options = [
-                "Segoe UI, Tahoma, Geneva, Verdana, sans-serif",
-                "Arial, Helvetica, sans-serif",
-                "Courier New, Courier, monospace",
-                "Georgia, serif",
-                "Times New Roman, Times, serif",
-                "Trebuchet MS, sans-serif"
-            ]
-            sel_ult_font = st.selectbox("Select Application Font Family", ult_font_options, key="sel_ult_font_fam")
-            
-            if st.button("✨ Apply Font Style", type="primary", key="apply_ult_font_btn"):
-                st.session_state["ult_font"] = sel_ult_font
-                st.success("✅ Font style updated successfully!")
-                st.rerun()
-
-    elif ult_nav_choice != "🏠 Main Dashboard":
-        active_ult_names = [f"{m['icon']} {m['name']}" for m in active_ult_mods]
-        if ult_nav_choice in active_ult_names:
-            idx_um = active_ult_names.index(ult_nav_choice)
-            cur_ult_mod = active_ult_mods[idx_um]
-            
-            st.empty()
-            st.markdown(f"# {cur_ult_mod['icon']} {cur_ult_mod['name']}")
-            st.markdown(f"**Category:** `{cur_ult_mod['category']}` | **Created At:** `{cur_ult_mod['created_at']}`")
-            st.markdown("---")
-            
-            try:
-                local_scope_ult = {"st": st, "pd": pd, "io": io, "sqlite3": sqlite3, "datetime": datetime}
-                exec(cur_ult_mod['code'], globals(), local_scope_ult)
-            except Exception as e_err:
-                st.error(f"❌ Error in module code: {str(e_err)}")
-                
-            st.markdown("<br><br>", unsafe_allow_html=True)
-            if st.button(f"🗑️ Move Module '{cur_ult_mod['name']}' to Trash", key=f"del_ult_mod_{cur_ult_mod['id']}"):
-                conn = sqlite3.connect("sales_history.db")
-                cursor = conn.cursor()
-                cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 1, deleted_at = ? WHERE id = ?", (get_ist_now().strftime("%Y-%m-%d %H:%M:%S"), cur_ult_mod['id']))
-                conn.commit()
-                conn.close()
-                st.warning(f"Module '{cur_ult_mod['name']}' moved to Recycle Bin!")
-                st.rerun()
-
-# --- GLOBAL STYLING & TYPOGRAPHY INJECTION ---
-if "ult_bg" in st.session_state or "ult_font" in st.session_state:
-    u_bg = st.session_state.get("ult_bg", "#f4f6f9")
-    u_txt = st.session_state.get("ult_txt", "#1f2937")
-    u_btn_bg = st.session_state.get("ult_btn_bg", "#1e3a8a")
-    u_btn_txt = st.session_state.get("ult_btn_txt", "#ffffff")
-    u_font = st.session_state.get("ult_font", "Segoe UI, sans-serif")
-    
-    st.markdown(
-        f"""
-        <style>
-            .stApp {{
-                background-color: {u_bg} !important;
-                color: {u_txt} !important;
-                font-family: {u_font} !important;
-            }}
-            h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{
-                color: {u_txt} !important;
-                font-family: {u_font} !important;
-            }}
-            .stButton>button {{
-                background-color: {u_btn_bg} !important;
-                color: {u_btn_txt} !important;
-                font-family: {u_font} !important;
-            }}
-            .stButton>button p {{
-                color: {u_btn_txt} !important;
-            }}
-        </style>
-        """,
-        unsafe_allow_html=True
+    # Table Selector
+    sel_tbl = st.selectbox(
+        "1. Select Database Table / Module to Inspect:",
+        available_tables,
+        format_func=format_table_label,
+        key=f"{key_scope}_tbl_selector"
     )
+
+    # Schema Analysis
+    cur_hub.execute(f"PRAGMA table_info({sel_tbl})")
+    col_records = cur_hub.fetchall()
+    all_columns = [c[1] for c in col_records]
+    
+    # Load Table Data
+    df_hub_raw = pd.read_sql(f"SELECT * FROM {sel_tbl}", conn_hub)
+
+    if df_hub_raw.empty:
+        st.info(f"ℹ️ Table `{sel_tbl}` create ho chuki hai par isme abhi koi records nahi hain.")
+        st.dataframe(pd.DataFrame(columns=all_columns), use_container_width=True)
+        conn_hub.close()
+        return
+
+    df_hub_active = df_hub_raw.copy()
+
+    # --------------------------------------------------------------------------
+    # 2. SMART DATE RANGE ENGINE
+    # --------------------------------------------------------------------------
+    date_candidates = [
+        c for c in all_columns 
+        if any(k in c.lower() for k in ["date", "time", "created", "logged", "upload", "at", "dispatch"])
+    ]
+
+    st.markdown("---")
+    st.subheader("📅 1. Date Range Filtering")
+
+    if date_candidates:
+        c_dt1, c_dt2, c_dt3 = st.columns([1, 1, 1])
+        with c_dt1:
+            active_date_col = st.selectbox("Active Date Column:", date_candidates, key=f"{key_scope}_dt_col_{sel_tbl}")
+
+        # Standardize and clean string dates for evaluation
+        df_hub_active["_temp_eval_dt"] = pd.to_datetime(df_hub_active[active_date_col].astype(str).str[:10], errors="coerce")
+        valid_dates = df_hub_active["_temp_eval_dt"].dropna()
+
+        if not valid_dates.empty:
+            with c_dt2:
+                from_dt_pick = st.date_input("From Date (IST):", valid_dates.min().date(), key=f"{key_scope}_from_{sel_tbl}")
+            with c_dt3:
+                to_dt_pick = st.date_input("To Date (IST):", valid_dates.max().date(), key=f"{key_scope}_to_{sel_tbl}")
+
+            if from_dt_pick and to_dt_pick:
+                if from_dt_pick <= to_dt_pick:
+                    date_mask = (df_hub_active["_temp_eval_dt"].dt.date >= from_dt_pick) & (df_hub_active["_temp_eval_dt"].dt.date <= to_dt_pick)
+                    df_hub_active = df_hub_active[date_mask]
+                else:
+                    st.error("⚠️ 'From Date' must be before or equal to 'To Date'.")
+
+        df_hub_active.drop(columns=["_temp_eval_dt"], errors="ignore", inplace=True)
+    else:
+        st.info("ℹ️ Is table me date field nahi hai (Static Master).")
+
+    # --------------------------------------------------------------------------
+    # 3. DYNAMIC MULTI-COLUMN DROPDOWN FILTERS & RUNTIME FILTER BUILDER
+    # --------------------------------------------------------------------------
+    st.markdown("---")
+    st.subheader("🔍 2. Dynamic Column Filters & Custom Filter Builder")
+
+    # Default filterable columns (excluding system blobs/hashes)
+    eligible_cols = [
+        c for c in all_columns 
+        if c not in ["id", "file_blob", "input_file_blob", "file_data", "file_hash", "upload_batch_id"]
+    ]
+
+    # Runtime Custom Filter Selector: User can add/remove filter fields on the fly
+    default_active_filters = eligible_cols[:min(4, len(eligible_cols))]
+    user_chosen_filter_cols = st.multiselect(
+        "➕ Choose columns to generate Filter Dropdowns:",
+        eligible_cols,
+        default=default_active_filters,
+        key=f"{key_scope}_chosen_flts_{sel_tbl}"
+    )
+
+    if user_chosen_filter_cols:
+        grid_width = min(len(user_chosen_filter_cols), 3)
+        flt_grid_cols = st.columns(grid_width)
+
+        for idx_f, col_f in enumerate(user_chosen_filter_cols):
+            with flt_grid_cols[idx_f % grid_width]:
+                distinct_options = sorted([str(x) for x in df_hub_raw[col_f].dropna().unique() if str(x).strip() != ""])
+                
+                # Check if column is numeric or categorical
+                if len(distinct_options) > 0 and len(distinct_options) <= 200:
+                    picked_vals = st.multiselect(
+                        f"Filter by {col_f.replace('_', ' ').title()}:",
+                        distinct_options,
+                        key=f"{key_scope}_flt_{sel_tbl}_{col_f}"
+                    )
+                    if picked_vals:
+                        df_hub_active = df_hub_active[df_hub_active[col_f].astype(str).isin(picked_vals)]
+                else:
+                    manual_match = st.text_input(f"Match {col_f.replace('_', ' ').title()}:", "", key=f"{key_scope}_manual_{sel_tbl}_{col_f}")
+                    if manual_match:
+                        df_hub_active = df_hub_active[df_hub_active[col_f].astype(str).str.contains(manual_match, case=False)]
+
+    # --------------------------------------------------------------------------
+    # 4. ADVANCED NUMERIC RANGE & OPERATOR FILTER
+    # --------------------------------------------------------------------------
+    numeric_columns = df_hub_raw.select_dtypes(include=['float', 'int']).columns.tolist()
+    numeric_columns = [c for c in numeric_columns if c not in ['id', 'delivery_seq', 'version_no']]
+
+    if numeric_columns:
+        with st.expander("🧮 Numeric Range & Operator Filter (> , < , =)", expanded=False):
+            n_c1, n_c2, n_c3 = st.columns(3)
+            with n_c1:
+                target_num_col = st.selectbox("Select Numeric Column:", numeric_columns, key=f"{key_scope}_num_col_{sel_tbl}")
+            with n_c2:
+                num_operator = st.selectbox("Operator:", ["Greater than or equal (>=)", "Less than or equal (<=)", "Exactly equal (==)"], key=f"{key_scope}_op_{sel_tbl}")
+            with n_c3:
+                threshold_val = st.number_input("Threshold Value:", value=0.0, step=10.0, key=f"{key_scope}_thresh_{sel_tbl}")
+
+            if threshold_val > 0:
+                if "Greater" in num_operator:
+                    df_hub_active = df_hub_active[df_hub_active[target_num_col] >= threshold_val]
+                elif "Less" in num_operator:
+                    df_hub_active = df_hub_active[df_hub_active[target_num_col] <= threshold_val]
+                else:
+                    df_hub_active = df_hub_active[df_hub_active[target_num_col] == threshold_val]
+
+    # --------------------------------------------------------------------------
+    # 5. GLOBAL KEYWORD SEARCH
+    # --------------------------------------------------------------------------
+    st.markdown("---")
+    keyword_query = st.text_input("🔎 Search text / keyword across all columns:", "", key=f"{key_scope}_kw_search_{sel_tbl}")
+    if keyword_query:
+        df_hub_active = df_hub_active[df_hub_active.apply(
+            lambda row: row.astype(str).str.contains(keyword_query, case=False).any(), axis=1
+        )]
+
+    # --------------------------------------------------------------------------
+    # 6. DYNAMIC SUMMARY METRICS BAR
+    # --------------------------------------------------------------------------
+    st.markdown("---")
+    st.subheader("📊 3. Live Aggregation Metrics")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Filtered Records", f"{len(df_hub_active):,} of {len(df_hub_raw):,}")
+
+    if "dispatched_bags" in df_hub_active.columns:
+        m2.metric("Dispatched Bags", f"{df_hub_active['dispatched_bags'].sum():,.0f}")
+        m3.metric("Dispatched Weight (MT)", f"{df_hub_active['dispatched_weight_mt'].sum():,.2f} MT")
+    elif "plant_stock_qty" in df_hub_active.columns:
+        tot_bags = df_hub_active['plant_stock_qty'].sum()
+        tot_mt = (df_hub_active['plant_stock_qty'] * df_hub_active['unit_weight_mt']).sum() if 'unit_weight_mt' in df_hub_active.columns else (tot_bags * 0.05)
+        m2.metric("Plant Stock Bags", f"{tot_bags:,.0f}")
+        m3.metric("Stock Tonnage (MT)", f"{tot_mt:,.2f} MT")
+    elif "bags_qty" in df_hub_active.columns:
+        m2.metric("Demand Bags", f"{df_hub_active['bags_qty'].sum():,.0f}")
+        m3.metric("Demand Weight (MT)", f"{df_hub_active['weight_mt'].sum():,.2f} MT")
+    elif "remaining_bags" in df_hub_active.columns:
+        m2.metric("Remaining Bags", f"{df_hub_active['remaining_bags'].sum():,.0f}")
+        m3.metric("Dispatched Bags", f"{df_hub_active['dispatched_bags'].sum():,.0f}")
+    else:
+        match_rate = (len(df_hub_active) / len(df_hub_raw) * 100) if len(df_hub_raw) > 0 else 0
+        m2.metric("Match Rate", f"{match_rate:.1f}%")
+        m3.metric("Columns Present", len(all_columns))
+
+    if "route_no" in df_hub_active.columns:
+        m4.metric("Active Routes", f"{df_hub_active['route_no'].nunique():,}")
+    elif "vehicle_no" in df_hub_active.columns:
+        m4.metric("Active Vehicles", f"{df_hub_active['vehicle_no'].nunique():,}")
+    else:
+        m4.metric("Status", "🟢 Real-time Synced")
+
+    # --------------------------------------------------------------------------
+    # 7. LIVE DATA VIEW & EXPORT ACTIONS
+    # --------------------------------------------------------------------------
+    st.markdown(f"##### 📋 Live Filtered Result Table (`{sel_tbl}`):")
+    st.dataframe(df_hub_active, use_container_width=True)
+
+    exp_col1, exp_col2 = st.columns(2)
+    with exp_col1:
+        st.download_button(
+            "📥 Export Filtered Excel (.xlsx)",
+            to_excel_download_bytes(df_hub_active, sel_tbl),
+            f"{sel_tbl}_Filtered_{get_ist_date_str()}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"{key_scope}_btn_excel_{sel_tbl}"
+        )
+    with exp_col2:
+        st.download_button(
+            "📄 Export Filtered CSV (.csv)",
+            df_hub_active.to_csv(index=False).encode('utf-8'),
+            f"{sel_tbl}_Filtered_{get_ist_date_str()}.csv",
+            "text/csv",
+            key=f"{key_scope}_btn_csv_{sel_tbl}"
+        )
+
+    conn_hub.close()
+
+
+# ------------------------------------------------------------------------------
+# TRIGGER 1: DEDICATED FULL-PAGE VIEW (WHEN SELECTED IN SIDEBAR NAVIGATION)
+# ------------------------------------------------------------------------------
+if any(term in str(main_menu).lower() for term in ["universal date", "filter center", "filter engine", "multi-field"]):
+    render_advanced_universal_data_hub(is_full_page=True, key_scope="fullpage_hub")
+
+# ------------------------------------------------------------------------------
+# TRIGGER 2: EMBEDDED GLOBAL FILTER PANEL (AVAILABLE AT BOTTOM OF ALL MODULES)
+# ------------------------------------------------------------------------------
+st.markdown("---")
+with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
+    render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
