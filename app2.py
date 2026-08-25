@@ -2716,7 +2716,7 @@ st.markdown("---")
 with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
     render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
     # ==============================================================================
-# SECTION 13: DYNAMIC MODULE & FEATURE SIDEBAR NAVIGATION & IMPLEMENTATION HUB
+# SECTION 13: DYNAMIC MODULE & FEATURE SIDEBAR NAVIGATION WITH TRASH & RESTORE
 # ==============================================================================
 st.markdown("---")
 with st.expander("🔌 Add New Dynamic Module / Feature (Code Builder)", expanded=False):
@@ -2724,6 +2724,8 @@ with st.expander("🔌 Add New Dynamic Module / Feature (Code Builder)", expande
 
     if "dynamic_modules" not in st.session_state:
         st.session_state.dynamic_modules = []
+    if "trashed_modules" not in st.session_state:
+        st.session_state.trashed_modules = []
 
     with st.form("dynamic_module_form"):
         col_m1, col_m2 = st.columns(2)
@@ -2744,7 +2746,7 @@ with st.expander("🔌 Add New Dynamic Module / Feature (Code Builder)", expande
         if submit_module:
             if mod_name and mod_code:
                 new_mod = {
-                    "id": len(st.session_state.dynamic_modules) + 1,
+                    "id": len(st.session_state.dynamic_modules) + len(st.session_state.trashed_modules) + 1,
                     "name": mod_name,
                     "category": mod_category,
                     "icon": mod_icon if mod_icon else "🧩",
@@ -2758,33 +2760,71 @@ with st.expander("🔌 Add New Dynamic Module / Feature (Code Builder)", expande
                 st.warning("⚠️ Kripya Module Name aur Python Logic dono enter karein.")
 
 # --- SIDEBAR NAVIGATION FOR DYNAMIC MODULES ---
-if st.session_state.get("dynamic_modules"):
+if st.session_state.get("dynamic_modules") or st.session_state.get("trashed_modules"):
     st.sidebar.markdown("---")
     st.sidebar.markdown("### ⚡ Dynamic Modules Hub")
     
-    # Create options list for sidebar radio navigation
-    mod_options = ["🏠 Main Dashboard"] + [f"{m['icon']} {m['name']}" for m in st.session_state.dynamic_modules]
+    mod_options = ["🏠 Main Dashboard"]
+    if st.session_state.dynamic_modules:
+        mod_options += [f"{m['icon']} {m['name']}" for m in st.session_state.dynamic_modules]
+    if st.session_state.trashed_modules:
+        mod_options += ["🗑️ Recycle Bin (Trash)"]
+
     selected_nav = st.sidebar.radio("Select Active Workspace", mod_options, key="dynamic_sidebar_nav")
     
-    if selected_nav != "🏠 Main Dashboard":
+    if selected_nav == "🗑️ Recycle Bin (Trash)":
+        st.markdown("---")
+        st.markdown("# 🗑️ Deleted Modules & Recycle Bin")
+        st.markdown("Yahan aapke deleted modules safed hain. Aap chahein toh unhe **Restore** kar sakte hain ya **Permanently Delete** kar sakte hain.")
+        st.markdown("---")
+
+        if st.session_state.trashed_modules:
+            for t_idx, t_mod in enumerate(st.session_state.trashed_modules):
+                col_info, col_res, col_perm = st.columns([3, 1, 1])
+                with col_info:
+                    st.markdown(f"**{t_mod['icon']} {t_mod['name']}** (`{t_mod['category']}`)")
+                    st.caption(f"Deleted at: {t_mod.get('deleted_at', 'N/A')}")
+                with col_res:
+                    if st.button("♻️ Restore", key=f"restore_mod_{t_mod['id']}"):
+                        # Move back to active modules
+                        restored = st.session_state.trashed_modules.pop(t_idx)
+                        st.session_state.dynamic_modules.append(restored)
+                        st.success(f"Module '{t_mod['name']}' successfully restored!")
+                        st.rerun()
+                with col_perm:
+                    if st.button("🔥 Delete Forever", key=f"perm_del_{t_mod['id']}"):
+                        st.session_state.trashed_modules.pop(t_idx)
+                        st.success(f"Module '{t_mod['name']}' permanently deleted!")
+                        st.rerun()
+                st.markdown("---")
+        else:
+            st.info("Recycle Bin bilkul khali hai.")
+
+    elif selected_nav != "🏠 Main Dashboard":
         # Find which module was selected
-        selected_index = mod_options.index(selected_nav) - 1
-        active_mod = st.session_state.dynamic_modules[selected_index]
-        
-        st.markdown("---")
-        st.markdown(f"# {active_mod['icon']} {active_mod['name']}")
-        st.markdown(f"**Category:** `{active_mod['category']}` | **Mounted At:** `{active_mod['created_at']}`")
-        st.markdown("---")
-        
-        # Execute selected module's code securely
-        try:
-            local_vars = {"st": st, "pd": pd, "io": io, "sqlite3": sqlite3, "datetime": datetime}
-            exec(active_mod['code'], globals(), local_vars)
-        except Exception as ex:
-            st.error(f"❌ Error executing module code: {str(ex)}")
+        # Adjust index accounting for Main Dashboard offset
+        active_options = [f"{m['icon']} {m['name']}" for m in st.session_state.dynamic_modules]
+        if selected_nav in active_options:
+            selected_index = active_options.index(selected_nav)
+            active_mod = st.session_state.dynamic_modules[selected_index]
             
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        if st.button(f"🗑️ Delete / Unmount Module '{active_mod['name']}'", key=f"del_sidebar_mod_{active_mod['id']}"):
-            st.session_state.dynamic_modules.pop(selected_index)
-            st.success(f"Module '{active_mod['name']}' removed successfully!")
-            st.rerun()
+            st.markdown("---")
+            st.markdown(f"# {active_mod['icon']} {active_mod['name']}")
+            st.markdown(f"**Category:** `{active_mod['category']}` | **Mounted At:** `{active_mod['created_at']}`")
+            st.markdown("---")
+            
+            # Execute selected module's code securely
+            try:
+                local_vars = {"st": st, "pd": pd, "io": io, "sqlite3": sqlite3, "datetime": datetime}
+                exec(active_mod['code'], globals(), local_vars)
+            except Exception as ex:
+                st.error(f"❌ Error executing module code: {str(ex)}")
+                
+            st.markdown("<br><br>", unsafe_allow_html=True)
+            if st.button(f"🗑️ Move Module '{active_mod['name']}' to Trash", key=f"del_sidebar_mod_{active_mod['id']}"):
+                # Move to trash instead of permanent delete
+                removed = st.session_state.dynamic_modules.pop(selected_index)
+                removed["deleted_at"] = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+                st.session_state.trashed_modules.append(removed)
+                st.warning(f"Module '{active_mod['name']}' moved to Recycle Bin!")
+                st.rerun()
