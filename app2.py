@@ -504,6 +504,7 @@ with st.sidebar:
         [
             "⚡ Inbound Demand & Sales Order Engine",
             "🚚 Route Dispatch Trip Planner",
+            "📦 Live Inventory Stock & ERP Demand Matcher",
             "📋 Loading Slips & Active Trips",
             "📖 Daily Dispatch Sale Register",
             "🧩 Partial / Split Dispatch Database",
@@ -2434,3 +2435,312 @@ if main_menu in ["🎯 Universal Date & Multi-Field Filter Center", "Universal D
             )
 
     conn_flt.close()
+
+# ==============================================================================
+# MODULE 15: LIVE INVENTORY STOCK & ERP DEMAND RECONCILIATION ENGINE
+# (APPENDED AT END OF FILE)
+# ==============================================================================
+
+if main_menu in ["📦 Live Inventory Stock & ERP Demand Matcher", "Live Inventory Stock & ERP Demand Matcher"]:
+    st.title("📦 Live Plant Stock, SKU Packaging & Demand Reconciliation Engine")
+    st.markdown("Upload any **ERP / SAP MB52 Stock Sheet**, auto-calculate **Stock vs Pending Order Demand**, track **50 KG vs 25 KG Packaging**, and link stock directly to Vehicle Loading Slips.")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 1. Initialize Stock Master Table with Pack Size
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS plant_inventory_stock (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            upload_batch_id TEXT,
+            source_file TEXT,
+            file_hash TEXT,
+            material_code TEXT,
+            material_desc TEXT,
+            pack_size_kg INTEGER DEFAULT 50,
+            unit_weight_mt REAL DEFAULT 0.05,
+            plant_stock_qty REAL DEFAULT 0.0,
+            safety_stock_qty REAL DEFAULT 100.0,
+            allocated_qty REAL DEFAULT 0.0,
+            stock_date TEXT,
+            created_at TEXT,
+            UNIQUE(material_code, stock_date)
+        )
+    """)
+    conn.commit()
+
+    tab_stk1, tab_stk2, tab_stk3 = st.tabs([
+        "📥 Upload & Auto-Detect Stock File",
+        "⚖️ Live Stock vs Order Demand Balance",
+        "✏️ Dynamic Stock Grid, Formulas & Schema Manager"
+    ])
+
+    # --------------------------------------------------------------------------
+    # TAB 1: ANY-LAYOUT STOCK UPLOAD ENGINE WITH ANTI-DUPLICATE GUARD
+    # --------------------------------------------------------------------------
+    with tab_stk1:
+        st.subheader("📥 Upload Plant Stock Inventory (Any ERP / SAP Layout)")
+        st.markdown("Yeh uploader SAP MB52, MMBE ya kisi bhi custom format ko auto-detect karta hai.")
+
+        up_stock_file = st.file_uploader(
+            "Upload Stock Excel / CSV File:",
+            type=["xlsx", "xls", "csv"],
+            key="stock_uploader_input"
+        )
+
+        if up_stock_file:
+            import hashlib
+            file_bytes = up_stock_file.getvalue()
+            file_hash = hashlib.md5(file_bytes).hexdigest()
+
+            # Anti-Duplicate Check
+            cur.execute("SELECT source_file, created_at FROM plant_inventory_stock WHERE file_hash=?", (file_hash,))
+            dup_record = cur.fetchone()
+            if dup_record:
+                st.warning(f"⚠️ **Duplicate File Detected:** Yeh exact file pehle upload ho chuki hai (`{dup_record[0]}` on `{dup_record[1]}`).")
+
+            # Layout Auto-Detection Engine
+            try:
+                if up_stock_file.name.endswith(".csv"):
+                    df_raw_stock = pd.read_csv(io.BytesIO(file_bytes))
+                else:
+                    df_raw_stock = pd.read_excel(io.BytesIO(file_bytes))
+
+                st.markdown("##### 🔍 Preview of Uploaded Stock Sheet:")
+                st.dataframe(df_raw_stock.head(5), use_container_width=True)
+
+                # Identify Material & Stock Columns dynamically
+                col_names = [str(c).strip() for c in df_raw_stock.columns]
+                
+                # Best-effort column guesses
+                mat_guess = next((c for c in col_names if any(k in c.upper() for k in ["MAT", "FG", "SKU", "ITEM", "CODE", "PRODUCT"])), col_names[0])
+                qty_guess = next((c for c in col_names if any(k in c.upper() for k in ["QTY", "STOCK", "UNRESTRICTED", "BAGS", "BALANCE", "AVAIL"])), col_names[-1])
+                desc_guess = next((c for c in col_names if any(k in c.upper() for k in ["DESC", "NAME", "SPEC", "TEXT"])), "None")
+
+                c_m1, c_m2, c_m3 = st.columns(3)
+                with c_m1:
+                    sel_mat_col = st.selectbox("Select Material / FG Column:", col_names, index=col_names.index(mat_guess))
+                with c_m2:
+                    sel_qty_col = st.selectbox("Select Available Stock / Qty Column:", col_names, index=col_names.index(qty_guess))
+                with c_m3:
+                    sel_desc_col = st.selectbox("Select Description Column (Optional):", ["None"] + col_names, index=(["None"] + col_names).index(desc_guess))
+
+                if st.button("🚀 Ingest & Process Stock into Live Inventory", type="primary"):
+                    now_ts = get_ist_timestamp_full()
+                    today_dt = get_ist_date_str()
+                    batch_id = f"STK-{get_ist_now().strftime('%Y%m%d%H%M%S')}"
+
+                    stock_entries = []
+                    for _, s_row in df_raw_stock.iterrows():
+                        raw_mat = str(s_row[sel_mat_col]).strip()
+                        if pd.isna(raw_mat) or raw_mat in ["", "nan", "None", "0", "Total"]:
+                            continue
+
+                        # Clean Qty
+                        raw_qty = s_row[sel_qty_col]
+                        try:
+                            clean_qty = float(re.sub(r'[^\d.]', '', str(raw_qty)))
+                        except Exception:
+                            clean_qty = 0.0
+
+                        mat_desc = str(s_row[sel_desc_col]).strip() if sel_desc_col != "None" else raw_mat
+
+                        # Auto-Detect Pack Size: 25 KG vs 50 KG
+                        combined_text = (raw_mat + " " + mat_desc).upper()
+                        if "25KG" in combined_text or "25 KG" in combined_text or "25-KG" in combined_text:
+                            pack_kg = 25
+                            unit_mt = 0.025
+                        else:
+                            pack_kg = 50
+                            unit_mt = 0.050
+
+                        stock_entries.append((
+                            batch_id, up_stock_file.name, file_hash, raw_mat, mat_desc,
+                            pack_kg, unit_mt, clean_qty, 100.0, 0.0, today_dt, now_ts
+                        ))
+
+                    if stock_entries:
+                        cur.executemany("""
+                            INSERT OR REPLACE INTO plant_inventory_stock (
+                                upload_batch_id, source_file, file_hash, material_code, material_desc,
+                                pack_size_kg, unit_weight_mt, plant_stock_qty, safety_stock_qty, allocated_qty, stock_date, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, stock_entries)
+                        conn.commit()
+                        st.success(f"✅ Successfully ingested {len(stock_entries)} SKU inventory records with 25/50 KG detection!")
+                        st.rerun()
+            except Exception as ex:
+                st.error(f"Failed to read stock file: {str(ex)}")
+
+    # --------------------------------------------------------------------------
+    # TAB 2: LIVE STOCK VS PENDING ORDER DEMAND ENGINE
+    # --------------------------------------------------------------------------
+    with tab_stk2:
+        st.subheader("⚖️ Stock vs Pending Order Demand Reconciliation & Safety Alerts")
+
+        df_inv = pd.read_sql("SELECT * FROM plant_inventory_stock ORDER BY id DESC", conn)
+        df_ord = pd.read_sql("SELECT fg_code, SUM(bags_qty) as total_demand_bags FROM pending_orders WHERE status='Pending' GROUP BY fg_code", conn)
+
+        if df_inv.empty:
+            st.info("ℹ️ Abhi tak koi stock upload nahi hua hai. Pehle Tab 1 se stock upload karein.")
+        else:
+            # Merge Stock with Pending Orders
+            df_reconcile = pd.merge(
+                df_inv,
+                df_ord,
+                left_on="material_code",
+                right_on="fg_code",
+                how="left"
+            )
+            df_reconcile["total_demand_bags"] = df_reconcile["total_demand_bags"].fillna(0.0)
+            df_reconcile["net_available_bags"] = df_reconcile["plant_stock_qty"] - df_reconcile["total_demand_bags"]
+            df_reconcile["total_stock_mt"] = df_reconcile["plant_stock_qty"] * df_reconcile["unit_weight_mt"]
+            df_reconcile["demand_mt"] = df_reconcile["total_demand_bags"] * df_reconcile["unit_weight_mt"]
+            df_reconcile["net_mt"] = df_reconcile["net_available_bags"] * df_reconcile["unit_weight_mt"]
+
+            # Safety Stock Status
+            def get_stock_status(row):
+                if row["net_available_bags"] < 0:
+                    return "🚨 CRITICAL SHORTAGE"
+                elif row["net_available_bags"] < row["safety_stock_qty"]:
+                    return "⚠️ BELOW SAFETY STOCK"
+                else:
+                    return "🟢 HEALTHY STOCK"
+
+            df_reconcile["Stock Health Status"] = df_reconcile.apply(get_stock_status, axis=1)
+
+            # Metrics
+            st_m1, st_m2, st_m3, st_m4 = st.columns(4)
+            st_m1.metric("Total Plant Stock", f"{df_reconcile['plant_stock_qty'].sum():,.0f} Bags", f"{df_reconcile['total_stock_mt'].sum():,.2f} MT")
+            st_m2.metric("Total Pending Demand", f"{df_reconcile['total_demand_bags'].sum():,.0f} Bags", f"{df_reconcile['demand_mt'].sum():,.2f} MT")
+            st_m3.metric("Net Free Stock", f"{df_reconcile['net_available_bags'].sum():,.0f} Bags", f"{df_reconcile['net_mt'].sum():,.2f} MT")
+            
+            critical_count = (df_reconcile["net_available_bags"] < 0).sum()
+            st_m4.metric("Shortage SKUs", f"{critical_count} Items", delta_color="inverse")
+
+            # Filters for Tab 2
+            st.markdown("---")
+            c_f1, c_f2 = st.columns(2)
+            with c_f1:
+                pack_filter = st.multiselect("Filter by Packaging Unit:", [50, 25], default=[50, 25])
+            with c_f2:
+                status_filter = st.multiselect("Filter by Stock Status:", ["🚨 CRITICAL SHORTAGE", "⚠️ BELOW SAFETY STOCK", "🟢 HEALTHY STOCK"], default=["🚨 CRITICAL SHORTAGE", "⚠️ BELOW SAFETY STOCK", "🟢 HEALTHY STOCK"])
+
+            df_view = df_reconcile[
+                (df_reconcile["pack_size_kg"].isin(pack_filter)) &
+                (df_reconcile["Stock Health Status"].isin(status_filter))
+            ]
+
+            display_cols = [
+                "material_code", "material_desc", "pack_size_kg", "unit_weight_mt",
+                "plant_stock_qty", "total_demand_bags", "net_available_bags", "safety_stock_qty",
+                "total_stock_mt", "demand_mt", "Stock Health Status", "stock_date"
+            ]
+
+            st.dataframe(df_view[display_cols], use_container_width=True)
+
+            st.download_button(
+                "📥 Export Stock vs Order Reconciliation (.xlsx)",
+                to_excel_download_bytes(df_view[display_cols], "Reconciliation"),
+                f"Stock_vs_Order_Reconciliation_{get_ist_date_str()}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    # --------------------------------------------------------------------------
+    # TAB 3: DYNAMIC GRID, FORMULAS & CUSTOM COLUMNS/ROWS MANAGER
+    # --------------------------------------------------------------------------
+    with tab_stk3:
+        st.subheader("✏️ Interactive Stock Grid, Formula Columns & CRUD")
+
+        df_grid = pd.read_sql("SELECT * FROM plant_inventory_stock", conn)
+
+        # 1. Custom Column Adder
+        with st.expander("➕ Add Dynamic Custom Column to Stock Database"):
+            c_add1, c_add2, c_add3 = st.columns(3)
+            with c_add1:
+                new_stk_col = st.text_input("New Column Name (e.g. warehouse_bay, min_order_level)").strip().lower()
+                new_stk_col = re.sub(r'[^a-z0-9_]', '', new_stk_col)
+            with c_add2:
+                new_stk_type = st.selectbox("Column Type", ["TEXT", "REAL", "INTEGER"])
+            with c_add3:
+                if st.button("➕ Inject Column"):
+                    if new_stk_col:
+                        try:
+                            cur.execute(f"ALTER TABLE plant_inventory_stock ADD COLUMN {new_stk_col} {new_stk_type}")
+                            conn.commit()
+                            st.success(f"Column '{new_stk_col}' added!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+
+        # 2. Formula Calculator Engine
+        with st.expander("🧮 Execute In-Memory Formula Calculations"):
+            st.markdown("Apply formulas across all rows (e.g. Calculate Safety Buffer or Re-order Cost).")
+            f_col_target = st.selectbox("Select Target Column to Update:", [c for c in df_grid.columns if c not in ["id", "material_code"]])
+            f_expression = st.text_input("Formula Expression (e.g. plant_stock_qty * 1.10 or plant_stock_qty - 50):", "")
+            if st.button("⚡ Apply Formula & Recalculate"):
+                try:
+                    df_grid[f_col_target] = df_grid.eval(f_expression)
+                    for _, r_val in df_grid.iterrows():
+                        cur.execute(f"UPDATE plant_inventory_stock SET {f_col_target}=? WHERE id=?", (r_val[f_col_target], r_val["id"]))
+                    conn.commit()
+                    st.success("✅ Formula applied and committed to database!")
+                    st.rerun()
+                except Exception as ex_eval:
+                    st.error(f"Formula Error: {ex_eval}")
+
+        # 3. Editable Data Grid
+        st.markdown("##### ✏️ Live Editable Stock Sheet:")
+        edited_stock = st.data_editor(df_grid, use_container_width=True, num_rows="dynamic", key="stock_dynamic_grid")
+
+        c_act1, c_act2, c_act3 = st.columns([1, 1, 2])
+        with c_act1:
+            if st.button("💾 Commit Grid Edits", type="primary"):
+                for _, r_row in edited_stock.iterrows():
+                    r_dict = r_row.to_dict()
+                    r_id = r_dict.get("id")
+                    
+                    # Auto update unit MT based on pack size
+                    pack_k = int(r_dict.get("pack_size_kg", 50))
+                    unit_m = 0.025 if pack_k == 25 else 0.050
+                    r_dict["unit_weight_mt"] = unit_m
+
+                    if pd.notna(r_id):
+                        up_cols = [k for k in r_dict.keys() if k != "id"]
+                        set_str = ", ".join([f"{c}=?" for c in up_cols])
+                        vals = [r_dict[c] for c in up_cols] + [r_id]
+                        cur.execute(f"UPDATE plant_inventory_stock SET {set_str} WHERE id=?", vals)
+                    else:
+                        ins_cols = [k for k in r_dict.keys() if k != "id" and pd.notna(r_dict[k])]
+                        placeholders = ", ".join(["?" for _ in ins_cols])
+                        cols_str = ", ".join(ins_cols)
+                        vals = [r_dict[c] for c in ins_cols]
+                        cur.execute(f"INSERT INTO plant_inventory_stock ({cols_str}) VALUES ({placeholders})", vals)
+                conn.commit()
+                st.success("✅ Inventory changes successfully updated!")
+                st.rerun()
+
+        with c_act2:
+            st.download_button(
+                "📥 Export Full Stock Grid (.xlsx)",
+                to_excel_download_bytes(df_grid, "Inventory"),
+                f"Full_Plant_Inventory_{get_ist_date_str()}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        with c_act3:
+            with st.expander("🗑️ Delete Options (Rows / Batch / Purge)"):
+                del_stk_ids = st.multiselect("Select Material IDs to Delete:", df_grid["id"].tolist() if not df_grid.empty else [])
+                if st.button("Delete Selected Stock Records"):
+                    cur.executemany("DELETE FROM plant_inventory_stock WHERE id=?", [(i,) for i in del_stk_ids])
+                    conn.commit()
+                    st.success("Records deleted.")
+                    st.rerun()
+                if st.button("🔥 Purge All Stock Data"):
+                    cur.execute("DELETE FROM plant_inventory_stock")
+                    cur.execute("DELETE FROM sqlite_sequence WHERE name='plant_inventory_stock'")
+                    conn.commit()
+                    st.success("Inventory stock cleared!")
+                    st.rerun()
+
+    conn.close()
