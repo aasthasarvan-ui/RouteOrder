@@ -2716,7 +2716,7 @@ st.markdown("---")
 with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
     render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
     # ==============================================================================
-# SECTION 20: ULTIMATE SUPREME ENTERPRISE RECOVERY & AUTO-DETECT WIPE SUITE (NO FONT)
+# SECTION 20: ULTIMATE SUPREME ENTERPRISE RECOVERY & AUTO-DETECT WIPE SUITE (PURE CLEAN)
 # ==============================================================================
 
 def init_ultimate_supreme_master_db():
@@ -2756,7 +2756,7 @@ st.markdown("---")
 with st.expander("🔌 Add New Dynamic Module / Feature (Supreme Suite)", expanded=False):
     st.markdown("Yahan aap naya module create kar sakte hain. Yeh database mein permanent save rahega aur page refresh par kabhi nahi hatega.")
 
-    with st.form("supreme_dynamic_form_final_nofont"):
+    with st.form("supreme_dynamic_form_clean"):
         col_s1, col_s2 = st.columns(2)
         with col_s1:
             s_name = st.text_input("Module / Feature Name", placeholder="e.g., Advanced Analytics Suite")
@@ -2813,7 +2813,7 @@ if True:
         sup_options += ["🗑️ Recycle Bin (Trash)"]
     sup_options += ["🛠️ Supreme Control & Recovery Center"]
     
-    sup_nav = st.sidebar.radio("Select Workspace", sup_options, key="supreme_sidebar_nav_nofont")
+    sup_nav = st.sidebar.radio("Select Workspace", sup_options, key="supreme_sidebar_nav_clean")
     
     if sup_nav == "🗑️ Recycle Bin (Trash)":
         st.markdown("---")
@@ -2828,7 +2828,7 @@ if True:
                     st.markdown(f"**{tm['icon']} {tm['name']}** (`{tm['category']}`)")
                     st.caption(f"Deleted at: {tm.get('deleted_at', 'N/A')}")
                 with col_r:
-                    if st.button("♻️ Restore", key=f"sup_res_nf_{tm['id']}"):
+                    if st.button("♻️ Restore", key=f"sup_res_cln_{tm['id']}"):
                         conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
                         cursor = conn.cursor()
                         cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 0, deleted_at = NULL WHERE id = ?", (tm['id'],))
@@ -2837,7 +2837,7 @@ if True:
                         st.success(f"Module '{tm['name']}' restored successfully!")
                         st.rerun()
                 with col_p:
-                    if st.button("🔥 Delete Forever", key=f"sup_per_nf_{tm['id']}"):
+                    if st.button("🔥 Delete Forever", key=f"sup_per_cln_{tm['id']}"):
                         conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
                         cursor = conn.cursor()
                         cursor.execute("UPDATE dynamic_modules_ledger SET is_permanent_deleted = 1 WHERE id = ?", (tm['id'],))
@@ -2883,8 +2883,8 @@ if True:
                 col_sw1, col_sw2 = st.columns(2)
                 with col_sw1:
                     st.markdown("##### Wipe Specific Operational Table")
-                    sel_s_tbl = st.selectbox("Detected Tables", ["-- Select Table --"] + safe_s_tbls, key="sel_sup_tbl_nf")
-                    if st.button("🗑️ Wipe Selected Table Data", key="btn_wipe_sel_nf"):
+                    sel_s_tbl = st.selectbox("Detected Tables", ["-- Select Table --"] + safe_s_tbls, key="sel_sup_tbl_cln")
+                    if st.button("🗑️ Wipe Selected Table Data", key="btn_wipe_sel_cln"):
                         if sel_s_tbl != "-- Select Table --":
                             try:
                                 conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
@@ -2906,7 +2906,7 @@ if True:
                 with col_sw2:
                     st.markdown("##### Master Factory Reset (Wipe Stock + Restore ALL Modules)")
                     st.info("ℹ️ Yeh saara operational data wipe kar dega aur delete kiye gaye saare modules wapas restore kar dega.")
-                    if st.button("⚡ EXECUTE SUPREME FACTORY RESET", type="primary", key="btn_sup_reset_nf"):
+                    if st.button("⚡ EXECUTE SUPREME FACTORY RESET", type="primary", key="btn_sup_reset_cln"):
                         try:
                             conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
                             cursor = conn.cursor()
@@ -2937,15 +2937,15 @@ if True:
             st.markdown("#### 🎨 Custom Colors & Button Text Overrider")
             sc1, sc2 = st.columns(2)
             with sc1:
-                sup_bg = st.color_picker("Background Color", st.session_state.get("sup_bg", "#f4f6f9"), key="pick_sup_bg_nf")
-                sup_txt = st.color_picker("Main Text Color", st.session_state.get("sup_txt", "#1f2937"), key="pick_sup_txt_nf")
+                sup_bg = st.color_picker("Background Color", st.session_state.get("sup_bg", "#f4f6f9"), key="pick_sup_bg_cln")
+                sup_txt = st.color_picker("Main Text Color", st.session_state.get("sup_txt", "#1f2937"), key="pick_sup_txt_cln")
             with sc2:
-                sup_btn_bg = st.color_picker("Button Background Color", st.session_state.get("sup_btn_bg", "#1e3a8a"), key="pick_sup_btn_bg_nf")
-                sup_btn_txt = st.color_picker("Button Text Color", st.session_state.get("sup_btn_txt", "#ffffff"), key="pick_sup_btn_txt_nf")
+                sup_btn_bg = st.color_picker("Button Background Color", st.session_state.get("sup_btn_bg", "#1e3a8a"), key="pick_sup_btn_bg_cln")
+                sup_btn_txt = st.color_picker("Button Text Color", st.session_state.get("sup_btn_txt", "#ffffff"), key="pick_sup_btn_txt_cln")
 
             sa1, sa2 = st.columns(2)
             with sa1:
-                if st.button("✨ Apply Custom Colors", type="primary", key="apply_sup_colors_nf"):
+                if st.button("✨ Apply Custom Colors", type="primary", key="apply_sup_colors_cln"):
                     st.session_state["sup_bg"] = sup_bg
                     st.session_state["sup_txt"] = sup_txt
                     st.session_state["sup_btn_bg"] = sup_btn_bg
@@ -2953,7 +2953,7 @@ if True:
                     st.success("✅ Custom colors applied successfully!")
                     st.rerun()
             with sa2:
-                if st.button("🔄 Reset Custom Colors", key="reset_sup_colors_nf"):
+                if st.button("🔄 Reset Custom Colors", key="reset_sup_colors_cln"):
                     for c_key in ["sup_bg", "sup_txt", "sup_btn_bg", "sup_btn_txt"]:
                         if c_key in st.session_state:
                             del st.session_state[c_key]
@@ -2978,7 +2978,7 @@ if True:
                 st.error(f"❌ Error in module code: {str(e_err)}")
                 
             st.markdown("<br><br>", unsafe_allow_html=True)
-            if st.button(f"🗑️ Move Module '{cur_sup_mod['name']}' to Trash", key=f"del_sup_mod_nf_{cur_sup_mod['id']}"):
+            if st.button(f"🗑️ Move Module '{cur_sup_mod['name']}' to Trash", key=f"del_sup_mod_cln_{cur_sup_mod['id']}"):
                 conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
                 cursor = conn.cursor()
                 cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 1, deleted_at = ? WHERE id = ?", (get_ist_now().strftime("%Y-%m-%d %H:%M:%S"), cur_sup_mod['id']))
@@ -3014,4 +3014,4 @@ if "sup_bg" in st.session_state:
         </style>
         """,
         unsafe_allow_html=True
-    )
+                                    )
