@@ -3028,29 +3028,39 @@ if "sup_bg" in st.session_state:
         unsafe_allow_html=True
     )
 if s_submit:
-    if s_name and s_code:
-        try:
-            conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
-            cursor = conn.cursor()
-            
-            # Upsert logic: Agar naam pehle se hai toh use update karke active kar do, warna naya insert karo
-            cursor.execute("""
-                INSERT INTO dynamic_modules_ledger (name, category, icon, code, is_trashed, is_permanent_deleted, created_at, deleted_at)
-                VALUES (?, ?, ?, ?, 0, 0, ?, NULL)
-                ON CONFLICT(name) DO UPDATE SET 
-                    category = excluded.category,
-                    icon = excluded.icon,
-                    code = excluded.code,
-                    is_trashed = 0,
-                    is_permanent_deleted = 0,
-                    deleted_at = NULL
-            """, (s_name.strip(), s_cat, s_icon if s_icon else "🧩", s_code, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
-            
-            conn.commit()
-            conn.close()
-            st.success(f"✅ Module '{s_name}' successfully created and activated!")
-            st.rerun()
-        except Exception as ex:
-            st.error(f"❌ Error: {str(ex)}")
-    else:
-        st.warning("⚠️ Kripya Module Name aur Code dono enter karein.")
+            if s_name and s_code:
+                try:
+                    conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
+                    cursor = conn.cursor()
+                    
+                    clean_name = s_name.strip()
+                    now_ts = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+                    icon_val = s_icon if s_icon else "🧩"
+                    
+                    # 1. Check if module name already exists in database (even if deleted/trashed)
+                    cursor.execute("SELECT id FROM dynamic_modules_ledger WHERE name = ?", (clean_name,))
+                    existing_row = cursor.fetchone()
+                    
+                    if existing_row:
+                        # 2. If it exists, force update it back to active state
+                        cursor.execute("""
+                            UPDATE dynamic_modules_ledger 
+                            SET category = ?, icon = ?, code = ?, is_trashed = 0, is_permanent_deleted = 0, created_at = ?, deleted_at = NULL
+                            WHERE name = ?
+                        """, (s_cat, icon_val, s_code, now_ts, clean_name))
+                        st.success(f"✅ Module '{clean_name}' successfully updated and reactivated!")
+                    else:
+                        # 3. If it doesn't exist, insert as a brand new record
+                        cursor.execute("""
+                            INSERT INTO dynamic_modules_ledger (name, category, icon, code, is_trashed, is_permanent_deleted, created_at, deleted_at)
+                            VALUES (?, ?, ?, ?, 0, 0, ?, NULL)
+                        """, (clean_name, s_cat, icon_val, s_code, now_ts))
+                        st.success(f"✅ New Module '{clean_name}' successfully created and saved!")
+                        
+                    conn.commit()
+                    conn.close()
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"❌ Error: {str(ex)}")
+            else:
+                st.warning("⚠️ Kripya Module Name aur Code dono enter karein.")
