@@ -61,6 +61,14 @@ THEMES = {
         "icon": "💼", "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
         "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
     },
+    "⚙️ Classic Default Theme": {
+        "icon": "⚙️", "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
+        "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
+    },
+    "💼 Classic Enterprise Navy": {
+        "icon": "💼", "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
+        "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
+    },
     "🌙 Modern Dark ERP": {
         "icon": "🌙", "bg": "#0b0f19", "text": "#f3f4f6", "card_bg": "#1f2937", "border": "#374151",
         "btn_bg": "#374151", "btn_hover": "#4b5563", "primary": "#3b82f6", "input_bg": "#111827", "input_text": "#f3f4f6"
@@ -96,7 +104,7 @@ THEMES = {
 # ==============================================================================
 
 GLOBAL_DEFAULTS = {
-    "selected_theme": "💼 Classic Enterprise Navy",
+    "selected_theme": "⚙️ Classic Default Theme",
     "fg_code": "FG500014",
     "col_map": "36:FG500014AJ\n37:FG500014AK",
     "agency_override": "101:36:FG500014N01\n101:37:FG500014N02",
