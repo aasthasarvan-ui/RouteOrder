@@ -2720,8 +2720,8 @@ if any(term in str(main_menu).lower() for term in ["universal date", "filter cen
 st.markdown("---")
 with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
     render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
-# ==============================================================================
-# SECTION 20: ULTIMATE SUPREME ENTERPRISE RECOVERY & ERROR-FREE PERSISTENT SUITE
+    # ==============================================================================
+# SECTION 20: ULTIMATE SUPREME ENTERPRISE RECOVERY & FLEXIBLE BACKUP SUITE
 # ==============================================================================
 
 def init_ultimate_supreme_master_db():
@@ -2764,10 +2764,10 @@ except:
 active_sup_mods = df_sup[(df_sup['is_trashed'] == 0) & (df_sup['is_permanent_deleted'] == 0)].to_dict('records') if not df_sup.empty and 'is_trashed' in df_sup.columns else []
 trash_sup_mods = df_sup[(df_sup['is_trashed'] == 1) & (df_sup['is_permanent_deleted'] == 0)].to_dict('records') if not df_sup.empty and 'is_trashed' in df_sup.columns else []
 
-# --- PERSISTENT MODULE BUILDER & BACKUP / RESTORE EXPANDER ---
+# --- PERSISTENT MODULE BUILDER & FLEXIBLE BACKUP / RESTORE HUB ---
 st.markdown("---")
-with st.expander("🔌 Add New Dynamic Module & Backup / Restore Hub (Supreme Suite)", expanded=False):
-    tab_bld1, tab_bld2 = st.tabs(["➕ Add New Module", "📦 1-Click Backup & Instant Restore"])
+with st.expander("🔌 Add New Dynamic Module & Flexible Backup Hub (Supreme Suite)", expanded=False):
+    tab_bld1, tab_bld2 = st.tabs(["➕ Add New Module", "📦 Flexible Backup & Restore Hub"])
     
     with tab_bld1:
         st.markdown("Yahan aap naya module create kar sakte hain. Duplicate name conflict aur delete recovery 100% automated hai.")
@@ -2818,39 +2818,64 @@ with st.expander("🔌 Add New Dynamic Module & Backup / Restore Hub (Supreme Su
                     st.warning("⚠️ Kripya Module Name aur Code dono enter karein.")
 
     with tab_bld2:
-        st.markdown("##### 💾 App Reboot Recovery: Export & Import Modules")
-        st.markdown("App restart ya reboot hone par saare dynamic modules ko wapas ek click mein restore karne ke liye yeh backup use karein.")
+        st.markdown("##### 💾 Flexible Backup & Restore Center")
+        st.markdown("Aap chahe toh **Single Module** ka backup lein, ya **Saare Modules (All / Multiple)** ka ek sath backup download karein.")
         
-        c_bk1, c_bk2 = st.columns(2)
-        with c_bk1:
-            st.markdown("###### 1. Export All Saved Modules (Backup)")
+        sub_bk_tab1, sub_bk_tab2 = st.tabs(["📤 Export / Backup", "📥 Import / Restore"])
+        
+        with sub_bk_tab1:
+            st.markdown("###### 1. Single Module Backup (1 by 1)")
+            if active_sup_mods:
+                single_mod_names = [m['name'] for m in active_sup_mods]
+                sel_single_exp = st.selectbox("Select Module to Export:", single_mod_names, key="sel_single_exp_mod")
+                
+                # Find selected module dict
+                match_mod = next((m for m in active_sup_mods if m['name'] == sel_single_exp), None)
+                if match_mod:
+                    single_json_str = json.dumps([match_mod], indent=4)
+                    st.download_button(
+                        f"📥 Download '{sel_single_exp}' Backup (.json)",
+                        data=single_json_str.encode('utf-8'),
+                        file_name=f"Module_{sel_single_exp.replace(' ', '_')}_{get_ist_date_str()}.json",
+                        mime="application/json",
+                        key=f"dl_single_mod_{sel_single_exp}"
+                    )
+            else:
+                st.info("ℹ️ Koi active module available nahi hai.")
+                
+            st.markdown("---")
+            st.markdown("###### 2. All / Multiple Modules Backup (Bulk Export)")
             if not df_sup.empty:
-                backup_data = df_sup[['name', 'category', 'icon', 'code', 'is_trashed', 'is_permanent_deleted', 'created_at']].to_dict('records')
-                json_backup_str = json.dumps(backup_data, indent=4)
+                all_backup_data = df_sup[['name', 'category', 'icon', 'code', 'is_trashed', 'is_permanent_deleted', 'created_at']].to_dict('records')
+                all_json_str = json.dumps(all_backup_data, indent=4)
                 
                 st.download_button(
-                    "📥 Download All Modules Backup (.json)",
-                    data=json_backup_str.encode('utf-8'),
-                    file_name=f"Dynamic_Modules_Backup_{get_ist_date_str()}.json",
+                    "📥 Download All Modules Bulk Backup (.json)",
+                    data=all_json_str.encode('utf-8'),
+                    file_name=f"All_Dynamic_Modules_Bulk_Backup_{get_ist_date_str()}.json",
                     mime="application/json",
-                    type="primary"
+                    type="primary",
+                    key="dl_all_bulk_mods"
                 )
             else:
                 st.info("ℹ️ Abhi database me koi module save nahi hai.")
                 
-        with c_bk2:
-            st.markdown("###### 2. Import & Restore Backup (.json)")
-            up_backup_file = st.file_uploader("Upload Backup JSON File:", type=["json"], key="up_sup_json_backup")
-            if up_backup_file and st.button("🚀 Restore All Modules From Backup", key="btn_restore_sup_mods"):
+        with sub_bk_tab2:
+            st.markdown("###### 3. Restore Modules from Backup File")
+            up_backup_file = st.file_uploader("Upload Single or Bulk Backup JSON File:", type=["json"], key="up_sup_flexible_json_backup")
+            if up_backup_file and st.button("🚀 Restore Modules From Uploaded File", key="btn_flexible_restore_mods"):
                 try:
-                    imported_mods = json.loads(up_backup_file.getvalue().decode('utf-8'))
-                    if isinstance(imported_mods, list) and len(imported_mods) > 0:
+                    file_content = json.loads(up_backup_file.getvalue().decode('utf-8'))
+                    # Handle both single dict or list of dicts
+                    mods_to_import = file_content if isinstance(file_content, list) else [file_content]
+                    
+                    if len(mods_to_import) > 0:
                         conn = sqlite3.connect("enterprise_logistics_sales_hub.db", timeout=10)
                         cursor = conn.cursor()
                         now_ts = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
                         
                         restored_count = 0
-                        for m_item in imported_mods:
+                        for m_item in mods_to_import:
                             m_name = m_item.get('name', '').strip()
                             m_code = m_item.get('code', '')
                             m_cat = m_item.get('category', 'Custom Utility')
@@ -2872,7 +2897,7 @@ with st.expander("🔌 Add New Dynamic Module & Backup / Restore Hub (Supreme Su
                                 
                         conn.commit()
                         conn.close()
-                        st.success(f"🎉 Successfully restored and activated {restored_count} modules from backup!")
+                        st.success(f"🎉 Successfully restored and activated {restored_count} module(s) from backup!")
                         st.rerun()
                     else:
                         st.error("❌ Invalid backup file format.")
