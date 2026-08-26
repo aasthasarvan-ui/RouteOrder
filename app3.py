@@ -2715,8 +2715,8 @@ if any(term in str(main_menu).lower() for term in ["universal date", "filter cen
 st.markdown("---")
 with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
     render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
-# ==============================================================================
-# SECTION 20: ULTIMATE SUPREME ENTERPRISE RECOVERY & AUTO-DETECT WIPE SUITE (SAFE FOREIGN KEY WIPE)
+    # ==============================================================================
+# SECTION 20: ULTIMATE SUPREME ENTERPRISE RECOVERY & ERROR-FREE MULTI-MODULE SUITE
 # ==============================================================================
 
 def init_ultimate_supreme_master_db():
@@ -2758,12 +2758,12 @@ except:
 active_sup_mods = df_sup[(df_sup['is_trashed'] == 0) & (df_sup['is_permanent_deleted'] == 0)].to_dict('records') if not df_sup.empty and 'is_trashed' in df_sup.columns else []
 trash_sup_mods = df_sup[(df_sup['is_trashed'] == 1) & (df_sup['is_permanent_deleted'] == 0)].to_dict('records') if not df_sup.empty and 'is_trashed' in df_sup.columns else []
 
-# --- DYNAMIC MODULE BUILDER EXPANDER ---
+# --- UNIQUE MULTI-MODULE BUILDER EXPANDER ---
 st.markdown("---")
 with st.expander("🔌 Add New Dynamic Module / Feature (Supreme Suite)", expanded=False):
-    st.markdown("Yahan aap naya module create kar sakte hain. Yeh database mein permanent save rahega aur restart par bhi wapas load ho jayega.")
+    st.markdown("Yahan aap naye modules bana sakte hain. Har naya module alag save hoga aur restart par bhi live rahega.")
 
-    with st.form("supreme_dynamic_form_safe"):
+    with st.form("supreme_dynamic_form_errorfree"):
         col_s1, col_s2 = st.columns(2)
         with col_s1:
             s_name = st.text_input("Module / Feature Name", placeholder="e.g., Advanced Analytics Suite")
@@ -2777,17 +2777,25 @@ with st.expander("🔌 Add New Dynamic Module / Feature (Supreme Suite)", expand
             height=120
         )
         
-        s_submit = st.form_submit_button("⚡ Create & Permanently Save Feature")
+        s_submit = st.form_submit_button("⚡ Create & Save New Module")
         
         if s_submit:
             if s_name and s_code:
                 try:
                     conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
                     cursor = conn.cursor()
+                    
                     cursor.execute("""
-                        INSERT OR REPLACE INTO dynamic_modules_ledger (name, category, icon, code, is_trashed, is_permanent_deleted, created_at, deleted_at)
+                        INSERT INTO dynamic_modules_ledger (name, category, icon, code, is_trashed, is_permanent_deleted, created_at, deleted_at)
                         VALUES (?, ?, ?, ?, 0, 0, ?, NULL)
+                        ON CONFLICT(name) DO UPDATE SET 
+                            category = excluded.category,
+                            icon = excluded.icon,
+                            code = excluded.code,
+                            is_trashed = 0,
+                            deleted_at = NULL
                     """, (s_name, s_cat, s_icon if s_icon else "🧩", s_code, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
+                    
                     conn.commit()
                     conn.close()
                     st.success(f"✅ Module '{s_name}' successfully created and saved!")
@@ -2797,7 +2805,7 @@ with st.expander("🔌 Add New Dynamic Module / Feature (Supreme Suite)", expand
             else:
                 st.warning("⚠️ Kripya Module Name aur Code dono enter karein.")
 
-# --- SUPREME SIDEBAR ROUTER ---
+# --- SIDEBAR ROUTER FOR DYNAMIC MODULES ---
 if True:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### ⚡ Dynamic Modules Hub")
@@ -2809,12 +2817,12 @@ if True:
         sup_options += ["🗑️ Recycle Bin (Trash)"]
     sup_options += ["🛠️ Supreme Control & Recovery Center"]
     
-    sup_nav = st.sidebar.radio("Select Workspace", sup_options, key="supreme_sidebar_nav_safe")
+    sup_nav = st.sidebar.radio("Select Workspace", sup_options, key="supreme_sidebar_nav_errorfree")
     
     if sup_nav == "🗑️ Recycle Bin (Trash)":
         st.markdown("---")
         st.markdown("# 🗑️ Deleted Modules & Recycle Bin")
-        st.markdown("Yahan se aap deleted modules ko **Restore** kar sakte hain ya permanent archive mein bhej sakte hain.")
+        st.markdown("Yahan se aap deleted modules ko **Restore** kar sakte hain.")
         st.markdown("---")
 
         if trash_sup_mods:
@@ -2824,7 +2832,7 @@ if True:
                     st.markdown(f"**{tm['icon']} {tm['name']}** (`{tm['category']}`)")
                     st.caption(f"Deleted at: {tm.get('deleted_at', 'N/A')}")
                 with col_r:
-                    if st.button("♻️ Restore", key=f"sup_res_sf_{tm['id']}"):
+                    if st.button("♻️ Restore", key=f"sup_res_ef_{tm['id']}"):
                         conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
                         cursor = conn.cursor()
                         cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 0, deleted_at = NULL WHERE id = ?", (tm['id'],))
@@ -2833,7 +2841,7 @@ if True:
                         st.success(f"Module '{tm['name']}' restored successfully!")
                         st.rerun()
                 with col_p:
-                    if st.button("🔥 Delete Forever", key=f"sup_per_sf_{tm['id']}"):
+                    if st.button("🔥 Delete Forever", key=f"sup_per_ef_{tm['id']}"):
                         conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
                         cursor = conn.cursor()
                         cursor.execute("UPDATE dynamic_modules_ledger SET is_permanent_deleted = 1 WHERE id = ?", (tm['id'],))
@@ -2878,8 +2886,8 @@ if True:
                 col_sw1, col_sw2 = st.columns(2)
                 with col_sw1:
                     st.markdown("##### Wipe Specific Operational Table")
-                    sel_s_tbl = st.selectbox("Detected Tables", ["-- Select Table --"] + safe_s_tbls, key="sel_sup_tbl_sf")
-                    if st.button("🗑️ Wipe Selected Table Data", key="btn_wipe_sel_sf"):
+                    sel_s_tbl = st.selectbox("Detected Tables", ["-- Select Table --"] + safe_s_tbls, key="sel_sup_tbl_ef")
+                    if st.button("🗑️ Wipe Selected Table Data", key="btn_wipe_sel_ef"):
                         if sel_s_tbl != "-- Select Table --":
                             try:
                                 conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
@@ -2902,7 +2910,7 @@ if True:
 
                 with col_sw2:
                     st.markdown("##### Master Factory Reset")
-                    if st.button("⚡ EXECUTE SUPREME FACTORY RESET", type="primary", key="btn_sup_reset_sf"):
+                    if st.button("⚡ EXECUTE SUPREME FACTORY RESET", type="primary", key="btn_sup_reset_ef"):
                         try:
                             conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
                             cursor = conn.cursor()
@@ -2931,15 +2939,15 @@ if True:
             st.markdown("#### 🎨 Custom Colors & Button Text Overrider")
             sc1, sc2 = st.columns(2)
             with sc1:
-                sup_bg = st.color_picker("Background Color", st.session_state.get("sup_bg", "#f4f6f9"), key="pick_sup_bg_sf")
-                sup_txt = st.color_picker("Main Text Color", st.session_state.get("sup_txt", "#1f2937"), key="pick_sup_txt_sf")
+                sup_bg = st.color_picker("Background Color", st.session_state.get("sup_bg", "#f4f6f9"), key="pick_sup_bg_ef")
+                sup_txt = st.color_picker("Main Text Color", st.session_state.get("sup_txt", "#1f2937"), key="pick_sup_txt_ef")
             with sc2:
-                sup_btn_bg = st.color_picker("Button Background Color", st.session_state.get("sup_btn_bg", "#1e3a8a"), key="pick_sup_btn_bg_sf")
-                sup_btn_txt = st.color_picker("Button Text Color", st.session_state.get("sup_btn_txt", "#ffffff"), key="pick_sup_btn_txt_sf")
+                sup_btn_bg = st.color_picker("Button Background Color", st.session_state.get("sup_btn_bg", "#1e3a8a"), key="pick_sup_btn_bg_ef")
+                sup_btn_txt = st.color_picker("Button Text Color", st.session_state.get("sup_btn_txt", "#ffffff"), key="pick_sup_btn_txt_ef")
 
             sa1, sa2 = st.columns(2)
             with sa1:
-                if st.button("✨ Apply Custom Colors", type="primary", key="apply_sup_colors_sf"):
+                if st.button("✨ Apply Custom Colors", type="primary", key="apply_sup_colors_ef"):
                     st.session_state["sup_bg"] = sup_bg
                     st.session_state["sup_txt"] = sup_txt
                     st.session_state["sup_btn_bg"] = sup_btn_bg
@@ -2947,7 +2955,7 @@ if True:
                     st.success("✅ Custom colors applied successfully!")
                     st.rerun()
             with sa2:
-                if st.button("🔄 Reset Custom Colors", key="reset_sup_colors_sf"):
+                if st.button("🔄 Reset Custom Colors", key="reset_sup_colors_ef"):
                     for c_key in ["sup_bg", "sup_txt", "sup_btn_bg", "sup_btn_txt"]:
                         if c_key in st.session_state:
                             del st.session_state[c_key]
@@ -2972,7 +2980,7 @@ if True:
                 st.error(f"❌ Error in module code: {str(e_err)}")
                 
             st.markdown("<br><br>", unsafe_allow_html=True)
-            if st.button(f"🗑️ Move Module '{cur_sup_mod['name']}' to Trash", key=f"del_sup_mod_sf_{cur_sup_mod['id']}"):
+            if st.button(f"🗑️ Move Module '{cur_sup_mod['name']}' to Trash", key=f"del_sup_mod_ef_{cur_sup_mod['id']}"):
                 conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
                 cursor = conn.cursor()
                 cursor.execute("UPDATE dynamic_modules_ledger SET is_trashed = 1, deleted_at = ? WHERE id = ?", (get_ist_now().strftime("%Y-%m-%d %H:%M:%S"), cur_sup_mod['id']))
