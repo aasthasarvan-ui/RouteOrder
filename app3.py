@@ -3016,3 +3016,74 @@ if "sup_bg" in st.session_state:
         """,
         unsafe_allow_html=True
     )
+# ==============================================================================
+# SECTION 21: PERSISTENT AUTO-RECOVERY & REBOOT RESILIENT ENGINE
+# ==============================================================================
+
+def ensure_reboot_resilience():
+    try:
+        conn = sqlite3.connect("enterprise_logistics_sales_hub.db")
+        cursor = conn.cursor()
+        
+        # 1. Ensure dynamic modules ledger table always exists
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dynamic_modules_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                category TEXT,
+                icon TEXT,
+                code TEXT,
+                is_trashed INTEGER DEFAULT 0,
+                is_permanent_deleted INTEGER DEFAULT 0,
+                created_at TEXT,
+                deleted_at TEXT
+            )
+        """)
+        
+        # 2. Ensure core operational tables exist to prevent any missing table crashes after reboot
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pending_orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_file TEXT,
+                order_no TEXT,
+                route_no TEXT,
+                agency_no TEXT,
+                dr_code TEXT,
+                fg_code TEXT,
+                bags_qty REAL,
+                weight_mt REAL,
+                order_ref TEXT,
+                status TEXT DEFAULT 'Pending',
+                uploaded_at TEXT
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS fleet_master (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vehicle_no TEXT UNIQUE,
+                vehicle_type TEXT,
+                capacity_bags INTEGER,
+                capacity_mt REAL,
+                transporter_name TEXT,
+                driver_name TEXT,
+                driver_phone TEXT,
+                status TEXT DEFAULT 'Available'
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS loading_bays (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bay_no TEXT UNIQUE,
+                bay_name TEXT,
+                status TEXT DEFAULT 'Open'
+            )
+        """)
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Reboot resilience check error: {str(e)}")
+
+ensure_reboot_resilience()
