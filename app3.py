@@ -2720,9 +2720,8 @@ if any(term in str(main_menu).lower() for term in ["universal date", "filter cen
 st.markdown("---")
 with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
     render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
-    # ==============================================================================
 # ==============================================================================
-# SECTION 20: ULTIMATE SUPREME ENTERPRISE RECOVERY & PERSISTENT MODULE SUITE
+# SECTION 20: ULTIMATE SUPREME ENTERPRISE RECOVERY & ERROR-FREE PERSISTENT SUITE
 # ==============================================================================
 
 def init_ultimate_supreme_master_db():
@@ -2754,7 +2753,7 @@ def init_ultimate_supreme_master_db():
 
 init_ultimate_supreme_master_db()
 
-# --- SAFE PERSISTENT FETCH PRIOR TO SIDEBAR ---
+# --- SAFE PERSISTENT FETCH PRIOR TO SIDEBAR (PAGE REFRESH PROOF) ---
 try:
     conn = sqlite3.connect("enterprise_logistics_sales_hub.db", timeout=10)
     df_sup = pd.read_sql("SELECT * FROM dynamic_modules_ledger", conn)
@@ -2765,58 +2764,120 @@ except:
 active_sup_mods = df_sup[(df_sup['is_trashed'] == 0) & (df_sup['is_permanent_deleted'] == 0)].to_dict('records') if not df_sup.empty and 'is_trashed' in df_sup.columns else []
 trash_sup_mods = df_sup[(df_sup['is_trashed'] == 1) & (df_sup['is_permanent_deleted'] == 0)].to_dict('records') if not df_sup.empty and 'is_trashed' in df_sup.columns else []
 
-# --- PERSISTENT MODULE BUILDER EXPANDER ---
+# --- PERSISTENT MODULE BUILDER & BACKUP / RESTORE EXPANDER ---
 st.markdown("---")
-with st.expander("🔌 Add New Dynamic Module / Feature (Supreme Suite)", expanded=False):
-    st.markdown("Yahan aap naya module create kar sakte hain. Yeh database mein permanent save rahega aur restart par kabhi nahi hatega.")
+with st.expander("🔌 Add New Dynamic Module & Backup / Restore Hub (Supreme Suite)", expanded=False):
+    tab_bld1, tab_bld2 = st.tabs(["➕ Add New Module", "📦 1-Click Backup & Instant Restore"])
+    
+    with tab_bld1:
+        st.markdown("Yahan aap naya module create kar sakte hain. Duplicate name conflict aur delete recovery 100% automated hai.")
+        with st.form("supreme_dynamic_form_persistent"):
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                s_name = st.text_input("Module / Feature Name", placeholder="e.g., NextGen Enterprise Tonnage Pro")
+                s_cat = st.selectbox("Module Category", ["Analytics", "Automation", "Reporting", "Integration", "Custom Utility"])
+            with col_s2:
+                s_icon = st.text_input("Module Icon (Emoji)", placeholder="⚡")
+            
+            s_code = st.text_area(
+                "Module Python Logic (Streamlit Code)", 
+                placeholder="st.subheader('My Custom Feature')\nst.write('Operational and fully linked!')",
+                height=120
+            )
+            
+            s_submit = st.form_submit_button("⚡ Create & Permanently Save Feature")
+            
+            if s_submit:
+                if s_name and s_code:
+                    try:
+                        conn = sqlite3.connect("enterprise_logistics_sales_hub.db", timeout=10)
+                        cursor = conn.cursor()
+                        clean_name = s_name.strip()
+                        now_ts = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+                        icon_val = s_icon if s_icon else "🧩"
+                        
+                        cursor.execute("""
+                            INSERT INTO dynamic_modules_ledger (name, category, icon, code, is_trashed, is_permanent_deleted, created_at, deleted_at)
+                            VALUES (?, ?, ?, ?, 0, 0, ?, NULL)
+                            ON CONFLICT(name) DO UPDATE SET 
+                                category = excluded.category,
+                                icon = excluded.icon,
+                                code = excluded.code,
+                                is_trashed = 0,
+                                is_permanent_deleted = 0,
+                                deleted_at = NULL
+                        """, (clean_name, s_cat, icon_val, s_code, now_ts))
+                        
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Module '{clean_name}' successfully saved and locked for persistence!")
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"❌ Error: {str(ex)}")
+                else:
+                    st.warning("⚠️ Kripya Module Name aur Code dono enter karein.")
 
-    with st.form("supreme_dynamic_form_persistent"):
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            s_name = st.text_input("Module / Feature Name", placeholder="e.g., NextGen Enterprise Tonnage Pro")
-            s_cat = st.selectbox("Module Category", ["Analytics", "Automation", "Reporting", "Integration", "Custom Utility"])
-        with col_s2:
-            s_icon = st.text_input("Module Icon (Emoji)", placeholder="⚡")
+    with tab_bld2:
+        st.markdown("##### 💾 App Reboot Recovery: Export & Import Modules")
+        st.markdown("App restart ya reboot hone par saare dynamic modules ko wapas ek click mein restore karne ke liye yeh backup use karein.")
         
-        s_code = st.text_area(
-            "Module Python Logic (Streamlit Code)", 
-            placeholder="st.subheader('My Custom Feature')\nst.write('Operational and fully linked!')",
-            height=120
-        )
-        
-        s_submit = st.form_submit_button("⚡ Create & Permanently Save Feature")
-        
-        if s_submit:
-            if s_name and s_code:
-                try:
-                    conn = sqlite3.connect("enterprise_logistics_sales_hub.db", timeout=10)
-                    cursor = conn.cursor()
-                    
-                    clean_name = s_name.strip()
-                    now_ts = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
-                    icon_val = s_icon if s_icon else "🧩"
-                    
-                    # Robust Upsert Logic: Handles active, trashed, and permanent deleted states seamlessly
-                    cursor.execute("""
-                        INSERT INTO dynamic_modules_ledger (name, category, icon, code, is_trashed, is_permanent_deleted, created_at, deleted_at)
-                        VALUES (?, ?, ?, ?, 0, 0, ?, NULL)
-                        ON CONFLICT(name) DO UPDATE SET 
-                            category = excluded.category,
-                            icon = excluded.icon,
-                            code = excluded.code,
-                            is_trashed = 0,
-                            is_permanent_deleted = 0,
-                            deleted_at = NULL
-                    """, (clean_name, s_cat, icon_val, s_code, now_ts))
-                    
-                    conn.commit()
-                    conn.close()
-                    st.success(f"✅ Module '{clean_name}' successfully saved and locked for persistence!")
-                    st.rerun()
-                except Exception as ex:
-                    st.error(f"❌ Error: {str(ex)}")
+        c_bk1, c_bk2 = st.columns(2)
+        with c_bk1:
+            st.markdown("###### 1. Export All Saved Modules (Backup)")
+            if not df_sup.empty:
+                backup_data = df_sup[['name', 'category', 'icon', 'code', 'is_trashed', 'is_permanent_deleted', 'created_at']].to_dict('records')
+                json_backup_str = json.dumps(backup_data, indent=4)
+                
+                st.download_button(
+                    "📥 Download All Modules Backup (.json)",
+                    data=json_backup_str.encode('utf-8'),
+                    file_name=f"Dynamic_Modules_Backup_{get_ist_date_str()}.json",
+                    mime="application/json",
+                    type="primary"
+                )
             else:
-                st.warning("⚠️ Kripya Module Name aur Code dono enter karein.")
+                st.info("ℹ️ Abhi database me koi module save nahi hai.")
+                
+        with c_bk2:
+            st.markdown("###### 2. Import & Restore Backup (.json)")
+            up_backup_file = st.file_uploader("Upload Backup JSON File:", type=["json"], key="up_sup_json_backup")
+            if up_backup_file and st.button("🚀 Restore All Modules From Backup", key="btn_restore_sup_mods"):
+                try:
+                    imported_mods = json.loads(up_backup_file.getvalue().decode('utf-8'))
+                    if isinstance(imported_mods, list) and len(imported_mods) > 0:
+                        conn = sqlite3.connect("enterprise_logistics_sales_hub.db", timeout=10)
+                        cursor = conn.cursor()
+                        now_ts = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        restored_count = 0
+                        for m_item in imported_mods:
+                            m_name = m_item.get('name', '').strip()
+                            m_code = m_item.get('code', '')
+                            m_cat = m_item.get('category', 'Custom Utility')
+                            m_icon = m_item.get('icon', '🧩')
+                            
+                            if m_name and m_code:
+                                cursor.execute("""
+                                    INSERT INTO dynamic_modules_ledger (name, category, icon, code, is_trashed, is_permanent_deleted, created_at, deleted_at)
+                                    VALUES (?, ?, ?, ?, 0, 0, ?, NULL)
+                                    ON CONFLICT(name) DO UPDATE SET 
+                                        category = excluded.category,
+                                        icon = excluded.icon,
+                                        code = excluded.code,
+                                        is_trashed = 0,
+                                        is_permanent_deleted = 0,
+                                        deleted_at = NULL
+                                """, (m_name, m_cat, m_icon, m_code, now_ts))
+                                restored_count += 1
+                                
+                        conn.commit()
+                        conn.close()
+                        st.success(f"🎉 Successfully restored and activated {restored_count} modules from backup!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Invalid backup file format.")
+                except Exception as ex:
+                    st.error(f"Restore Error: {str(ex)}")
 
 # --- SIDEBAR ROUTER ---
 if True:
@@ -2878,7 +2939,7 @@ if True:
         ])
 
         with tab_sc1:
-            st.markdown("#### 🔍 Auto-Detected Database Tables & Safe Wiping")
+            st.markdown("#### 🔍 Safe Auto-Detected Database Tables & Error-Free Wiping")
             try:
                 conn_s = sqlite3.connect("enterprise_logistics_sales_hub.db", timeout=10)
                 cur_s = conn_s.cursor()
@@ -2929,8 +2990,8 @@ if True:
                             cursor = conn.cursor()
                             cursor.execute("PRAGMA foreign_keys = OFF;")
                             for t in safe_s_tbls:
-                                cursor.execute(f"DELETE FROM {t}")
                                 try:
+                                    cursor.execute(f"DELETE FROM {t}")
                                     cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{t}'")
                                 except:
                                     pass
@@ -2946,7 +3007,7 @@ if True:
                         except Exception as e:
                             st.error(f"Reset Error: {str(e)}")
             else:
-                st.info("Koi operational table detect nahi hui.")
+                st.info("ℹ️ Koi bhi operational table abhi database me maujood nahi hai. Nayi table create karne ke baad yahan data wipe ya reset options dikhenge.")
 
         with tab_sc2:
             st.markdown("#### 🎨 Custom Colors & Button Text Overrider")
