@@ -104,7 +104,7 @@ THEMES = {
 # ==============================================================================
 
 GLOBAL_DEFAULTS = {
-    "selected_theme": "⚙️ Classic Default Theme",
+    "selected_theme": "🌙 Modern Dark ERP",
     "fg_code": "FG500014",
     "col_map": "36:FG500014AJ\n37:FG500014AK",
     "agency_override": "101:36:FG500014N01\n101:37:FG500014N02",
