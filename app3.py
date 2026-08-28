@@ -3239,7 +3239,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Visible Theme-Adjusted Live Clock Script
-clock_html = f"""
+clock_html = """
     <div style="width: 100%;">
         <div class="live-clock-box" id="liveClock">🕒 Loading Live Time...</div>
     </div>
