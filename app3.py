@@ -3126,6 +3126,7 @@ import io
 import sqlite3
 import smtplib
 from email.message import EmailMessage
+import plotly.express as px
 
 # ==============================================================================
 # PAGE CONFIGURATION & TIMEZONE
@@ -3261,7 +3262,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">⏳ SAP Production & Expiry Intelligence Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent BLOB Storage, ID Reset, Live Clock, FEFO Simulator, Smart Mapping & Executive HTML Email.
+                Permanent BLOB Storage, ID Reset, Visual Analytics, FEFO Simulator, Timeline Filter & Executive Email.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -3487,6 +3488,15 @@ if st.session_state.active_df is not None:
             mat_col_target = col_name
             break
 
+    # New Feature 2: Advanced Multi-Keyword Search Bar
+    global_search = st.text_input("🔍 Global Keyword Search (Batch, Plant, Material, Description):", "", key="global_search_input")
+    if str(global_search).strip() != "":
+        term = str(global_search).strip().lower()
+        mask = pd.Series(False, index=working_df.index)
+        for c in working_df.columns:
+            mask = mask | working_df[c].astype(str).str.lower().str.contains(term, na=False)
+        working_df = working_df[mask]
+
     col_f1, col_f2 = st.columns(2)
     
     with col_f1:
@@ -3504,6 +3514,15 @@ if st.session_state.active_df is not None:
             selected_header_vals = st.multiselect(f"Select value(s) for `{chosen_header_filter}`:", options=unique_vals)
             if selected_header_vals:
                 working_df = working_df[working_df[chosen_header_filter].astype(str).isin(selected_header_vals)]
+
+    # New Feature 3: Expiry Timeline Range Filter Slider
+    if "Remaining_Shelf_Life_Days" in working_df.columns:
+        max_days_val = int(working_df['Remaining_Shelf_Life_Days'].dropna().max()) if not working_df['Remaining_Shelf_Life_Days'].dropna().empty else 365
+        min_days_val = int(working_df['Remaining_Shelf_Life_Days'].dropna().min()) if not working_df['Remaining_Shelf_Life_Days'].dropna().empty else -100
+        
+        with st.expander("📅 Filter by Expiry Timeline Range (Remaining Days)", expanded=False):
+            day_range = st.slider("Select Remaining Shelf-Life Days Range:", min_value=min_days_val, max_value=max(365, max_days_val), value=(min_days_val, max(365, max_days_val)))
+            working_df = working_df[(working_df['Remaining_Shelf_Life_Days'] >= day_range[0]) & (working_df['Remaining_Shelf_Life_Days'] <= day_range[1])]
 
     if mat_col_target is not None:
         with st.expander("🛠️ Update Shelf-Life Rule for Multiple Materials (Permanent Save)"):
@@ -3544,13 +3563,39 @@ if st.session_state.active_df is not None:
                     st.success(f"✅ Rules updated successfully for selected materials!")
                     st.rerun()
 
-    # Metrics Display & Financial Risk Summary (New Feature Addition)
+    # Metrics Display & Visual Analytics Dashboard (Plotly Charts)
     if "Shelf_Life_Status" in working_df.columns:
         status_counts = working_df["Shelf_Life_Status"].value_counts()
         m1, m2, m3 = st.columns(3)
         m1.metric("🟢 Fresh Stock", int(status_counts.get("🟢 Fresh Stock", 0)))
         m2.metric("🟡 Critical (<30 Days)", int(status_counts.get("🟡 Critical (<30 Days)", 0)))
         m3.metric("🔴 Expired", int(status_counts.get("🔴 Expired", 0)))
+
+        # Plotly Visual Charts Analytics
+        with st.expander("📈 View Expiry Risk & Stock Health Visual Analytics", expanded=True):
+            chart_col1, chart_col2 = st.columns(2)
+            with chart_col1:
+                fig_pie = px.pie(
+                    names=status_counts.index, 
+                    values=status_counts.values, 
+                    title="Stock Health Distribution",
+                    hole=0.4,
+                    color=status_counts.index,
+                    color_discrete_map={"🟢 Fresh Stock": "#22c55e", "🟡 Critical (<30 Days)": "#eab308", "🔴 Expired": "#ef4444", "Unknown Date": "#94a3b8"}
+                )
+                fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font_color="#f8fafc")
+                st.plotly_chart(fig_pie, use_container_width=True)
+            with chart_col2:
+                fig_bar = px.bar(
+                    x=status_counts.index, 
+                    y=status_counts.values, 
+                    title="Stock Count by Status Category",
+                    labels={'x': 'Status Category', 'y': 'Total Items'},
+                    color=status_counts.index,
+                    color_discrete_map={"🟢 Fresh Stock": "#22c55e", "🟡 Critical (<30 Days)": "#eab308", "🔴 Expired": "#ef4444", "Unknown Date": "#94a3b8"}
+                )
+                fig_bar.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#f8fafc")
+                st.plotly_chart(fig_bar, use_container_width=True)
 
         # FEFO Dispatch Simulator
         with st.expander("⏳ FEFO (First-Expired, First-Out) Dispatch Simulator", expanded=False):
@@ -3666,7 +3711,6 @@ if st.session_state.active_df is not None:
                             msg['From'] = sender_email
                             msg['To'] = ", ".join(recipients)
                             
-                            # Calculate Quick Executive KPI Metrics for Email Body
                             total_items = len(working_df)
                             fresh_cnt = int(status_counts.get("🟢 Fresh Stock", 0))
                             crit_cnt = int(status_counts.get("🟡 Critical (<30 Days)", 0))
@@ -3674,7 +3718,6 @@ if st.session_state.active_df is not None:
 
                             table_html_snippet = working_df.head(50).to_html(index=False, border=1, classes='styled-table')
                             
-                            # Professional Executive HTML Design (No Excel opening required)
                             html_content = f"""
                             <html>
                             <body style="font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; line-height: 1.6; padding: 15px;">
