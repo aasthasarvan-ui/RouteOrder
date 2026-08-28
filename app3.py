@@ -3126,6 +3126,7 @@ import io
 import sqlite3
 import smtplib
 from email.message import EmailMessage
+import streamlit.components.v1 as components
 
 # ==============================================================================
 # PAGE CONFIGURATION & TIMEZONE
@@ -3205,7 +3206,7 @@ if "selected_file_id" not in st.session_state:
     st.session_state.selected_file_id = None
 
 # ==============================================================================
-# UI STYLING & PYTHON-RENDERED INSTANT TIMESTAMP HEADER
+# UI STYLING & LIVE RUNNING DIGITAL CLOCK HEADER
 # ==============================================================================
 st.markdown("""
     <style>
@@ -3238,7 +3239,21 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-current_time_display = get_ist_now().strftime('%d-%m-%Y | %I:%M:%S %p IST')
+# Live Running Clock Component (Seconds auto-syncing)
+clock_html = """
+    <div style="width: 100%;">
+        <div class="live-clock-box" id="liveClock">🕒 Initializing Clock...</div>
+    </div>
+    <script>
+        function updateClock() {
+            const now = new Date();
+            const options = { timeZone: 'Asia/Kolkata', hour12: true, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+            document.getElementById('liveClock').innerHTML = '🕒 ' + now.toLocaleString('en-IN', options) + ' IST';
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+    </script>
+"""
 
 col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
@@ -3246,13 +3261,13 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">⏳ SAP Production & Expiry Intelligence Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent BLOB Storage, ID Reset, Instant Timestamp, Multi-Select Rules & Live Email Dispatch.
+                Permanent BLOB Storage, ID Reset, Live Clock, Multi-Select Rules & HTML Email Dispatch.
             </p>
         </div>
     """, unsafe_allow_html=True)
 with col_h2:
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(f'<div class="live-clock-box">🕒 {current_time_display}</div>', unsafe_allow_html=True)
+    components.html(clock_html, height=75)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -3363,6 +3378,7 @@ with st.sidebar:
                     upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
                     cursor = conn.cursor()
                     
+                    # Auto-replace old records and reset ID sequence
                     cursor.execute("DELETE FROM saved_files")
                     try:
                         cursor.execute("DELETE FROM sqlite_sequence WHERE name='saved_files'")
@@ -3528,7 +3544,7 @@ if st.session_state.active_df is not None:
     st.dataframe(working_df, use_container_width=True)
 
     # ==========================================================================
-    # ACTION BUTTONS: HTML PRINT VIEW, EXCEL DOWNLOAD & LIVE EMAIL DISPATCH
+    # ACTION BUTTONS: PRINT (FITTED COLUMNS), EXCEL & PROFESSIONAL HTML EMAIL
     # ==========================================================================
     st.markdown("---")
     st.markdown("### 🚀 Export, Print & Email Options")
@@ -3536,18 +3552,25 @@ if st.session_state.active_df is not None:
     col_act1, col_act2, col_act3 = st.columns(3)
 
     with col_act1:
-        html_table_string = working_df.to_html(classes='table table-striped', index=False)
+        # Fully responsive print HTML layout preventing column cut
+        html_table_string = working_df.to_html(classes='table table-striped', index=False, border=0)
         print_html_code = f"""
             <html>
                 <head>
                     <title>Inventory Report Print View</title>
                     <style>
-                        body {{ font-family: Arial, sans-serif; padding: 20px; color: #333; }}
-                        h2 {{ color: #0f172a; }}
-                        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }}
-                        th, td {{ border: 1px solid #cbd5e1; padding: 8px; text-align: left; }}
-                        th {{ background-color: #1e293b; color: white; }}
+                        body {{ font-family: 'Segoe UI', Arial, sans-serif; padding: 20px; color: #1e293b; }}
+                        h2 {{ color: #0f172a; margin-bottom: 5px; }}
+                        p {{ color: #475569; font-size: 13px; }}
+                        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; table-layout: auto; }}
+                        th, td {{ border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; word-wrap: break-word; }}
+                        th {{ background-color: #1e293b; color: white; font-weight: 600; }}
                         tr:nth-child(even) {{ background-color: #f8fafc; }}
+                        @media print {{
+                            body {{ padding: 0; }}
+                            table {{ page-break-inside: auto; }}
+                            tr {{ page-break-inside: avoid; page-break-after: auto; }}
+                        }}
                     </style>
                 </head>
                 <body>
@@ -3567,7 +3590,7 @@ if st.session_state.active_df is not None:
             file_name=f"Printable_Inventory_Report_{get_ist_now().strftime('%Y%m%d_%H%M%S')}.html",
             mime="text/html",
             type="secondary",
-            help="Click to download a formatted HTML print view that opens directly in a printable layout."
+            help="Downloads a responsive formatted HTML view that opens cleanly in print layout without cutting columns."
         )
 
     with col_act2:
@@ -3583,7 +3606,7 @@ if st.session_state.active_df is not None:
         )
 
     with col_act3:
-        with st.expander("✉️ Send Report via Email (Live SMTP & Multiple TO support)"):
+        with st.expander("✉️ Send Report via Email (HTML Table Body & Attachment)"):
             with st.form("email_dispatch_form"):
                 st.markdown("**SMTP Server Settings (Gmail / Corporate Hub):**")
                 smtp_host = st.text_input("SMTP Server", "smtp.gmail.com")
@@ -3597,13 +3620,13 @@ if st.session_state.active_df is not None:
                 
                 default_mail_body = (
                     "Dear Team,\n\n"
-                    "Please find attached / enclosed the latest SAP inventory status report containing critical, expired, "
-                    "and fresh stock details.\n\n"
-                    "Kindly review the remarks and prioritize clearance for items with critical shelf-life.\n\n"
+                    "Please find below the summary table and attached Excel report containing critical, expired, "
+                    "and fresh stock details from SAP.\n\n"
+                    "Kindly review the stock remarks and prioritize clearance for items with critical shelf-life.\n\n"
                     "Best Regards,\n"
                     "Supply Chain Management Hub"
                 )
-                email_body = st.text_area("Email Message", default_mail_body, height=140)
+                email_body = st.text_area("Email Message", default_mail_body, height=120)
                 
                 send_email_btn = st.form_submit_button("📨 Send Live Email Now", type="primary")
 
@@ -3617,8 +3640,30 @@ if st.session_state.active_df is not None:
                             msg['Subject'] = email_sub
                             msg['From'] = sender_email
                             msg['To'] = ", ".join(recipients)
-                            msg.set_content(email_body)
+                            
+                            # Professional HTML Body formatting embedding the table
+                            table_html_snippet = working_df.head(50).to_html(index=False, border=1, classes='styled-table')
+                            html_content = f"""
+                            <html>
+                            <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+                                <p>{email_body.replace(chr(10), '<br>')}</p>
+                                <h3>📊 Inventory Intelligence Summary Table (Top Rows Preview):</h3>
+                                <style>
+                                    .styled-table {{ border-collapse: collapse; width: 100%; font-size: 11px; }}
+                                    .styled-table th {{ background-color: #1e293b; color: white; padding: 6px; text-align: left; border: 1px solid #ddd; }}
+                                    .styled-table td {{ padding: 6px; border: 1px solid #ddd; text-align: left; }}
+                                    .styled-table tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                                </style>
+                                {table_html_snippet}
+                                <p><br><i>Note: Full comprehensive dataset is attached as an Excel sheet to this email.</i></p>
+                                <p><b>Supply Chain Automated Intelligence Hub</b></p>
+                            </body>
+                            </html>
+                            """
+                            msg.set_content(email_body) # Fallback text
+                            msg.add_alternative(html_content, subtype='html')
 
+                            # Attach Excel report
                             excel_data = io.BytesIO()
                             working_df.to_excel(excel_data, index=False)
                             excel_data.seek(0)
@@ -3635,7 +3680,7 @@ if st.session_state.active_df is not None:
                             server.send_message(msg)
                             server.quit()
 
-                            st.success(f"✅ Live email successfully dispatched with Excel attachment to: **{', '.join(recipients)}**!")
+                            st.success(f"✅ Live email with professional HTML table and Excel attachment successfully dispatched to: **{', '.join(recipients)}**!")
                         except Exception as mail_err:
                             st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
