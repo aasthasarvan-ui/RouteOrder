@@ -3116,7 +3116,7 @@ if "sup_bg" in st.session_state:
         """,
         unsafe_allow_html=True
     )
-    import streamlit as st
+   import streamlit as st
 import pandas as pd
 import numpy as np
 import openpyxl
@@ -3565,7 +3565,8 @@ if st.session_state.active_df is not None:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary"
         )
-        with col_act3:
+
+    with col_act3:
         with st.expander("✉️ Send Report via Email (Multiple TO support)"):
             with st.form("email_dispatch_form"):
                 email_to = st.text_input("Recipient Email(s) separated by comma (,):", "supplychain@example.com")
@@ -3587,3 +3588,4 @@ if st.session_state.active_df is not None:
                     st.success(f"✅ Report formatted and ready for dispatch to: `{email_to}`! (Ensure SMTP host settings are configured for live transmission).")
 else:
     st.info("ℹ️ Kripya left sidebar se apni SAP stock export file upload karein ya saved table select karein.")
+ 
