@@ -3126,6 +3126,7 @@ import io
 import sqlite3
 import smtplib
 from email.message import EmailMessage
+import streamlit.components.v1 as components
 
 # ==============================================================================
 # PAGE CONFIGURATION & TIMEZONE
@@ -3181,14 +3182,15 @@ def get_saved_shelf_mappings():
     except:
         return {}
 
-def save_single_mapping(m_code, s_days):
+def save_multiple_mappings(m_codes_list, s_days):
     try:
         conn = sqlite3.connect("inventory_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR REPLACE INTO material_shelf_mapping (material_code, shelf_days) VALUES (?, ?)",
-            (str(m_code).strip().lower(), int(s_days))
-        )
+        for m_code in m_codes_list:
+            cursor.execute(
+                "INSERT OR REPLACE INTO material_shelf_mapping (material_code, shelf_days) VALUES (?, ?)",
+                (str(m_code).strip().lower(), int(s_days))
+            )
         conn.commit()
         conn.close()
         return True
@@ -3204,7 +3206,7 @@ if "selected_file_id" not in st.session_state:
     st.session_state.selected_file_id = None
 
 # ==============================================================================
-# UI STYLING & MODERN HEADER
+# UI STYLING & LIVE JS CLOCK HEADER
 # ==============================================================================
 st.markdown("""
     <style>
@@ -3221,29 +3223,50 @@ st.markdown("""
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
             margin-bottom: 20px;
         }
-        .metric-card {
-            background-color: #1e293b;
-            padding: 15px;
-            border-radius: 12px;
-            border: 1px solid #334155;
-            text-align: center;
+        .live-clock {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            border: 1px solid #38bdf8;
+            display: inline-block;
         }
     </style>
 """, unsafe_allow_html=True)
 
-current_time_str = get_ist_now().strftime('%d-%m-%Y | %H:%M:%S IST')
-
-st.markdown(f"""
-    <div class="main-hero">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="color: #f8fafc; margin: 0;">⏳ SAP Production & Expiry Intelligence Hub</h2>
-            <span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; border: 1px solid #38bdf8;">🕒 {current_time_str}</span>
-        </div>
-        <p style="color: #94a3b8; margin: 8px 0 0 0; font-size: 14px;">
-            Permanent BLOB Storage, Left-Sidebar Table Switcher, Multi-select filters, Remarks & Email Dispatch.
-        </p>
+# Live Running Clock Component using JavaScript
+clock_html = """
+    <div style="text-align: right;">
+        <span class="live-clock" id="liveClock">🕒 Loading Live Watch...</span>
     </div>
-""", unsafe_allow_html=True)
+    <script>
+        function updateClock() {
+            const now = new Date();
+            const options = { timeZone: 'Asia/Kolkata', hour12: true, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+            const timeString = now.toLocaleString('en-IN', options);
+            document.getElementById('liveClock').innerHTML = '🕒 ' + timeString + ' IST';
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+    </script>
+"""
+
+col_h1, col_h2 = st.columns([2, 1])
+with col_h1:
+    st.markdown("""
+        <div class="main-hero" style="margin-bottom:0px; padding:18px;">
+            <h2 style="color: #f8fafc; margin: 0;">⏳ SAP Production & Expiry Intelligence Hub</h2>
+            <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
+                Permanent BLOB Storage, ID Reset, Live Clock, Multi-Select Rules & Email Dispatch.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+with col_h2:
+    components.html(clock_html, height=75)
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 default_shelf_days = st.number_input(
     "⏱️ Default Global Shelf-Life Period (in Days)", 
@@ -3301,7 +3324,6 @@ def process_dataframe(df_raw):
             choices = ["Unknown Date", "🔴 Expired", "🟡 Critical (<30 Days)"]
             df_raw['Shelf_Life_Status'] = np.select(conditions, choices, default="🟢 Fresh Stock")
             
-            # Professional Remarks Column
             def make_remark(val):
                 if pd.isna(val):
                     return "Review Date"
@@ -3323,7 +3345,7 @@ def process_dataframe(df_raw):
         return None, None
 
 # ==============================================================================
-# LEFT SIDEBAR: FILE UPLOADER & TABLE NAVIGATION BUTTONS
+# LEFT SIDEBAR: FILE UPLOADER & TABLE NAVIGATION BUTTONS WITH ID RESET
 # ==============================================================================
 with st.sidebar:
     st.markdown("### 📂 Upload & Saved Tables")
@@ -3347,7 +3369,7 @@ with st.sidebar:
                     upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
                     cursor = conn.cursor()
                     
-                    # Auto-replace old records / vanish previous data
+                    # Auto-replace old records and reset auto-increment ID sequence
                     cursor.execute("DELETE FROM saved_files")
                     try:
                         cursor.execute("DELETE FROM sqlite_sequence WHERE name='saved_files'")
@@ -3361,7 +3383,7 @@ with st.sidebar:
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = processed_df
-                    st.success("✅ File saved permanently! Old data replaced.")
+                    st.success("✅ File saved permanently! Old data replaced & IDs reset.")
                     st.rerun()
         except Exception as err_file:
             st.error(f"❌ Upload error: {str(err_file)}")
@@ -3396,14 +3418,18 @@ with st.sidebar:
                 except Exception as load_err:
                     st.error(f"Load error: {load_err}")
         
-        if st.button("🗑️ Clear / Delete Active Table", type="secondary"):
+        if st.button("🗑️ Delete Table & Reset IDs", type="secondary"):
             conn = sqlite3.connect("inventory_master_hub.db", check_same_thread=False)
             cursor = conn.cursor()
             cursor.execute("DELETE FROM saved_files")
+            try:
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name='saved_files'")
+            except:
+                pass
             conn.commit()
             conn.close()
             st.session_state.active_df = None
-            st.success("🗑️ Table vanished from database!")
+            st.success("🗑️ Table vanished and database IDs reset!")
             st.rerun()
     else:
         st.info("No saved tables found. Upload a file above.")
@@ -3431,7 +3457,6 @@ if st.session_state.active_df is None and not saved_records.empty:
 # MAIN DASHBOARD & ADVANCED FILTER PANEL
 # ==============================================================================
 if st.session_state.active_df is not None:
-    st.markdown("---")
     st.markdown("### 📊 Inventory Intelligence Dashboard & Filters")
 
     working_df = st.session_state.active_df.copy()
@@ -3454,7 +3479,6 @@ if st.session_state.active_df is not None:
                 working_df = working_df[working_df[mat_col_target].astype(str).isin(selected_materials)]
 
     with col_f2:
-        # Excel-like Dynamic Header Filter Dropdown
         all_headers = list(working_df.columns)
         chosen_header_filter = st.selectbox("📌 Select Header to Filter by Value:", options=["-- Select Header --"] + all_headers)
         if chosen_header_filter != "-- Select Header --":
@@ -3463,12 +3487,12 @@ if st.session_state.active_df is not None:
             if selected_header_vals:
                 working_df = working_df[working_df[chosen_header_filter].astype(str).isin(selected_header_vals)]
 
-    # Rule Updater Expander
+    # Rule Updater Expander with Multiple Material Selection Support
     if mat_col_target is not None:
-        with st.expander("🛠️ Update Shelf-Life Rule for Specific Material (Permanent Save)"):
+        with st.expander("🛠️ Update Shelf-Life Rule for Multiple Materials (Permanent Save)"):
             with st.form("rule_update_form_final"):
                 mat_list_exp = sorted(working_df[mat_col_target].dropna().astype(str).unique().tolist())
-                sel_mat_code = st.selectbox("Select Material Code", options=mat_list_exp)
+                sel_mat_codes = st.multiselect("Select Material Code(s)", options=mat_list_exp)
                 
                 shelf_choices = {
                     "30 Days": 30,
@@ -3480,17 +3504,16 @@ if st.session_state.active_df is not None:
                     "730 Days (2 Years)": 730
                 }
                 sel_shelf_label = st.selectbox("Select Shelf Life Period", options=list(shelf_choices.keys()))
-                submit_rule_btn = st.form_submit_button("💾 Save Rule Permanently", type="primary")
+                submit_rule_btn = st.form_submit_button("💾 Save Rule for Selected Materials", type="primary")
 
-                if submit_rule_btn and sel_mat_code:
+                if submit_rule_btn and sel_mat_codes:
                     chosen_days = shelf_choices[sel_shelf_label]
-                    save_single_mapping(sel_mat_code, chosen_days)
+                    save_multiple_mappings(sel_mat_codes, chosen_days)
                     
-                    # Refresh active df
                     full_df = st.session_state.active_df.copy()
                     today_dt = pd.Timestamp(get_ist_now().date())
                     for idx, row in full_df.iterrows():
-                        if str(row[mat_col_target]).strip() == sel_mat_code:
+                        if str(row[mat_col_target]).strip() in sel_mat_codes:
                             full_df.loc[idx, 'Assigned_Shelf_Days'] = chosen_days
                     
                     full_df['Calculated_Expiry_Date'] = full_df['Parsed_Mfg_Date'] + pd.to_timedelta(full_df['Assigned_Shelf_Days'], unit='d')
@@ -3501,7 +3524,7 @@ if st.session_state.active_df is not None:
                     full_df['Shelf_Life_Status'] = np.select(conditions, choices, default="🟢 Fresh Stock")
                     
                     st.session_state.active_df = full_df
-                    st.success(f"✅ Rule saved successfully for `{sel_mat_code}`!")
+                    st.success(f"✅ Rules updated successfully for selected materials!")
                     st.rerun()
 
     # Metrics Display
@@ -3524,10 +3547,12 @@ if st.session_state.active_df is not None:
     col_act1, col_act2, col_act3 = st.columns(3)
 
     with col_act1:
-        # Print Button using JavaScript browser print
-        if st.button("🖨️ Print Report View", type="secondary"):
-            st.markdown("<script>window.print();</script>", unsafe_allow_html=True)
-            st.info("Print dialog triggered.")
+        print_html = """
+            <button onclick="window.print()" style="background-color: #334155; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
+                🖨️ Print Report View
+            </button>
+        """
+        st.markdown(print_html, unsafe_allow_html=True)
 
     with col_act2:
         excel_buffer = io.BytesIO()
@@ -3540,17 +3565,25 @@ if st.session_state.active_df is not None:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary"
         )
-
-    with col_act3:
+        with col_act3:
         with st.expander("✉️ Send Report via Email (Multiple TO support)"):
             with st.form("email_dispatch_form"):
-                email_to = st.text_input("Recipient Email(s) separated by comma (,):", "user@example.com")
-                email_sub = st.text_input("Email Subject", "SAP Inventory Expiry Report")
-                email_body = st.text_area("Email Message", "Hello,\n\nPlease find attached the latest SAP inventory expiry and critical stock report.\n\nRegards,\nSupply Chain Team")
+                email_to = st.text_input("Recipient Email(s) separated by comma (,):", "supplychain@example.com")
+                email_sub = st.text_input("Email Subject", "🚨 SAP Inventory Expiry & Critical Stock Report")
+                
+                default_mail_body = (
+                    "Dear Team,\n\n"
+                    "Please find attached the latest SAP inventory status report containing critical, expired, "
+                    "and fresh stock details.\n\n"
+                    "Kindly review the remarks and prioritize clearance for items with critical shelf-life.\n\n"
+                    "Best Regards,\n"
+                    "Supply Chain Management Hub"
+                )
+                email_body = st.text_area("Email Message", default_mail_body, height=150)
                 
                 send_email_btn = st.form_submit_button("📨 Send Email Now", type="primary")
 
                 if send_email_btn:
-                    st.success("✅ Report compiled! (Configure SMTP credentials in backend to dispatch live emails).")
+                    st.success(f"✅ Report formatted and ready for dispatch to: `{email_to}`! (Ensure SMTP host settings are configured for live transmission).")
 else:
     st.info("ℹ️ Kripya left sidebar se apni SAP stock export file upload karein ya saved table select karein.")
