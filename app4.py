@@ -247,46 +247,46 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (FROM UPLOADED FILE DATA - F2 & BAG)
+    # VEHICLE TONNAGE CALCULATOR (WITH ROBUST COLUMN AUTO-DETECTION & MAPPING)
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Billing Type F2 & BAG Slabs)", expanded=True):
         st.markdown("Select Vehicle Number and Billing Date to instantly compute exact Precision vs Standard Tonnage based on your billing records.")
         
-        veh_col = None
-        for c in working_df.columns:
+        # Robust Column Mapping Assistant / Auto-Detection
+        all_cols_list = list(working_df.columns)
+        
+        # Find Vehicle Column
+        default_veh_idx = 0
+        for idx, c in enumerate(all_cols_list):
             if any(k in str(c).lower() for k in ["vehicle", "truck", "veh"]):
-                veh_col = c
+                default_veh_idx = idx
                 break
         
-        date_col = None
+        # Find Quantity Column
+        default_qty_idx = 0
+        for idx, c in enumerate(all_cols_list):
+            if any(k in str(c).lower() for k in ["invoiced quantity", "billing quantity", "qty", "quantity"]):
+                default_qty_idx = idx
+                break
+
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            veh_col = st.selectbox("📌 Select Vehicle Column:", options=all_cols_list, index=default_veh_idx, key="sel_veh_col_map")
+        with col_m2:
+            qty_col = st.selectbox("📌 Select Quantity Column:", options=all_cols_list, index=default_qty_idx, key="sel_qty_col_map")
+
+        # Find Date, Type, Unit, Desc columns automatically
+        date_col, btype_col, unit_col, desc_col = None, None, None, None
         for c in working_df.columns:
-            if any(k in str(c).lower() for k in ["billing date", "date", "inv date", "posting"]):
+            c_low = str(c).lower()
+            if not date_col and any(k in c_low for k in ["billing date", "date", "inv date", "posting"]):
                 date_col = c
-                break
-        
-        btype_col = None
-        for c in working_df.columns:
-            if any(k in str(c).lower() for k in ["billing type", "btype", "type"]):
+            if not btype_col and any(k in c_low for k in ["billing type", "btype", "type"]):
                 btype_col = c
-                break
-
-        qty_col = None
-        for c in working_df.columns:
-            if any(k in str(c).lower() for k in ["invoiced quantity", "billing quantity", "invoice qty", "qty", "quantity"]):
-                qty_col = c
-                break
-
-        unit_col = None
-        for c in working_df.columns:
-            if any(k in str(c).lower() for k in ["sale unit", "unit", "uom"]):
+            if not unit_col and any(k in c_low for k in ["sale unit", "unit", "uom"]):
                 unit_col = c
-                break
-
-        desc_col = None
-        for c in working_df.columns:
-            if any(k in str(c).lower() for k in ["product description", "material description", "desc", "item description", "text"]):
+            if not desc_col and any(k in c_low for k in ["product description", "material description", "desc", "item description", "text"]):
                 desc_col = c
-                break
 
         if veh_col and qty_col:
             calc_df = working_df.copy()
@@ -337,7 +337,7 @@ if st.session_state.active_df is not None:
             else:
                 st.info("ℹ️ No records found matching Billing Type 'F2' and Unit 'BAG'.")
         else:
-            st.warning("⚠️ Vehicle Number or Invoiced Quantity column could not be automatically detected in this file.")
+            st.warning("⚠️ Please select valid Vehicle and Quantity columns above.")
 
     # ======================================================================
     # MANUAL BAG INPUT CALCULATOR
@@ -544,7 +544,6 @@ if st.session_state.active_df is not None:
                             msg['From'] = sender_email
                             msg['To'] = ", ".join(recipients)
                             
-                            total_items = len(working_df)
                             table_html_snippet = working_df.head(50).to_html(index=False, border=1, classes='styled-table')
                             
                             html_content = f"""
