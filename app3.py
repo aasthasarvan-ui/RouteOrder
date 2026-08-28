@@ -3116,7 +3116,7 @@ if "sup_bg" in st.session_state:
         """,
         unsafe_allow_html=True
     )
-import streamlit as st
+    import streamlit as st
 import pandas as pd
 import numpy as np
 import openpyxl
@@ -3124,6 +3124,8 @@ import datetime
 import pytz
 import io
 import sqlite3
+import smtplib
+from email.message import EmailMessage
 
 # ==============================================================================
 # PAGE CONFIGURATION & TIMEZONE
@@ -3133,7 +3135,7 @@ try:
         page_title="SAP Inventory Expiry Intelligence Hub",
         page_icon="⏳",
         layout="wide",
-        initial_sidebar_state="collapsed"
+        initial_sidebar_state="expanded"
     )
 except:
     pass
@@ -3143,11 +3145,11 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==============================================================================
-# DATABASE INITIALIZATION
+# DATABASE INITIALIZATION (PERMANENT BLOB & RULES STORAGE)
 # ==============================================================================
 def init_db():
     try:
-        conn = sqlite3.connect("inventory_blob.db", check_same_thread=False)
+        conn = sqlite3.connect("inventory_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS saved_files (
@@ -3172,7 +3174,7 @@ init_db()
 
 def get_saved_shelf_mappings():
     try:
-        conn = sqlite3.connect("inventory_blob.db", check_same_thread=False)
+        conn = sqlite3.connect("inventory_master_hub.db", check_same_thread=False)
         df_map = pd.read_sql("SELECT material_code, shelf_days FROM material_shelf_mapping", conn)
         conn.close()
         return dict(zip(df_map['material_code'].astype(str).str.strip().str.lower(), df_map['shelf_days']))
@@ -3181,7 +3183,7 @@ def get_saved_shelf_mappings():
 
 def save_single_mapping(m_code, s_days):
     try:
-        conn = sqlite3.connect("inventory_blob.db", check_same_thread=False)
+        conn = sqlite3.connect("inventory_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR REPLACE INTO material_shelf_mapping (material_code, shelf_days) VALUES (?, ?)",
@@ -3194,13 +3196,15 @@ def save_single_mapping(m_code, s_days):
         return False
 
 # ==============================================================================
-# SESSION STATE INITIALIZATION
+# SESSION STATE MANAGEMENT
 # ==============================================================================
 if "active_df" not in st.session_state:
     st.session_state.active_df = None
+if "selected_file_id" not in st.session_state:
+    st.session_state.selected_file_id = None
 
 # ==============================================================================
-# UI DESIGN & HEADER
+# UI STYLING & MODERN HEADER
 # ==============================================================================
 st.markdown("""
     <style>
@@ -3217,6 +3221,13 @@ st.markdown("""
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
             margin-bottom: 20px;
         }
+        .metric-card {
+            background-color: #1e293b;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            text-align: center;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -3229,7 +3240,7 @@ st.markdown(f"""
             <span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; border: 1px solid #38bdf8;">🕒 {current_time_str}</span>
         </div>
         <p style="color: #94a3b8; margin: 8px 0 0 0; font-size: 14px;">
-            Features: Permanent BLOB Storage, Auto-Replace, Dropdown Shelf-Life Rules, Search, Metrics & Excel Export.
+            Permanent BLOB Storage, Left-Sidebar Table Switcher, Multi-select filters, Remarks & Email Dispatch.
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -3240,7 +3251,7 @@ default_shelf_days = st.number_input(
     max_value=1095, 
     value=180, 
     step=30, 
-    key="global_default_days_input"
+    key="global_def_days_input"
 )
 
 # ==============================================================================
@@ -3290,40 +3301,53 @@ def process_dataframe(df_raw):
             choices = ["Unknown Date", "🔴 Expired", "🟡 Critical (<30 Days)"]
             df_raw['Shelf_Life_Status'] = np.select(conditions, choices, default="🟢 Fresh Stock")
             
+            # Professional Remarks Column
+            def make_remark(val):
+                if pd.isna(val):
+                    return "Review Date"
+                elif val < 0:
+                    return "Immediate Action: Stock Expired!"
+                elif val <= 30:
+                    return "Priority Dispatch / Clearance Required"
+                else:
+                    return "Stock Condition Healthy"
+            
+            df_raw['Inventory_Remarks'] = df_raw['Remaining_Shelf_Life_Days'].apply(make_remark)
+            
             return df_raw, mat_col_found
         else:
-            st.warning("⚠️ File mein 'Production Date' column nahi mila.")
+            st.warning("⚠️ File mein 'Production Date' column auto-detect nahi ho paya.")
             return None, None
     except Exception as e_proc:
         st.error(f"❌ Processing error: {str(e_proc)}")
         return None, None
 
 # ==============================================================================
-# SECURE FILE UPLOADER & AUTO-REPLACE STORAGE
+# LEFT SIDEBAR: FILE UPLOADER & TABLE NAVIGATION BUTTONS
 # ==============================================================================
-uploaded_sap_file = st.file_uploader("Upload SAP Stock Export (.xlsx or .csv)", type=["xlsx", "csv"], key="sap_main_uploader_all_features")
+with st.sidebar:
+    st.markdown("### 📂 Upload & Saved Tables")
+    
+    uploaded_sap_file = st.file_uploader("Upload New SAP Export (.xlsx or .csv)", type=["xlsx", "csv"], key="sidebar_uploader")
 
-if uploaded_sap_file is not None:
-    try:
-        file_bytes = uploaded_sap_file.getvalue()
-        if uploaded_sap_file.name.endswith('.csv'):
-            raw_df = pd.read_csv(io.BytesIO(file_bytes))
-        else:
-            excel_obj = pd.ExcelFile(io.BytesIO(file_bytes))
-            sheet_target = 'SAPUI5 Export' if 'SAPUI5 Export' in excel_obj.sheet_names else excel_obj.sheet_names[0]
-            raw_df = pd.read_excel(excel_obj, sheet_name=sheet_target)
+    if uploaded_sap_file is not None:
+        try:
+            file_bytes = uploaded_sap_file.getvalue()
+            if uploaded_sap_file.name.endswith('.csv'):
+                raw_df = pd.read_csv(io.BytesIO(file_bytes))
+            else:
+                excel_obj = pd.ExcelFile(io.BytesIO(file_bytes))
+                sheet_target = 'SAPUI5 Export' if 'SAPUI5 Export' in excel_obj.sheet_names else excel_obj.sheet_names[0]
+                raw_df = pd.read_excel(excel_obj, sheet_name=sheet_target)
 
-        processed_df, m_col = process_dataframe(raw_df)
-        if processed_df is not None:
-            st.session_state.active_df = processed_df
-            st.success(f"✅ File processed successfully! Total rows: {len(processed_df)}")
-
-            if st.button("💾 Save File to Permanent Database (Auto-Replace Old)", key="save_file_perm_btn_all_features"):
-                try:
-                    conn = sqlite3.connect("inventory_blob.db", check_same_thread=False)
+            processed_df, _ = process_dataframe(raw_df)
+            if processed_df is not None:
+                if st.button("💾 Save & Replace in Permanent DB", type="primary"):
+                    conn = sqlite3.connect("inventory_master_hub.db", check_same_thread=False)
                     upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
                     cursor = conn.cursor()
                     
+                    # Auto-replace old records / vanish previous data
                     cursor.execute("DELETE FROM saved_files")
                     try:
                         cursor.execute("DELETE FROM sqlite_sequence WHERE name='saved_files'")
@@ -3336,93 +3360,115 @@ if uploaded_sap_file is not None:
                     )
                     conn.commit()
                     conn.close()
-                    st.success("✅ File saved to database successfully!")
+                    st.session_state.active_df = processed_df
+                    st.success("✅ File saved permanently! Old data replaced.")
                     st.rerun()
-                except Exception as db_err:
-                    st.error(f"❌ Database save error: {str(db_err)}")
-    except Exception as err_file:
-        st.error(f"❌ File read error: {str(err_file)}")
+        except Exception as err_file:
+            st.error(f"❌ Upload error: {str(err_file)}")
 
-# ==============================================================================
-# DATABASE RETRIEVAL PANEL
-# ==============================================================================
-try:
-    conn = sqlite3.connect("inventory_blob.db", check_same_thread=False)
-    saved_records = pd.read_sql("SELECT id, upload_date, file_name FROM saved_files", conn)
-    conn.close()
-except:
-    saved_records = pd.DataFrame()
-
-if not saved_records.empty:
     st.markdown("---")
-    record_options = {f"ID: {row['id']} | File: {row['file_name']} | Saved: {row['upload_date']}": row['id'] for _, row in saved_records.iterrows()}
-    selected_label = st.selectbox("Select Saved File:", list(record_options.keys()), key="saved_file_select_all_features")
-    selected_id = record_options[selected_label]
+    st.markdown("### 🗂️ Select Table from Database")
+    
+    try:
+        conn = sqlite3.connect("inventory_master_hub.db", check_same_thread=False)
+        saved_records = pd.read_sql("SELECT id, upload_date, file_name FROM saved_files", conn)
+        conn.close()
+    except:
+        saved_records = pd.DataFrame()
 
-    if st.button("🗑️ Delete File & Reset IDs", type="secondary", key="delete_file_all_features_btn"):
-        try:
-            conn = sqlite3.connect("inventory_blob.db", check_same_thread=False)
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM saved_files WHERE id = ?", (selected_id,))
-            cursor.execute("SELECT COUNT(*) FROM saved_files")
-            if cursor.fetchone()[0] == 0:
+    if not saved_records.empty:
+        for _, row in saved_records.iterrows():
+            btn_label = f"📁 [{row['id']}] {row['file_name']}"
+            if st.button(btn_label, key=f"tbl_btn_{row['id']}"):
+                st.session_state.selected_file_id = row['id']
                 try:
-                    cursor.execute("DELETE FROM sqlite_sequence WHERE name='saved_files'")
-                except:
-                    pass
+                    conn = sqlite3.connect("inventory_master_hub.db", check_same_thread=False)
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT file_blob, file_name FROM saved_files WHERE id = ?", (row['id'],))
+                    row_data = cursor.fetchone()
+                    conn.close()
+                    if row_data:
+                        blob_data, fname = row_data
+                        df_from_db = pd.read_csv(io.BytesIO(blob_data)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(blob_data))
+                        processed_df, _ = process_dataframe(df_from_db)
+                        st.session_state.active_df = processed_df
+                        st.rerun()
+                except Exception as load_err:
+                    st.error(f"Load error: {load_err}")
+        
+        if st.button("🗑️ Clear / Delete Active Table", type="secondary"):
+            conn = sqlite3.connect("inventory_master_hub.db", check_same_thread=False)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM saved_files")
             conn.commit()
             conn.close()
             st.session_state.active_df = None
-            st.success("🗑️ File deleted successfully!")
+            st.success("🗑️ Table vanished from database!")
             st.rerun()
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-    if st.session_state.active_df is None:
-        try:
-            conn = sqlite3.connect("inventory_blob.db", check_same_thread=False)
-            cursor = conn.cursor()
-            cursor.execute("SELECT file_blob, file_name FROM saved_files WHERE id = ?", (selected_id,))
-            row_data = cursor.fetchone()
-            conn.close()
-            
-            if row_data:
-                blob_data, fname = row_data
-                df_from_db = pd.read_csv(io.BytesIO(blob_data)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(blob_data))
-                processed_df, _ = process_dataframe(df_from_db)
-                st.session_state.active_df = processed_df
-        except Exception as load_err:
-            st.error(f"Load error: {str(load_err)}")
+    else:
+        st.info("No saved tables found. Upload a file above.")
 
 # ==============================================================================
-# DASHBOARD, SEARCH, DROPDOWN RULE UPDATER & METRICS
+# AUTO-LOAD FROM DB IF SESSION IS EMPTY
+# ==============================================================================
+if st.session_state.active_df is None and not saved_records.empty:
+    try:
+        latest_id = saved_records.iloc[-1]['id']
+        conn = sqlite3.connect("inventory_master_hub.db", check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT file_blob, file_name FROM saved_files WHERE id = ?", (latest_id,))
+        row_data = cursor.fetchone()
+        conn.close()
+        if row_data:
+            blob_data, fname = row_data
+            df_from_db = pd.read_csv(io.BytesIO(blob_data)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(blob_data))
+            processed_df, _ = process_dataframe(df_from_db)
+            st.session_state.active_df = processed_df
+    except:
+        pass
+
+# ==============================================================================
+# MAIN DASHBOARD & ADVANCED FILTER PANEL
 # ==============================================================================
 if st.session_state.active_df is not None:
     st.markdown("---")
-    st.markdown("### 🔍 Search, Custom Shelf-Life Dropdown & Filter Dashboard")
-    
-    search_query = st.text_input("Search Material Code, Description, or Batch:", "", key="dashboard_search_box_all_features")
+    st.markdown("### 📊 Inventory Intelligence Dashboard & Filters")
 
-    display_df = st.session_state.active_df.copy()
-    if str(search_query).strip() != "":
-        term_lower = str(search_query).strip().lower()
-        search_mask = pd.Series(False, index=display_df.index)
-        for col_name in display_df.columns:
-            search_mask = search_mask | display_df[col_name].astype(str).str.lower().str.contains(term_lower, na=False)
-        display_df = display_df[search_mask]
+    working_df = st.session_state.active_df.copy()
 
+    # Find Material Column
     mat_col_target = None
-    for col_name in display_df.columns:
+    for col_name in working_df.columns:
         if any(k in str(col_name).lower() for k in ["material", "sku", "item", "code", "product"]):
             mat_col_target = col_name
             break
 
-    # Material-specific Dropdown Shelf-Life Updater Form
+    # Advanced Multi-select Filters & Header Filters
+    col_f1, col_f2 = st.columns(2)
+    
+    with col_f1:
+        if mat_col_target is not None:
+            unique_mats = sorted(working_df[mat_col_target].dropna().astype(str).unique().tolist())
+            selected_materials = st.multiselect("🔍 Multi-Select Material Code(s):", options=unique_mats)
+            if selected_materials:
+                working_df = working_df[working_df[mat_col_target].astype(str).isin(selected_materials)]
+
+    with col_f2:
+        # Excel-like Dynamic Header Filter Dropdown
+        all_headers = list(working_df.columns)
+        chosen_header_filter = st.selectbox("📌 Select Header to Filter by Value:", options=["-- Select Header --"] + all_headers)
+        if chosen_header_filter != "-- Select Header --":
+            unique_vals = sorted(working_df[chosen_header_filter].dropna().astype(str).unique().tolist())
+            selected_header_vals = st.multiselect(f"Select value(s) for `{chosen_header_filter}`:", options=unique_vals)
+            if selected_header_vals:
+                working_df = working_df[working_df[chosen_header_filter].astype(str).isin(selected_header_vals)]
+
+    # Rule Updater Expander
     if mat_col_target is not None:
-        with st.expander("🛠️ Set Dropdown Shelf-Life Rule for Specific Material Code"):
-            with st.form("dropdown_rule_form_all_features"):
-                unique_materials = sorted(display_df[mat_col_target].dropna().astype(str).unique().tolist())
-                selected_mat = st.selectbox("Select Material Code", options=unique_materials)
+        with st.expander("🛠️ Update Shelf-Life Rule for Specific Material (Permanent Save)"):
+            with st.form("rule_update_form_final"):
+                mat_list_exp = sorted(working_df[mat_col_target].dropna().astype(str).unique().tolist())
+                sel_mat_code = st.selectbox("Select Material Code", options=mat_list_exp)
                 
                 shelf_choices = {
                     "30 Days": 30,
@@ -3433,40 +3479,78 @@ if st.session_state.active_df is not None:
                     "548 Days (1.5 Years)": 548,
                     "730 Days (2 Years)": 730
                 }
-                selected_label = st.selectbox("Select Shelf-Life Period (Dropdown)", options=list(shelf_choices.keys()))
-                
-                submit_rule = st.form_submit_button("💾 Save Rule Permanently", type="primary")
-                
-                if submit_rule and selected_mat:
-                    chosen_days = shelf_choices[selected_label]
-                    success = save_single_mapping(selected_mat, chosen_days)
-                    if success:
-                        st.session_state.active_df, _ = process_dataframe(st.session_state.active_df)
-                        st.success(f"✅ Material `{selected_mat}` ke liye {chosen_days} days permanently save aur apply ho gaye!")
-                        st.rerun()
+                sel_shelf_label = st.selectbox("Select Shelf Life Period", options=list(shelf_choices.keys()))
+                submit_rule_btn = st.form_submit_button("💾 Save Rule Permanently", type="primary")
 
-    st.dataframe(display_df.head(50), use_container_width=True)
+                if submit_rule_btn and sel_mat_code:
+                    chosen_days = shelf_choices[sel_shelf_label]
+                    save_single_mapping(sel_mat_code, chosen_days)
+                    
+                    # Refresh active df
+                    full_df = st.session_state.active_df.copy()
+                    today_dt = pd.Timestamp(get_ist_now().date())
+                    for idx, row in full_df.iterrows():
+                        if str(row[mat_col_target]).strip() == sel_mat_code:
+                            full_df.loc[idx, 'Assigned_Shelf_Days'] = chosen_days
+                    
+                    full_df['Calculated_Expiry_Date'] = full_df['Parsed_Mfg_Date'] + pd.to_timedelta(full_df['Assigned_Shelf_Days'], unit='d')
+                    full_df['Remaining_Shelf_Life_Days'] = (full_df['Calculated_Expiry_Date'] - today_dt).dt.days
+                    
+                    conditions = [full_df['Remaining_Shelf_Life_Days'].isna(), full_df['Remaining_Shelf_Life_Days'] < 0, full_df['Remaining_Shelf_Life_Days'] <= 30]
+                    choices = ["Unknown Date", "🔴 Expired", "🟡 Critical (<30 Days)"]
+                    full_df['Shelf_Life_Status'] = np.select(conditions, choices, default="🟢 Fresh Stock")
+                    
+                    st.session_state.active_df = full_df
+                    st.success(f"✅ Rule saved successfully for `{sel_mat_code}`!")
+                    st.rerun()
 
-    if "Shelf_Life_Status" in display_df.columns:
-        status_counts = display_df["Shelf_Life_Status"].value_counts()
-        met1, met2, met3 = st.columns(3)
-        met1.metric("🟢 Fresh Stock", int(status_counts.get("🟢 Fresh Stock", 0)))
-        met2.metric("🟡 Critical (<30 Days)", int(status_counts.get("🟡 Critical (<30 Days)", 0)))
-        met3.metric("🔴 Expired", int(status_counts.get("🔴 Expired", 0)))
+    # Metrics Display
+    if "Shelf_Life_Status" in working_df.columns:
+        status_counts = working_df["Shelf_Life_Status"].value_counts()
+        m1, m2, m3 = st.columns(3)
+        m1.metric("🟢 Fresh Stock", int(status_counts.get("🟢 Fresh Stock", 0)))
+        m2.metric("🟡 Critical (<30 Days)", int(status_counts.get("🟡 Critical (<30 Days)", 0)))
+        m3.metric("🔴 Expired", int(status_counts.get("🔴 Expired", 0)))
 
-    excel_buffer = io.BytesIO()
-    display_df.to_excel(excel_buffer, index=False)
-    excel_buffer.seek(0)
-    
     st.markdown("<br>", unsafe_allow_html=True)
-    st.download_button(
-        "📥 Download Filtered Report (.xlsx)",
-        data=excel_buffer.getvalue(),
-        file_name=f"Inventory_Report_{get_ist_now().strftime('%Y-%m-%d_%H%M%S')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type="primary"
-    )
-else:
-    if uploaded_sap_file is None and saved_records.empty:
-        st.info("ℹ️ Kripya apni SAP stock export file upload karein.")
+    st.dataframe(working_df, use_container_width=True)
+
+    # ==========================================================================
+    # ACTION BUTTONS: PRINT, EXCEL DOWNLOAD & EMAIL DISPATCH
+    # ==========================================================================
+    st.markdown("---")
+    st.markdown("### 🚀 Export, Print & Email Options")
     
+    col_act1, col_act2, col_act3 = st.columns(3)
+
+    with col_act1:
+        # Print Button using JavaScript browser print
+        if st.button("🖨️ Print Report View", type="secondary"):
+            st.markdown("<script>window.print();</script>", unsafe_allow_html=True)
+            st.info("Print dialog triggered.")
+
+    with col_act2:
+        excel_buffer = io.BytesIO()
+        working_df.to_excel(excel_buffer, index=False)
+        excel_buffer.seek(0)
+        st.download_button(
+            "📥 Download Filtered Excel (.xlsx)",
+            data=excel_buffer.getvalue(),
+            file_name=f"Inventory_Report_{get_ist_now().strftime('%Y-%m-%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary"
+        )
+
+    with col_act3:
+        with st.expander("✉️ Send Report via Email (Multiple TO support)"):
+            with st.form("email_dispatch_form"):
+                email_to = st.text_input("Recipient Email(s) separated by comma (,):", "user@example.com")
+                email_sub = st.text_input("Email Subject", "SAP Inventory Expiry Report")
+                email_body = st.text_area("Email Message", "Hello,\n\nPlease find attached the latest SAP inventory expiry and critical stock report.\n\nRegards,\nSupply Chain Team")
+                
+                send_email_btn = st.form_submit_button("📨 Send Email Now", type="primary")
+
+                if send_email_btn:
+                    st.success("✅ Report compiled! (Configure SMTP credentials in backend to dispatch live emails).")
+else:
+    st.info("ℹ️ Kripya left sidebar se apni SAP stock export file upload karein ya saved table select karein.")
