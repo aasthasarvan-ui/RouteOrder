@@ -8,7 +8,6 @@ import io
 import sqlite3
 import smtplib
 from email.message import EmailMessage
-import plotly.express as px
 
 # ==============================================================================
 # PAGE CONFIGURATION & TIMEZONE
@@ -148,7 +147,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">⏳ SAP Production, Expiry & Tonnage Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent BLOB Storage, ID Reset, Vehicle Tonnage, Manual Tonnage Calculator, Visual Analytics & Executive Email.
+                Permanent BLOB Storage, ID Reset, Vehicle Tonnage (F2 & BAG), Manual Calculator & Executive Email.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -175,19 +174,26 @@ def process_dataframe(df_raw, manual_mfg=None, manual_mat=None):
         date_keywords = ["production date", "mfg date", "production_date", "mfg_date", "mfg", "production"]
         mfg_col_found = manual_mfg
         if not mfg_col_found:
-            for col_name in df_raw.columns:
-                c_str = str(col_name).strip().lower()
+            for c_name in df_raw.columns:
+                c_str = str(c_name).strip().lower()
                 if any(kw in c_str for kw in date_keywords):
-                    mfg_col_found = col_name
+                    mfg_col_found = c_name
                     break
 
         mat_col_found = manual_mat
         if not mat_col_found:
-            for col_name in df_raw.columns:
-                c_low = str(col_name).strip().lower()
+            for c_name in df_raw.columns:
+                c_low = str(c_name).strip().lower()
                 if any(k in c_low for k in ["material", "sku", "item", "code", "product"]):
-                    mat_col_found = col_name
-                    break
+                    # avoid matching product description
+                    if "description" not in c_low:
+                        mat_col_found = c_name
+                        break
+            if not mat_col_found:
+                for c_name in df_raw.columns:
+                    if "product" in str(c_name).lower():
+                        mat_col_found = c_name
+                        break
 
         if mfg_col_found is not None:
             today_dt = pd.Timestamp(get_ist_now().date())
@@ -256,7 +262,7 @@ with st.sidebar:
                 raw_df = pd.read_csv(io.BytesIO(file_bytes))
             else:
                 excel_obj = pd.ExcelFile(io.BytesIO(file_bytes))
-                sheet_target = 'SAPUI5 Export' if 'SAPUI5 Export' in excel_obj.sheet_names else excel_obj.sheet_names[0]
+                sheet_target = 'Sheet1' if 'Sheet1' in excel_obj.sheet_names else excel_obj.sheet_names[0]
                 raw_df = pd.read_excel(excel_obj, sheet_name=sheet_target)
 
             st.markdown("---")
@@ -318,7 +324,7 @@ with st.sidebar:
                     conn.close()
                     if row_data:
                         blob_data, fname = row_data
-                        df_from_db = pd.read_csv(io.BytesIO(blob_data)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(blob_data))
+                        df_from_db = pd.read_csv(io.BytesIO(blob_data)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(blob_data), sheet_name=0)
                         processed_df, _, _ = process_dataframe(df_from_db)
                         st.session_state.active_df = processed_df
                         st.rerun()
@@ -354,7 +360,7 @@ if st.session_state.active_df is None and not saved_records.empty:
         conn.close()
         if row_data:
             blob_data, fname = row_data
-            df_from_db = pd.read_csv(io.BytesIO(blob_data)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(blob_data))
+            df_from_db = pd.read_csv(io.BytesIO(blob_data)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(blob_data), sheet_name=0)
             processed_df, _, _ = process_dataframe(df_from_db)
             st.session_state.active_df = processed_df
     except:
@@ -369,10 +375,11 @@ if st.session_state.active_df is not None:
     working_df = st.session_state.active_df.copy()
 
     mat_col_target = None
-    for col_name in working_df.columns:
-        if any(k in str(col_name).lower() for k in ["material", "sku", "item", "code", "product"]):
-            mat_col_target = col_name
-            break
+    for c_name in working_df.columns:
+        if any(k in str(c_name).lower() for k in ["material", "sku", "item", "code", "product"]):
+            if "description" not in str(c_name).lower():
+                mat_col_target = c_name
+                break
 
     global_search = st.text_input("🔍 Global Keyword Search (Batch, Plant, Material, Description):", "", key="global_search_input")
     if str(global_search).strip() != "":
@@ -455,10 +462,10 @@ if st.session_state.active_df is not None:
         m3.metric("🔴 Expired", int(status_counts.get("🔴 Expired", 0)))
 
         # ======================================================================
-        # VEHICLE TONNAGE CALCULATOR (FROM UPLOADED FILE DATA)
+        # VEHICLE TONNAGE CALCULATOR (FROM UPLOADED FILE DATA - F2 & BAG)
         # ======================================================================
-        with st.expander("🚚 Vehicle Tonnage Calculator (Billing Type F2 & BAG Slabs)", expanded=False):
-            st.markdown("Select Vehicle Number and Billing Date to instantly compute exact Precision vs Standard Tonnage.")
+        with st.expander("🚚 Vehicle Tonnage Calculator (Billing Type F2 & BAG Slabs)", expanded=True):
+            st.markdown("Select Vehicle Number and Billing Date to instantly compute exact Precision vs Standard Tonnage based on your billing records.")
             
             veh_col = None
             for c in working_df.columns:
@@ -480,7 +487,7 @@ if st.session_state.active_df is not None:
 
             qty_col = None
             for c in working_df.columns:
-                if any(k in str(c).lower() for k in ["billing quantity", "invoice qty", "qty", "quantity"]):
+                if any(k in str(c).lower() for k in ["invoiced quantity", "billing quantity", "invoice qty", "qty", "quantity"]):
                     qty_col = c
                     break
 
@@ -492,7 +499,7 @@ if st.session_state.active_df is not None:
 
             desc_col = None
             for c in working_df.columns:
-                if any(k in str(c).lower() for k in ["material description", "desc", "item description", "text"]):
+                if any(k in str(c).lower() for k in ["product description", "material description", "desc", "item description", "text"]):
                     desc_col = c
                     break
 
@@ -539,16 +546,16 @@ if st.session_state.active_df is not None:
                     st.markdown(f"**Vehicle Summary for `{sel_vehicle}` (Total Bags: {int(b50_total + b25_total):,}):**")
                     c_res1, c_res2 = st.columns(2)
                     with c_res1:
-                        st.metric("🔹 Precision Scale (Opt 1)", f"{mt1:,.3f} MT", f"{w1_opt1:,.2f} Kgs")
+                        st.metric("🔹 Precision Scale (Opt 1: 50.12 & 25.12)", f"{mt1:,.3f} MT", f"{w1_opt1:,.2f} Kgs")
                     with c_res2:
-                        st.metric("🔹 Standard Slabs (Opt 2)", f"{mt2:,.3f} MT", f"{w1_opt2:,.2f} Kgs")
+                        st.metric("🔹 Standard Slabs (Opt 2: 50.0 & 25.0)", f"{mt2:,.3f} MT", f"{w1_opt2:,.2f} Kgs")
                 else:
                     st.info("ℹ️ No records found matching Billing Type 'F2' and Unit 'BAG'.")
             else:
-                st.warning("⚠️ Vehicle Number or Quantity column could not be automatically detected in this file.")
+                st.warning("⚠️ Vehicle Number or Invoiced Quantity column could not be automatically detected in this file.")
 
         # ======================================================================
-        # MANUAL BAG INPUT CALCULATOR (Next-Gen Enterprise Tonnage Calculator)
+        # MANUAL BAG INPUT CALCULATOR
         # ======================================================================
         with st.expander("⚡ Next-Gen Enterprise Manual Tonnage Calculator", expanded=False):
             CALC_THEMES = {
