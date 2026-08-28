@@ -3205,7 +3205,7 @@ if "selected_file_id" not in st.session_state:
     st.session_state.selected_file_id = None
 
 # ==============================================================================
-# UI STYLING & THEME-ADJUSTED VISIBLE LIVE RUNNING CLOCK HEADER
+# UI STYLING & PYTHON-RENDERED INSTANT TIMESTAMP HEADER
 # ==============================================================================
 st.markdown("""
     <style>
@@ -3224,35 +3224,21 @@ st.markdown("""
         }
         .live-clock-box {
             background: #1e293b;
-            color: #38bdf8;
-            padding: 12px 20px;
+            color: #ffffff !important;
+            padding: 14px 22px;
             border-radius: 12px;
             font-size: 16px;
             font-weight: 700;
             border: 2px solid #38bdf8;
             display: inline-block;
             text-align: center;
-            box-shadow: 0 4px 15px rgba(56, 189, 248, 0.2);
+            box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);
             width: 100%;
         }
     </style>
 """, unsafe_allow_html=True)
 
-# Visible Theme-Adjusted Live Clock Script
-clock_html = """
-    <div style="width: 100%;">
-        <div class="live-clock-box" id="liveClock">🕒 Loading Live Time...</div>
-    </div>
-    <script>
-        function updateClock() {
-            const now = new Date();
-            const options = {{ timeZone: 'Asia/Kolkata', hour12: true, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }};
-            document.getElementById('liveClock').innerHTML = '🕒 ' + now.toLocaleString('en-IN', options) + ' IST';
-        }
-        setInterval(updateClock, 1000);
-        updateClock();
-    </script>
-"""
+current_time_display = get_ist_now().strftime('%d-%m-%Y | %I:%M:%S %p IST')
 
 col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
@@ -3260,13 +3246,13 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">⏳ SAP Production & Expiry Intelligence Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent BLOB Storage, ID Reset, Live Clock, Multi-Select Rules & Live Email Dispatch.
+                Permanent BLOB Storage, ID Reset, Instant Timestamp, Multi-Select Rules & Live Email Dispatch.
             </p>
         </div>
     """, unsafe_allow_html=True)
 with col_h2:
     st.markdown("<br>", unsafe_allow_html=True)
-    st.components.v1.html(clock_html, height=70)
+    st.markdown(f'<div class="live-clock-box">🕒 {current_time_display}</div>', unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -3539,14 +3525,10 @@ if st.session_state.active_df is not None:
         m3.metric("🔴 Expired", int(status_counts.get("🔴 Expired", 0)))
 
     st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Table container for clean layout and printing
-    st.markdown('<div id="printableTable">', unsafe_allow_html=True)
     st.dataframe(working_df, use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
 
     # ==========================================================================
-    # ACTION BUTTONS: WORKING TABLE PRINT, EXCEL DOWNLOAD & LIVE EMAIL DISPATCH
+    # ACTION BUTTONS: HTML PRINT VIEW, EXCEL DOWNLOAD & LIVE EMAIL DISPATCH
     # ==========================================================================
     st.markdown("---")
     st.markdown("### 🚀 Export, Print & Email Options")
@@ -3554,18 +3536,39 @@ if st.session_state.active_df is not None:
     col_act1, col_act2, col_act3 = st.columns(3)
 
     with col_act1:
-        # Fixed Working Table Print script via direct browser print triggers
-        print_trigger_html = """
-            <script>
-                function triggerTablePrint() {
-                    window.print();
-                }
-            </script>
-            <button onclick="window.print()" style="background-color: #334155; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%; text-align: center;">
-                🖨️ Print Table View
-            </button>
+        html_table_string = working_df.to_html(classes='table table-striped', index=False)
+        print_html_code = f"""
+            <html>
+                <head>
+                    <title>Inventory Report Print View</title>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; padding: 20px; color: #333; }}
+                        h2 {{ color: #0f172a; }}
+                        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }}
+                        th, td {{ border: 1px solid #cbd5e1; padding: 8px; text-align: left; }}
+                        th {{ background-color: #1e293b; color: white; }}
+                        tr:nth-child(even) {{ background-color: #f8fafc; }}
+                    </style>
+                </head>
+                <body>
+                    <h2>SAP Inventory Expiry & Stock Intelligence Report</h2>
+                    <p><b>Generated on:</b> {get_ist_now().strftime('%d-%m-%Y %H:%M:%S IST')}</p>
+                    {html_table_string}
+                    <script>
+                        window.onload = function() {{ window.print(); }}
+                    </script>
+                </body>
+            </html>
         """
-        st.components.v1.html(print_trigger_html, height=50)
+        encoded_html = io.BytesIO(print_html_code.encode('utf-8'))
+        st.download_button(
+            "🖨️ Print / Save Table as PDF",
+            data=encoded_html,
+            file_name=f"Printable_Inventory_Report_{get_ist_now().strftime('%Y%m%d_%H%M%S')}.html",
+            mime="text/html",
+            type="secondary",
+            help="Click to download a formatted HTML print view that opens directly in a printable layout."
+        )
 
     with col_act2:
         excel_buffer = io.BytesIO()
@@ -3616,7 +3619,6 @@ if st.session_state.active_df is not None:
                             msg['To'] = ", ".join(recipients)
                             msg.set_content(email_body)
 
-                            # Attach Excel report automatically to the email
                             excel_data = io.BytesIO()
                             working_df.to_excel(excel_data, index=False)
                             excel_data.seek(0)
@@ -3627,7 +3629,6 @@ if st.session_state.active_df is not None:
                                 filename=f"Inventory_Report_{get_ist_now().strftime('%Y%m%d_%H%M%S')}.xlsx"
                             )
 
-                            # Connect and send via live SMTP
                             server = smtplib.SMTP(smtp_host, int(smtp_port))
                             server.starttls()
                             server.login(sender_email, sender_pass)
