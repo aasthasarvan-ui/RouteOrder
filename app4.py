@@ -27,7 +27,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==============================================================================
-# DATABASE INITIALIZATION (PERMANENT BLOB STORAGE)
+# DATABASE INITIALIZATION (PERMANENT VAULT)
 # ==============================================================================
 def init_db():
     try:
@@ -71,7 +71,6 @@ def load_and_clean_dataframe(file_bytes, file_name):
         sheet_target = 'Sheet1' if 'Sheet1' in excel_obj.sheet_names else excel_obj.sheet_names[0]
         df = pd.read_excel(excel_obj, sheet_name=sheet_target)
     
-    # Check if header is misplaced (e.g. Unnamed columns)
     if any(str(c).startswith("Unnamed") for c in df.columns):
         for idx, row in df.head(10).iterrows():
             row_str = str(row.values).lower()
@@ -80,12 +79,11 @@ def load_and_clean_dataframe(file_bytes, file_name):
                 df = df.iloc[idx+1:].reset_index(drop=True)
                 break
     
-    # Drop completely empty rows/columns
     df = df.dropna(how='all').reset_index(drop=True)
     return df
 
 # ==============================================================================
-# UI STYLING & HIGH-CONTRAST WHITE TEXT LIVE CLOCK HEADER
+# UI STYLING & LIVE CLOCK HEADER
 # ==============================================================================
 st.markdown("""
     <style>
@@ -141,7 +139,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault Storage, Vehicle Tonnage (F2 & BAG), Manual Calculator & Excel/Email Export.
+                Permanent Vault Storage, Live Merge/Append, Vehicle Tonnage (F2 & BAG with 50/25 Breakdown), Manual Calculator & Exports.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -152,10 +150,10 @@ with col_h2:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==============================================================================
-# LEFT SIDEBAR: DYNAMIC VAULT UPLOADER & SAVED FILES SELECTOR
+# LEFT SIDEBAR: DYNAMIC VAULT UPLOADER & MERGE CONTROLLER
 # ==============================================================================
 with st.sidebar:
-    st.markdown("### 📂 Upload New Billing Export")
+    st.markdown("### 📂 Upload / Append Billing Export")
     uploaded_file = st.file_uploader("Upload File (.xlsx / .csv)", type=["xlsx", "csv"], key="sidebar_uploader")
 
     if uploaded_file is not None:
@@ -163,25 +161,45 @@ with st.sidebar:
             file_bytes = uploaded_file.getvalue()
             temp_df = load_and_clean_dataframe(file_bytes, uploaded_file.name)
 
-            if st.button("💾 Save to Permanent Vault", type="primary"):
+            save_mode = st.radio("Choose Save Action:", ["Save as New File", "Append/Merge with Active Table"])
+
+            if st.button("💾 Confirm & Save to Vault", type="primary"):
                 conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
                 upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
-                cursor = conn.cursor()
                 
-                cursor.execute(
-                    "INSERT INTO saved_files (upload_date, file_name, file_blob) VALUES (?, ?, ?)",
-                    (upload_timestamp, uploaded_file.name, sqlite3.Binary(file_bytes))
-                )
-                conn.commit()
-                conn.close()
-                st.session_state.active_df = temp_df
-                st.success(f"✅ '{uploaded_file.name}' saved successfully in Vault!")
-                st.rerun()
+                if save_mode == "Append/Merge with Active Table" and st.session_state.active_df is not None:
+                    merged_df = pd.concat([st.session_state.active_df, temp_df], ignore_index=True).drop_duplicates()
+                    
+                    output = io.BytesIO()
+                    merged_df.to_excel(output, index=False)
+                    final_bytes = output.getvalue()
+                    
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO saved_files (upload_date, file_name, file_blob) VALUES (?, ?, ?)",
+                        (upload_timestamp, f"Merged_{uploaded_file.name}", sqlite3.Binary(final_bytes))
+                    )
+                    conn.commit()
+                    conn.close()
+                    st.session_state.active_df = merged_df
+                    st.success("✅ New dispatch entries successfully appended & saved!")
+                    st.rerun()
+                else:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO saved_files (upload_date, file_name, file_blob) VALUES (?, ?, ?)",
+                        (upload_timestamp, uploaded_file.name, sqlite3.Binary(file_bytes))
+                    )
+                    conn.commit()
+                    conn.close()
+                    st.session_state.active_df = temp_df
+                    st.success(f"✅ '{uploaded_file.name}' saved successfully as new file!")
+                    st.rerun()
         except Exception as err_file:
             st.error(f"❌ Upload error: {str(err_file)}")
 
     st.markdown("---")
-    st.markdown("### 🗂️ Select File from Vault (No Re-upload needed)")
+    st.markdown("### 🗂️ Select File from Vault")
     
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
@@ -193,7 +211,6 @@ with st.sidebar:
     if not saved_records.empty:
         file_options = {f"[{row['id']}] {row['file_name']} ({row['upload_date']})": row['id'] for _, row in saved_records.iterrows()}
         selected_file_label = st.selectbox("Choose Saved File:", options=list(file_options.keys()))
-        
         selected_id = file_options[selected_file_label]
         
         col_load, col_del = st.columns(2)
@@ -265,10 +282,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR
+    # VEHICLE TONNAGE CALCULATOR (WITH 50KG & 25KG BAG BREAKDOWN VISUAL)
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Billing Type F2 & BAG Slabs)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Date to instantly compute exact Precision vs Standard Tonnage based on your billing records.")
+        st.markdown("Select Vehicle Number and Billing Date to view exact bag breakdown (50kg vs 25kg) and Precision vs Standard Tonnage.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -305,7 +322,6 @@ if st.session_state.active_df is not None:
             if unit_col:
                 calc_df = calc_df[calc_df[unit_col].astype(str).str.upper().str.contains("BAG", na=False)]
 
-            # Filter out rows where vehicle name looks like a summary total
             if not calc_df.empty:
                 calc_df = calc_df[~calc_df[veh_col].astype(str).str.lower().str.contains("total", na=False)]
 
@@ -347,7 +363,15 @@ if st.session_state.active_df is not None:
                 w1_opt2 = b50_total * 50.0 + b25_total * 25.0
                 mt2 = w1_opt2 / 1000.0
 
-                st.markdown(f"**Vehicle Summary for `{sel_vehicle}` (Total Bags: {int(b50_total + b25_total):,}):**")
+                st.markdown(f"**Vehicle Summary for `{sel_vehicle}`:**")
+                
+                # Visual Breakdown Metrics for 50kg vs 25kg bags
+                vb1, vb2, vb3 = st.columns(3)
+                vb1.metric("📦 50 Kg Bags Output", f"{int(b50_total):,} Bags")
+                vb2.metric("📦 25 Kg Bags Output", f"{int(b25_total):,} Bags")
+                vb3.metric("📊 Total Volume", f"{int(b50_total + b25_total):,} Bags")
+
+                st.markdown("<br>", unsafe_allow_html=True)
                 c_res1, c_res2 = st.columns(2)
                 with c_res1:
                     st.metric("🔹 Precision Scale (Opt 1: 50.12 & 25.12)", f"{mt1:,.3f} MT", f"{w1_opt1:,.2f} Kgs")
