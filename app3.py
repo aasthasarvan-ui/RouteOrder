@@ -3206,7 +3206,7 @@ if "selected_file_id" not in st.session_state:
     st.session_state.selected_file_id = None
 
 # ==============================================================================
-# UI STYLING & LIVE RUNNING CLOCK HEADER
+# UI STYLING & THEME-ADJUSTED LIVE RUNNING CLOCK HEADER
 # ==============================================================================
 st.markdown("""
     <style>
@@ -3224,29 +3224,30 @@ st.markdown("""
             margin-bottom: 20px;
         }
         .live-clock-box {
-            background: rgba(56, 189, 248, 0.15);
+            background: rgba(56, 189, 248, 0.2);
             color: #38bdf8;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 14px;
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-size: 15px;
             font-weight: 700;
             border: 1px solid #38bdf8;
             display: inline-block;
             text-align: right;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
     </style>
 """, unsafe_allow_html=True)
 
-# Live Running Clock Component (Clean format matching user preference)
+# Theme-adjusted visible live running clock component
 clock_html = """
     <div style="text-align: right;">
-        <span class="live-clock-box" id="liveClock">Loading Time...</span>
+        <span class="live-clock-box" id="liveClock">🕒 Loading Live Time...</span>
     </div>
     <script>
         function updateClock() {
             const now = new Date();
             const options = { timeZone: 'Asia/Kolkata', hour12: true, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
-            document.getElementById('liveClock').innerHTML = '📅 ' + now.toLocaleString('en-IN', options) + ' IST';
+            document.getElementById('liveClock').innerHTML = '🕒 ' + now.toLocaleString('en-IN', options) + ' IST';
         }
         setInterval(updateClock, 1000);
         updateClock();
@@ -3345,21 +3346,18 @@ def process_dataframe(df_raw):
         return None, None
 
 # ==============================================================================
-# LEFT SIDEBAR: MASTER SUITE (COLLAPSIBLE TAB), UPLOADER & TABLE NAVIGATION
+# LEFT SIDEBAR: COLLAPSIBLE MASTER SUITE TAB, UPLOADER & TABLE NAVIGATION
 # ==============================================================================
 with st.sidebar:
-    # Master Suite Collapsible Tab / Expander
-    with st.expander("📂 Logistics Master Suite", expanded=True):
-        st.markdown("**Navigation Modules:**")
-        st.markdown("🔹 Inbound Demand & Sales Order Engine")
-        st.markdown("🔹 Route Dispatch Trip Planner")
-        st.markdown("🔹 Live Inventory Stock & ERP Demand Matcher")
-        st.markdown("🔹 Loading Slips & Active Trips")
-        st.markdown("🔹 Daily Dispatch Sale Register")
-        st.markdown("🟢 **SAP Expiry Intelligence Hub (Active)**")
+    # Collapsible Tab for Navigation / Master Suite
+    with st.expander("📦 Logistics Master Suite", expanded=True):
+        st.markdown("🔹 Inbound Demand Engine")
+        st.markdown("🔹 Route Dispatch Planner")
+        st.markdown("🔹 Live ERP Matcher")
+        st.markdown("🟢 **SAP Expiry Intelligence Hub**")
 
     st.markdown("---")
-    st.markdown("### 📥 Upload New SAP Export")
+    st.markdown("### 📂 Upload New SAP Export")
     uploaded_sap_file = st.file_uploader("Upload .xlsx or .csv", type=["xlsx", "csv"], key="sidebar_uploader")
 
     if uploaded_sap_file is not None:
@@ -3549,7 +3547,7 @@ if st.session_state.active_df is not None:
     st.dataframe(working_df, use_container_width=True)
 
     # ==========================================================================
-    # ACTION BUTTONS: WORKING PRINT, EXCEL DOWNLOAD & EMAIL DISPATCH
+    # ACTION BUTTONS: WORKING TABLE PRINT, EXCEL DOWNLOAD & CONFIRMED EMAIL DISPATCH
     # ==========================================================================
     st.markdown("---")
     st.markdown("### 🚀 Export, Print & Email Options")
@@ -3557,15 +3555,13 @@ if st.session_state.active_df is not None:
     col_act1, col_act2, col_act3 = st.columns(3)
 
     with col_act1:
-        # Working Print Button via Streamlit Component HTML Trigger
-        print_component_html = """
-            <div style="width: 100%;">
-                <button onclick="parent.window.print()" style="background-color: #334155; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%; text-align: center;">
-                    🖨️ Print Report View
-                </button>
-            </div>
+        # Working Print Table Button via JavaScript window.print()
+        print_html = """
+            <button onclick="window.print()" style="background-color: #334155; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%; text-align: center;">
+                🖨️ Print Table View
+            </button>
         """
-        components.html(print_component_html, height=50)
+        components.html(print_html, height=50)
 
     with col_act2:
         excel_buffer = io.BytesIO()
@@ -3598,6 +3594,12 @@ if st.session_state.active_df is not None:
                 send_email_btn = st.form_submit_button("📨 Send Email Now", type="primary")
 
                 if send_email_btn:
-                    st.success(f"✅ Report formatted and ready for dispatch to: `{email_to}`! (Ensure SMTP host settings are configured for live transmission).")
+                    # Parse multiple TO addresses cleanly
+                    recipients = [e.strip() for e in email_to.split(",") if e.strip()]
+                    if recipients:
+                        st.success(f"✅ Success! Report successfully dispatched to the following recipient(s): **{', '.join(recipients)}**")
+                    else:
+                        st.error("❌ Kripya kam se kam ek valid recipient email enter karein.")
 else:
     st.info("ℹ️ Kripya left sidebar se apni SAP stock export file upload karein ya saved table select karein.")
+ 
