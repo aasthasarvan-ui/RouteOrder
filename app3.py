@@ -3126,7 +3126,6 @@ import io
 import sqlite3
 import smtplib
 from email.message import EmailMessage
-import streamlit.components.v1 as components
 
 # ==============================================================================
 # PAGE CONFIGURATION & TIMEZONE
@@ -3206,7 +3205,7 @@ if "selected_file_id" not in st.session_state:
     st.session_state.selected_file_id = None
 
 # ==============================================================================
-# UI STYLING & THEME-ADJUSTED LIVE RUNNING CLOCK HEADER
+# UI STYLING & THEME-ADJUSTED VISIBLE LIVE RUNNING CLOCK HEADER
 # ==============================================================================
 st.markdown("""
     <style>
@@ -3224,29 +3223,30 @@ st.markdown("""
             margin-bottom: 20px;
         }
         .live-clock-box {
-            background: rgba(56, 189, 248, 0.2);
+            background: #1e293b;
             color: #38bdf8;
-            padding: 10px 18px;
-            border-radius: 10px;
-            font-size: 15px;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 16px;
             font-weight: 700;
-            border: 1px solid #38bdf8;
+            border: 2px solid #38bdf8;
             display: inline-block;
-            text-align: right;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(56, 189, 248, 0.2);
+            width: 100%;
         }
     </style>
 """, unsafe_allow_html=True)
 
-# Theme-adjusted visible live running clock component
-clock_html = """
-    <div style="text-align: right;">
-        <span class="live-clock-box" id="liveClock">🕒 Loading Live Time...</span>
+# Visible Theme-Adjusted Live Clock Script
+clock_html = f"""
+    <div style="width: 100%;">
+        <div class="live-clock-box" id="liveClock">🕒 Loading Live Time...</div>
     </div>
     <script>
         function updateClock() {
             const now = new Date();
-            const options = { timeZone: 'Asia/Kolkata', hour12: true, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+            const options = {{ timeZone: 'Asia/Kolkata', hour12: true, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }};
             document.getElementById('liveClock').innerHTML = '🕒 ' + now.toLocaleString('en-IN', options) + ' IST';
         }
         setInterval(updateClock, 1000);
@@ -3260,12 +3260,13 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">⏳ SAP Production & Expiry Intelligence Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent BLOB Storage, ID Reset, Live Clock, Multi-Select Rules & Email Dispatch.
+                Permanent BLOB Storage, ID Reset, Live Clock, Multi-Select Rules & Live Email Dispatch.
             </p>
         </div>
     """, unsafe_allow_html=True)
 with col_h2:
-    components.html(clock_html, height=75)
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.components.v1.html(clock_html, height=70)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -3349,7 +3350,6 @@ def process_dataframe(df_raw):
 # LEFT SIDEBAR: COLLAPSIBLE MASTER SUITE TAB, UPLOADER & TABLE NAVIGATION
 # ==============================================================================
 with st.sidebar:
-    # Collapsible Tab for Navigation / Master Suite
     with st.expander("📦 Logistics Master Suite", expanded=True):
         st.markdown("🔹 Inbound Demand Engine")
         st.markdown("🔹 Route Dispatch Planner")
@@ -3377,7 +3377,6 @@ with st.sidebar:
                     upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
                     cursor = conn.cursor()
                     
-                    # Auto-replace old records and reset auto-increment ID sequence
                     cursor.execute("DELETE FROM saved_files")
                     try:
                         cursor.execute("DELETE FROM sqlite_sequence WHERE name='saved_files'")
@@ -3469,14 +3468,12 @@ if st.session_state.active_df is not None:
 
     working_df = st.session_state.active_df.copy()
 
-    # Find Material Column
     mat_col_target = None
     for col_name in working_df.columns:
         if any(k in str(col_name).lower() for k in ["material", "sku", "item", "code", "product"]):
             mat_col_target = col_name
             break
 
-    # Advanced Multi-select Filters & Header Filters
     col_f1, col_f2 = st.columns(2)
     
     with col_f1:
@@ -3495,7 +3492,6 @@ if st.session_state.active_df is not None:
             if selected_header_vals:
                 working_df = working_df[working_df[chosen_header_filter].astype(str).isin(selected_header_vals)]
 
-    # Rule Updater Expander with Multiple Material Selection Support
     if mat_col_target is not None:
         with st.expander("🛠️ Update Shelf-Life Rule for Multiple Materials (Permanent Save)"):
             with st.form("rule_update_form_final"):
@@ -3535,7 +3531,6 @@ if st.session_state.active_df is not None:
                     st.success(f"✅ Rules updated successfully for selected materials!")
                     st.rerun()
 
-    # Metrics Display
     if "Shelf_Life_Status" in working_df.columns:
         status_counts = working_df["Shelf_Life_Status"].value_counts()
         m1, m2, m3 = st.columns(3)
@@ -3544,10 +3539,14 @@ if st.session_state.active_df is not None:
         m3.metric("🔴 Expired", int(status_counts.get("🔴 Expired", 0)))
 
     st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Table container for clean layout and printing
+    st.markdown('<div id="printableTable">', unsafe_allow_html=True)
     st.dataframe(working_df, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # ==========================================================================
-    # ACTION BUTTONS: WORKING TABLE PRINT, EXCEL DOWNLOAD & CONFIRMED EMAIL DISPATCH
+    # ACTION BUTTONS: WORKING TABLE PRINT, EXCEL DOWNLOAD & LIVE EMAIL DISPATCH
     # ==========================================================================
     st.markdown("---")
     st.markdown("### 🚀 Export, Print & Email Options")
@@ -3555,13 +3554,18 @@ if st.session_state.active_df is not None:
     col_act1, col_act2, col_act3 = st.columns(3)
 
     with col_act1:
-        # Working Print Table Button via JavaScript window.print()
-        print_html = """
+        # Fixed Working Table Print script via direct browser print triggers
+        print_trigger_html = """
+            <script>
+                function triggerTablePrint() {
+                    window.print();
+                }
+            </script>
             <button onclick="window.print()" style="background-color: #334155; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%; text-align: center;">
                 🖨️ Print Table View
             </button>
         """
-        components.html(print_html, height=50)
+        st.components.v1.html(print_trigger_html, height=50)
 
     with col_act2:
         excel_buffer = io.BytesIO()
@@ -3576,30 +3580,62 @@ if st.session_state.active_df is not None:
         )
 
     with col_act3:
-        with st.expander("✉️ Send Report via Email (Multiple TO support)"):
+        with st.expander("✉️ Send Report via Email (Live SMTP & Multiple TO support)"):
             with st.form("email_dispatch_form"):
-                email_to = st.text_input("Recipient Email(s) separated by comma (,):", "supplychain@example.com")
+                st.markdown("**SMTP Server Settings (Gmail / Corporate Hub):**")
+                smtp_host = st.text_input("SMTP Server", "smtp.gmail.com")
+                smtp_port = st.number_input("SMTP Port", value=587, step=1)
+                sender_email = st.text_input("Sender Email (From)", "your_email@gmail.com")
+                sender_pass = st.text_input("Sender App Password", type="password", help="Use Gmail App Password")
+                
+                st.markdown("---")
+                email_to = st.text_input("Recipient Email(s) separated by comma (,):", "recipient@example.com")
                 email_sub = st.text_input("Email Subject", "🚨 SAP Inventory Expiry & Critical Stock Report")
                 
                 default_mail_body = (
                     "Dear Team,\n\n"
-                    "Please find attached the latest SAP inventory status report containing critical, expired, "
+                    "Please find attached / enclosed the latest SAP inventory status report containing critical, expired, "
                     "and fresh stock details.\n\n"
                     "Kindly review the remarks and prioritize clearance for items with critical shelf-life.\n\n"
                     "Best Regards,\n"
                     "Supply Chain Management Hub"
                 )
-                email_body = st.text_area("Email Message", default_mail_body, height=150)
+                email_body = st.text_area("Email Message", default_mail_body, height=140)
                 
-                send_email_btn = st.form_submit_button("📨 Send Email Now", type="primary")
+                send_email_btn = st.form_submit_button("📨 Send Live Email Now", type="primary")
 
                 if send_email_btn:
-                    # Parse multiple TO addresses cleanly
                     recipients = [e.strip() for e in email_to.split(",") if e.strip()]
-                    if recipients:
-                        st.success(f"✅ Success! Report successfully dispatched to the following recipient(s): **{', '.join(recipients)}**")
-                    else:
+                    if not recipients:
                         st.error("❌ Kripya kam se kam ek valid recipient email enter karein.")
+                    else:
+                        try:
+                            msg = EmailMessage()
+                            msg['Subject'] = email_sub
+                            msg['From'] = sender_email
+                            msg['To'] = ", ".join(recipients)
+                            msg.set_content(email_body)
+
+                            # Attach Excel report automatically to the email
+                            excel_data = io.BytesIO()
+                            working_df.to_excel(excel_data, index=False)
+                            excel_data.seek(0)
+                            msg.add_attachment(
+                                excel_data.getvalue(),
+                                maintype='application',
+                                subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                filename=f"Inventory_Report_{get_ist_now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                            )
+
+                            # Connect and send via live SMTP
+                            server = smtplib.SMTP(smtp_host, int(smtp_port))
+                            server.starttls()
+                            server.login(sender_email, sender_pass)
+                            server.send_message(msg)
+                            server.quit()
+
+                            st.success(f"✅ Live email successfully dispatched with Excel attachment to: **{', '.join(recipients)}**!")
+                        except Exception as mail_err:
+                            st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
     st.info("ℹ️ Kripya left sidebar se apni SAP stock export file upload karein ya saved table select karein.")
- 
