@@ -3488,7 +3488,6 @@ if st.session_state.active_df is not None:
             mat_col_target = col_name
             break
 
-    # New Feature 2: Advanced Multi-Keyword Search Bar
     global_search = st.text_input("🔍 Global Keyword Search (Batch, Plant, Material, Description):", "", key="global_search_input")
     if str(global_search).strip() != "":
         term = str(global_search).strip().lower()
@@ -3515,7 +3514,6 @@ if st.session_state.active_df is not None:
             if selected_header_vals:
                 working_df = working_df[working_df[chosen_header_filter].astype(str).isin(selected_header_vals)]
 
-    # New Feature 3: Expiry Timeline Range Filter Slider
     if "Remaining_Shelf_Life_Days" in working_df.columns:
         max_days_val = int(working_df['Remaining_Shelf_Life_Days'].dropna().max()) if not working_df['Remaining_Shelf_Life_Days'].dropna().empty else 365
         min_days_val = int(working_df['Remaining_Shelf_Life_Days'].dropna().min()) if not working_df['Remaining_Shelf_Life_Days'].dropna().empty else -100
@@ -3563,7 +3561,6 @@ if st.session_state.active_df is not None:
                     st.success(f"✅ Rules updated successfully for selected materials!")
                     st.rerun()
 
-    # Metrics Display & Visual Analytics Dashboard (Plotly Charts)
     if "Shelf_Life_Status" in working_df.columns:
         status_counts = working_df["Shelf_Life_Status"].value_counts()
         m1, m2, m3 = st.columns(3)
@@ -3571,7 +3568,6 @@ if st.session_state.active_df is not None:
         m2.metric("🟡 Critical (<30 Days)", int(status_counts.get("🟡 Critical (<30 Days)", 0)))
         m3.metric("🔴 Expired", int(status_counts.get("🔴 Expired", 0)))
 
-        # Plotly Visual Charts Analytics
         with st.expander("📈 View Expiry Risk & Stock Health Visual Analytics", expanded=True):
             chart_col1, chart_col2 = st.columns(2)
             with chart_col1:
@@ -3597,7 +3593,6 @@ if st.session_state.active_df is not None:
                 fig_bar.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#f8fafc")
                 st.plotly_chart(fig_bar, use_container_width=True)
 
-        # FEFO Dispatch Simulator
         with st.expander("⏳ FEFO (First-Expired, First-Out) Dispatch Simulator", expanded=False):
             st.markdown("Select a material to find which batch/production date should be dispatched first according to FEFO rule.")
             if mat_col_target is not None:
