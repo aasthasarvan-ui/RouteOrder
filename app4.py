@@ -139,7 +139,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault Storage, Live Merge/Append, Vehicle Tonnage (F2 & BAG with 50/25 Breakdown), Manual Calculator & Exports.
+                Permanent Vault Storage, Live Merge/Append, Vehicle Tonnage Analytics, Manual Calculator & Exports.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -282,10 +282,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (WITH 50KG & 25KG BAG BREAKDOWN VISUAL)
+    # VEHICLE TONNAGE CALCULATOR (WITH 50KG / 25KG BREAKDOWN & SUMMARY TABLE)
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Billing Type F2 & BAG Slabs)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Date to view exact bag breakdown (50kg vs 25kg) and Precision vs Standard Tonnage.")
+        st.markdown("Select Vehicle Number and Billing Date to view exact bag breakdown and Precision vs Standard Tonnage.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -365,7 +365,6 @@ if st.session_state.active_df is not None:
 
                 st.markdown(f"**Vehicle Summary for `{sel_vehicle}`:**")
                 
-                # Visual Breakdown Metrics for 50kg vs 25kg bags
                 vb1, vb2, vb3 = st.columns(3)
                 vb1.metric("📦 50 Kg Bags Output", f"{int(b50_total):,} Bags")
                 vb2.metric("📦 25 Kg Bags Output", f"{int(b25_total):,} Bags")
@@ -377,6 +376,41 @@ if st.session_state.active_df is not None:
                     st.metric("🔹 Precision Scale (Opt 1: 50.12 & 25.12)", f"{mt1:,.3f} MT", f"{w1_opt1:,.2f} Kgs")
                 with c_res2:
                     st.metric("🔹 Standard Slabs (Opt 2: 50.0 & 25.0)", f"{mt2:,.3f} MT", f"{w1_opt2:,.2f} Kgs")
+
+                # ==============================================================
+                # NEW FEATURE: ALL VEHICLES TONNAGE SUMMARY LEADERBOARD TABLE
+                # ==============================================================
+                with st.expander("📊 View All Vehicles Tonnage Summary Table", expanded=False):
+                    summary_rows = []
+                    for v in unique_vehicles:
+                        v_subset = calc_df[calc_df[veh_col].astype(str) == v]
+                        v_50, v_25 = 0.0, 0.0
+                        for _, vr in v_subset.iterrows():
+                            vq_val = vr[qty_col]
+                            try:
+                                vq = float(vq_val) if pd.notna(vq_val) else 0.0
+                            except:
+                                vq = 0.0
+                            vd_text = str(vr[desc_col]).upper() if desc_col and pd.notna(vr[desc_col]) else ""
+                            if "25" in vd_text:
+                                v_25 += vq
+                            else:
+                                v_50 += vq
+                        
+                        tot_bags = int(v_50 + v_25)
+                        prec_mt = (v_50 * 50.120 + v_25 * 25.120) / 1000.0
+                        std_mt = (v_50 * 50.0 + v_25 * 25.0) / 1000.0
+                        summary_rows.append({
+                            "Vehicle No": v,
+                            "50Kg Bags": int(v_50),
+                            "25Kg Bags": int(v_25),
+                            "Total Bags": tot_bags,
+                            "Precision Tonnage (MT)": round(prec_mt, 3),
+                            "Standard Tonnage (MT)": round(std_mt, 3)
+                        })
+                    
+                    df_summary = pd.DataFrame(summary_rows)
+                    st.dataframe(df_summary, use_container_width=True)
             else:
                 st.info("ℹ️ No records found matching Billing Type 'F2' and Unit 'BAG'.")
         else:
@@ -635,4 +669,4 @@ if st.session_state.active_df is not None:
                         except Exception as mail_err:
                             st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
-    st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya saved table select karein.")
+    st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya saved table select kegiye.")
