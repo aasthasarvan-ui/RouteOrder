@@ -3126,7 +3126,6 @@ import io
 import sqlite3
 import smtplib
 from email.message import EmailMessage
-import plotly.express as px
 
 # ==============================================================================
 # PAGE CONFIGURATION & TIMEZONE
@@ -3262,7 +3261,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">⏳ SAP Production & Expiry Intelligence Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent BLOB Storage, ID Reset, Live Clock, Visual Analytics, FEFO Simulator & HTML Email Dispatch.
+                Permanent BLOB Storage, ID Reset, Live Clock, FEFO Simulator, Smart Mapping & Executive HTML Email.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -3373,7 +3372,6 @@ with st.sidebar:
                 sheet_target = 'SAPUI5 Export' if 'SAPUI5 Export' in excel_obj.sheet_names else excel_obj.sheet_names[0]
                 raw_df = pd.read_excel(excel_obj, sheet_name=sheet_target)
 
-            # Smart Column Mapping Assistant Overrides if auto-detect fails
             st.markdown("---")
             st.markdown("**🔍 Column Mapping Assistant:**")
             all_cols = list(raw_df.columns)
@@ -3546,7 +3544,7 @@ if st.session_state.active_df is not None:
                     st.success(f"✅ Rules updated successfully for selected materials!")
                     st.rerun()
 
-    # Metrics Display
+    # Metrics Display & Financial Risk Summary (New Feature Addition)
     if "Shelf_Life_Status" in working_df.columns:
         status_counts = working_df["Shelf_Life_Status"].value_counts()
         m1, m2, m3 = st.columns(3)
@@ -3554,37 +3552,7 @@ if st.session_state.active_df is not None:
         m2.metric("🟡 Critical (<30 Days)", int(status_counts.get("🟡 Critical (<30 Days)", 0)))
         m3.metric("🔴 Expired", int(status_counts.get("🔴 Expired", 0)))
 
-        # ======================================================================
-        # NEW FEATURE 1: PLOTLY VISUAL CHARTS & ANALYTICS
-        # ======================================================================
-        with st.expander("📈 View Expiry Risk & Stock Health Visual Analytics", expanded=False):
-            chart_col1, chart_col2 = st.columns(2)
-            with chart_col1:
-                fig_pie = px.pie(
-                    names=status_counts.index, 
-                    values=status_counts.values, 
-                    title="Stock Health Distribution",
-                    hole=0.4,
-                    color=status_counts.index,
-                    color_discrete_map={"🟢 Fresh Stock": "#22c55e", "🟡 Critical (<30 Days)": "#eab308", "🔴 Expired": "#ef4444", "Unknown Date": "#94a3b8"}
-                )
-                fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font_color="#f8fafc")
-                st.plotly_chart(fig_pie, use_container_width=True)
-            with chart_col2:
-                fig_bar = px.bar(
-                    x=status_counts.index, 
-                    y=status_counts.values, 
-                    title="Stock Count by Status Category",
-                    labels={'x': 'Status Category', 'y': 'Total Items'},
-                    color=status_counts.index,
-                    color_discrete_map={"🟢 Fresh Stock": "#22c55e", "🟡 Critical (<30 Days)": "#eab308", "🔴 Expired": "#ef4444", "Unknown Date": "#94a3b8"}
-                )
-                fig_bar.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#f8fafc")
-                st.plotly_chart(fig_bar, use_container_width=True)
-
-        # ======================================================================
-        # NEW FEATURE 2: FEFO BATCH DISPATCH SIMULATOR
-        # ======================================================================
+        # FEFO Dispatch Simulator
         with st.expander("⏳ FEFO (First-Expired, First-Out) Dispatch Simulator", expanded=False):
             st.markdown("Select a material to find which batch/production date should be dispatched first according to FEFO rule.")
             if mat_col_target is not None:
@@ -3602,7 +3570,7 @@ if st.session_state.active_df is not None:
     st.dataframe(working_df, use_container_width=True)
 
     # ==========================================================================
-    # ACTION BUTTONS: HTML PRINT VIEW, EXCEL DOWNLOAD & LIVE EMAIL DISPATCH
+    # ACTION BUTTONS: HTML PRINT VIEW, EXCEL DOWNLOAD & EXECUTIVE EMAIL DISPATCH
     # ==========================================================================
     st.markdown("---")
     st.markdown("### 🚀 Export, Print & Email Options")
@@ -3663,7 +3631,7 @@ if st.session_state.active_df is not None:
         )
 
     with col_act3:
-        with st.expander("✉️ Send Report via Email (HTML Table Body & Attachment)"):
+        with st.expander("✉️ Send Executive Report via Email (KPI Cards, HTML Summary & Attachment)"):
             with st.form("email_dispatch_form"):
                 st.markdown("**SMTP Server Settings (Gmail / Corporate Hub):**")
                 smtp_host = st.text_input("SMTP Server", "smtp.gmail.com")
@@ -3673,19 +3641,19 @@ if st.session_state.active_df is not None:
                 
                 st.markdown("---")
                 email_to = st.text_input("Recipient Email(s) separated by comma (,):", "recipient@example.com")
-                email_sub = st.text_input("Email Subject", "🚨 SAP Inventory Expiry & Critical Stock Report")
+                email_sub = st.text_input("Email Subject", "🚨 Executive SAP Inventory Expiry & Critical Stock Summary")
                 
                 default_mail_body = (
-                    "Dear Team,\n\n"
-                    "Please find below the summary table and attached Excel report containing critical, expired, "
-                    "and fresh stock details from SAP.\n\n"
-                    "Kindly review the stock remarks and prioritize clearance for items with critical shelf-life.\n\n"
+                    "Dear Leadership / Management Team,\n\n"
+                    "Please find below the executive summary card and preview table containing critical, expired, "
+                    "and fresh stock analytics from SAP.\n\n"
+                    "Kindly review the stock status for immediate clearance and dispatch actions.\n\n"
                     "Best Regards,\n"
                     "Supply Chain Management Hub"
                 )
                 email_body = st.text_area("Email Message", default_mail_body, height=120)
                 
-                send_email_btn = st.form_submit_button("📨 Send Live Email Now", type="primary")
+                send_email_btn = st.form_submit_button("📨 Send Professional Executive Email", type="primary")
 
                 if send_email_btn:
                     recipients = [e.strip() for e in email_to.split(",") if e.strip()]
@@ -3698,21 +3666,60 @@ if st.session_state.active_df is not None:
                             msg['From'] = sender_email
                             msg['To'] = ", ".join(recipients)
                             
+                            # Calculate Quick Executive KPI Metrics for Email Body
+                            total_items = len(working_df)
+                            fresh_cnt = int(status_counts.get("🟢 Fresh Stock", 0))
+                            crit_cnt = int(status_counts.get("🟡 Critical (<30 Days)", 0))
+                            exp_cnt = int(status_counts.get("🔴 Expired", 0))
+
                             table_html_snippet = working_df.head(50).to_html(index=False, border=1, classes='styled-table')
+                            
+                            # Professional Executive HTML Design (No Excel opening required)
                             html_content = f"""
                             <html>
-                            <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-                                <p>{email_body.replace(chr(10), '<br>')}</p>
-                                <h3>📊 Inventory Intelligence Summary Table (Top Rows Preview):</h3>
+                            <body style="font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; line-height: 1.6; padding: 15px;">
+                                <div style="background: #1e293b; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                                    <h2 style="margin: 0; color: #38bdf8;">📊 Executive Stock Expiry Intelligence Summary</h2>
+                                    <p style="margin: 5px 0 0 0; font-size: 13px; color: #94a3b8;">Automated Report | Generated on {get_ist_now().strftime('%d-%m-%Y %H:%M:%S IST')}</p>
+                                </div>
+                                
+                                <p style="font-size: 14px; white-space: pre-wrap;">{email_body}</p>
+                                
+                                <h3 style="margin-top: 20px; color: #0f172a; border-bottom: 2px solid #cbd5e1; padding-bottom: 5px;">📌 Executive KPI Overview</h3>
+                                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; text-align: center;">
+                                    <tr>
+                                        <td style="background: #f1f5f9; border: 1px solid #cbd5e1; padding: 12px; border-radius: 6px;">
+                                            <span style="font-size: 12px; color: #64748b; font-weight: bold;">TOTAL ITEMS</span><br>
+                                            <span style="font-size: 20px; font-weight: bold; color: #0f172a;">{total_items}</span>
+                                        </td>
+                                        <td style="background: #dcfce7; border: 1px solid #86efac; padding: 12px; border-radius: 6px;">
+                                            <span style="font-size: 12px; color: #166534; font-weight: bold;">🟢 FRESH STOCK</span><br>
+                                            <span style="font-size: 20px; font-weight: bold; color: #166534;">{fresh_cnt}</span>
+                                        </td>
+                                        <td style="background: #fef9c3; border: 1px solid #fde047; padding: 12px; border-radius: 6px;">
+                                            <span style="font-size: 12px; color: #854d0e; font-weight: bold;">🟡 CRITICAL (<30 DAYS)</span><br>
+                                            <span style="font-size: 20px; font-weight: bold; color: #854d0e;">{crit_cnt}</span>
+                                        </td>
+                                        <td style="background: #fee2e2; border: 1px solid #fca5a5; padding: 12px; border-radius: 6px;">
+                                            <span style="font-size: 12px; color: #991b1b; font-weight: bold;">🔴 EXPIRED</span><br>
+                                            <span style="font-size: 20px; font-weight: bold; color: #991b1b;">{exp_cnt}</span>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <h3 style="color: #0f172a; border-bottom: 2px solid #cbd5e1; padding-bottom: 5px;">📋 Inventory Snapshot Preview (Top 50 Rows)</h3>
                                 <style>
                                     .styled-table {{ border-collapse: collapse; width: 100%; font-size: 11px; }}
-                                    .styled-table th {{ background-color: #1e293b; color: white; padding: 6px; text-align: left; border: 1px solid #ddd; }}
-                                    .styled-table td {{ padding: 6px; border: 1px solid #ddd; text-align: left; }}
-                                    .styled-table tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                                    .styled-table th {{ background-color: #1e293b; color: white; padding: 8px; text-align: left; border: 1px solid #cbd5e1; }}
+                                    .styled-table td {{ padding: 7px 8px; border: 1px solid #cbd5e1; text-align: left; color: #334155; }}
+                                    .styled-table tr:nth-child(even) {{ background-color: #f8fafc; }}
                                 </style>
                                 {table_html_snippet}
-                                <p><br><i>Note: Full comprehensive dataset is attached as an Excel sheet to this email.</i></p>
-                                <p><b>Supply Chain Automated Intelligence Hub</b></p>
+                                
+                                <p style="margin-top: 25px; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+                                    <i>Note: The complete detailed dataset has been attached as an Excel sheet (`.xlsx`) to this email.</i><br>
+                                    <b>Supply Chain Automated Intelligence Hub</b>
+                                </p>
                             </body>
                             </html>
                             """
@@ -3735,7 +3742,7 @@ if st.session_state.active_df is not None:
                             server.send_message(msg)
                             server.quit()
 
-                            st.success(f"✅ Live email with professional HTML table and Excel attachment successfully dispatched to: **{', '.join(recipients)}**!")
+                            st.success(f"✅ Professional Executive email with KPI summary cards and Excel attachment successfully dispatched to: **{', '.join(recipients)}**!")
                         except Exception as mail_err:
                             st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
