@@ -3282,7 +3282,7 @@ default_shelf_days = st.number_input(
 )
 
 # ==============================================================================
-# CORE PROCESSING FUNCTION WITH SMART COLUMN MAPPING ASSISTANT
+# CORE PROCESSING FUNCTION WITH SMART COLUMN MAPPING & REMARKS
 # ==============================================================================
 def process_dataframe(df_raw, manual_mfg=None, manual_mat=None):
     try:
@@ -3350,7 +3350,7 @@ def process_dataframe(df_raw, manual_mfg=None, manual_mat=None):
         return None, None, None
 
 # ==============================================================================
-# LEFT SIDEBAR: COLLAPSIBLE MASTER SUITE TAB, UPLOADER & TABLE NAVIGATION
+# LEFT SIDEBAR: MASTER SUITE, UPLOADER & TABLE NAVIGATION WITH ID RESET
 # ==============================================================================
 with st.sidebar:
     with st.expander("📦 Logistics Master Suite", expanded=True):
