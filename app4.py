@@ -14,7 +14,7 @@ from email.message import EmailMessage
 # ==============================================================================
 try:
     st.set_page_config(
-        page_title="Enterprise Vehicle Tonnage & VAHAN AI Hub",
+        page_title="Enterprise Vehicle Tonnage & Actual VAHAN Hub",
         page_icon="🚚",
         layout="wide",
         initial_sidebar_state="expanded"
@@ -27,7 +27,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==============================================================================
-# DATABASE INITIALIZATION (PERMANENT VAULT)
+# DATABASE INITIALIZATION (PERMANENT VAULT & VEHICLE CAPACITY MASTER)
 # ==============================================================================
 def init_db():
     try:
@@ -41,12 +41,41 @@ def init_db():
                 file_blob BLOB
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vehicle_capacity_master (
+                vehicle_no TEXT PRIMARY KEY,
+                actual_capacity_mt REAL
+            )
+        """)
         conn.commit()
         conn.close()
     except:
         pass
 
 init_db()
+
+def get_saved_vehicle_capacities():
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        df_cap = pd.read_sql("SELECT vehicle_no, actual_capacity_mt FROM vehicle_capacity_master", conn)
+        conn.close()
+        return dict(zip(df_cap['vehicle_no'].astype(str).str.strip().str.upper(), df_cap['actual_capacity_mt']))
+    except:
+        return {}
+
+def save_vehicle_capacity(veh_no, cap_mt):
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt) VALUES (?, ?)",
+            (str(veh_no).strip().upper(), float(cap_mt))
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        return False
 
 # ==============================================================================
 # SESSION STATE MANAGEMENT
@@ -83,22 +112,7 @@ def load_and_clean_dataframe(file_bytes, file_name):
     return df
 
 # ==============================================================================
-# MOCK VAHAN / SMART VEHICLE CAPACITY PROFILER
-# ==============================================================================
-def get_vehicle_payload_limit(veh_no):
-    v_str = str(veh_no).upper()
-    # Smart classification based on vehicle series or standard commercial slabs
-    if "14" in v_str or "24" in v_str:
-        return 35.0  # Multi-axle heavy trailer / 14-Tyre (35 MT)
-    elif "10" in v_str or "12" in v_str:
-        return 25.0  # 10-Tyre Heavy Truck (25 MT)
-    elif "09" in v_str or "07" in v_str:
-        return 16.0  # Medium commercial / LPT (16 MT)
-    else:
-        return 28.0  # Standard Default Limit (28 MT)
-
-# ==============================================================================
-# UI STYLING & LIVE CLOCK HEADER
+# UI STYLING & HIGH-CONTRAST WHITE TEXT LIVE CLOCK HEADER
 # ==============================================================================
 st.markdown("""
     <style>
@@ -152,9 +166,9 @@ col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
     st.markdown("""
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
-            <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & VAHAN AI Hub</h2>
+            <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault Storage, Smart VAHAN Capacity Lookup, Vehicle Tonnage, Manual Calculator & Exports.
+                Permanent Vault, Merge Mode, Vehicle Tonnage (F2 & BAG), Actual VAHAN Master, Manual Calculator, Print & Email.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -165,7 +179,7 @@ with col_h2:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==============================================================================
-# LEFT SIDEBAR: DYNAMIC VAULT UPLOADER & MERGE CONTROLLER
+# LEFT SIDEBAR: DYNAMIC VAULT UPLOADER & VEHICLE CAPACITY MASTER MANAGER
 # ==============================================================================
 with st.sidebar:
     st.markdown("### 📂 Upload / Append Billing Export")
@@ -212,6 +226,17 @@ with st.sidebar:
                     st.rerun()
         except Exception as err_file:
             st.error(f"❌ Upload error: {str(err_file)}")
+
+    st.markdown("---")
+    st.markdown("### 🚛 Manage Actual Vehicle Capacity (VAHAN Master)")
+    with st.expander("🛠️ Set Actual Capacity for Vehicle"):
+        with st.form("veh_cap_form"):
+            input_veh = st.text_input("Vehicle Number (e.g., PB03AA9029)")
+            input_cap = st.number_input("Actual Legal Capacity (MT)", min_value=1.0, max_value=60.0, value=28.0, step=0.5)
+            sub_cap_btn = st.form_submit_button("💾 Save Vehicle Capacity", type="primary")
+            if sub_cap_btn and input_veh:
+                save_vehicle_capacity(input_veh, input_cap)
+                st.success(f"✅ Capacity for `{input_veh.upper()}` saved as `{input_cap} MT`!")
 
     st.markdown("---")
     st.markdown("### 🗂️ Select File from Vault")
@@ -297,10 +322,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR & VAHAN SMART CAPACITY LOOKUP
+    # VEHICLE TONNAGE CALCULATOR & ACTUAL VAHAN CAPACITY LOOKUP
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator & VAHAN Capacity Lookup", expanded=True):
-        st.markdown("Select Vehicle Number to automatically fetch official carrying capacity and verify tonnage load.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Billing Type F2 & BAG Slabs)", expanded=True):
+        st.markdown("Select Vehicle Number and Billing Date to view exact bag breakdown (50kg vs 25kg), Tonnage, and Actual VAHAN Compliance Audit.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -345,8 +370,8 @@ if st.session_state.active_df is not None:
             if unique_vehicles:
                 sel_vehicle = st.selectbox("🚛 Select Vehicle Number:", options=unique_vehicles, key="calc_veh_select")
                 
-                # Fetch online/Vahan estimated capacity for selected vehicle
-                vahan_legal_limit = get_vehicle_payload_limit(sel_vehicle)
+                saved_vahan_caps = get_saved_vehicle_capacities()
+                actual_vahan_limit = saved_vahan_caps.get(str(sel_vehicle).strip().upper(), 28.0)
 
                 veh_subset = calc_df[calc_df[veh_col].astype(str) == sel_vehicle]
                 unique_dates = sorted(veh_subset[date_col].dropna().astype(str).unique().tolist()) if date_col and not veh_subset.empty else ["All Dates"]
@@ -386,8 +411,8 @@ if st.session_state.active_df is not None:
                 vb1, vb2, vb3, vb4 = st.columns(4)
                 vb1.metric("📦 50 Kg Bags", f"{int(b50_total):,} Bags")
                 vb2.metric("📦 25 Kg Bags", f"{int(b25_total):,} Bags")
-                vb3.metric("📊 Total Bags", f"{int(b50_total + b25_total):,} Bags")
-                vb4.metric("🛡️ VAHAN Legal Limit", f"{vahan_legal_limit} MT")
+                vb3.metric("📊 Total Volume", f"{int(b50_total + b25_total):,} Bags")
+                vb4.metric("🛡️ Actual VAHAN Limit", f"{actual_vahan_limit} MT")
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 c_res1, c_res2 = st.columns(2)
@@ -396,18 +421,15 @@ if st.session_state.active_df is not None:
                 with c_res2:
                     st.metric("🔹 Standard Slabs (Opt 2: 50.0 & 25.0)", f"{mt2:,.3f} MT", f"{w1_opt2:,.2f} Kgs")
 
-                # ==============================================================
-                # VAHAN SMART OVERLOAD AUDIT GUARD
-                # ==============================================================
-                if mt1 > vahan_legal_limit:
-                    st.error(f"🚨 **VAHAN Overload Alert:** Vehicle `{sel_vehicle}` carrying **{mt1:,.3f} MT** has exceeded its official registered capacity limit of **{vahan_legal_limit} MT**!")
+                if mt1 > actual_vahan_limit:
+                    st.error(f"🚨 **Actual VAHAN Overload Alert:** Vehicle `{sel_vehicle}` carrying **{mt1:,.3f} MT** has exceeded its actual registered capacity limit of **{actual_vahan_limit} MT**!")
                 else:
-                    st.success(f"✅ **VAHAN Compliance Audit:** Vehicle `{sel_vehicle}` load (**{mt1:,.3f} MT**) is strictly within its registered capacity limit ({vahan_legal_limit} MT).")
+                    st.success(f"✅ **Actual VAHAN Compliance Audit:** Vehicle `{sel_vehicle}` load (**{mt1:,.3f} MT**) is strictly within its actual registered capacity limit ({actual_vahan_limit} MT).")
 
                 with st.expander("📊 View All Vehicles Tonnage Summary Table", expanded=False):
                     summary_rows = []
                     for v in unique_vehicles:
-                        v_limit = get_vehicle_payload_limit(v)
+                        v_cap = saved_vahan_caps.get(str(v).strip().upper(), 28.0)
                         v_subset = calc_df[calc_df[veh_col].astype(str) == v]
                         v_50, v_25 = 0.0, 0.0
                         for _, vr in v_subset.iterrows():
@@ -427,7 +449,7 @@ if st.session_state.active_df is not None:
                         std_mt = (v_50 * 50.0 + v_25 * 25.0) / 1000.0
                         
                         audit_status = "Compliant"
-                        if prec_mt > v_limit:
+                        if prec_mt > v_cap:
                             audit_status = "⚠️ Overloaded (> Limit)"
 
                         summary_rows.append({
@@ -436,7 +458,7 @@ if st.session_state.active_df is not None:
                             "25Kg Bags": int(v_25),
                             "Total Bags": tot_bags,
                             "Precision MT": round(prec_mt, 3),
-                            "VAHAN Limit (MT)": v_limit,
+                            "Actual Limit (MT)": v_cap,
                             "Audit Status": audit_status
                         })
                     
