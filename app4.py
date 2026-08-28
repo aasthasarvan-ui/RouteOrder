@@ -61,6 +61,30 @@ if "ng_reset_token" not in st.session_state:
     st.session_state.ng_reset_token = 0
 
 # ==============================================================================
+# SMART DATAFRAME CLEANING & HEADER DETECTION
+# ==============================================================================
+def load_and_clean_dataframe(file_bytes, file_name):
+    if file_name.endswith('.csv'):
+        df = pd.read_csv(io.BytesIO(file_bytes))
+    else:
+        excel_obj = pd.ExcelFile(io.BytesIO(file_bytes))
+        sheet_target = 'Sheet1' if 'Sheet1' in excel_obj.sheet_names else excel_obj.sheet_names[0]
+        df = pd.read_excel(excel_obj, sheet_name=sheet_target)
+    
+    # Check if header is misplaced (e.g. Unnamed columns)
+    if any(str(c).startswith("Unnamed") for c in df.columns):
+        for idx, row in df.head(10).iterrows():
+            row_str = str(row.values).lower()
+            if "vehicle" in row_str or "quantity" in row_str or "billing type" in row_str:
+                df.columns = df.iloc[idx]
+                df = df.iloc[idx+1:].reset_index(drop=True)
+                break
+    
+    # Drop completely empty rows/columns
+    df = df.dropna(how='all').reset_index(drop=True)
+    return df
+
+# ==============================================================================
 # UI STYLING & HIGH-CONTRAST WHITE TEXT LIVE CLOCK HEADER
 # ==============================================================================
 st.markdown("""
@@ -117,7 +141,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent BLOB Storage, ID Reset, Vehicle Tonnage (F2 & BAG), Manual Calculator & Excel/Email Export.
+                Permanent Vault Storage, Vehicle Tonnage (F2 & BAG), Manual Calculator & Excel/Email Export.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -128,96 +152,90 @@ with col_h2:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==============================================================================
-# LEFT SIDEBAR: UPLOADER & TABLE NAVIGATION WITH ID RESET
+# LEFT SIDEBAR: DYNAMIC VAULT UPLOADER & SAVED FILES SELECTOR
 # ==============================================================================
 with st.sidebar:
-    st.markdown("### 📂 Upload Billing Export (.xlsx / .csv)")
-    uploaded_file = st.file_uploader("Upload File", type=["xlsx", "csv"], key="sidebar_uploader")
+    st.markdown("### 📂 Upload New Billing Export")
+    uploaded_file = st.file_uploader("Upload File (.xlsx / .csv)", type=["xlsx", "csv"], key="sidebar_uploader")
 
     if uploaded_file is not None:
         try:
             file_bytes = uploaded_file.getvalue()
-            if uploaded_file.name.endswith('.csv'):
-                raw_df = pd.read_csv(io.BytesIO(file_bytes))
-            else:
-                excel_obj = pd.ExcelFile(io.BytesIO(file_bytes))
-                sheet_target = 'Sheet1' if 'Sheet1' in excel_obj.sheet_names else excel_obj.sheet_names[0]
-                raw_df = pd.read_excel(excel_obj, sheet_name=sheet_target)
+            temp_df = load_and_clean_dataframe(file_bytes, uploaded_file.name)
 
-            if st.button("💾 Save & Replace in Permanent DB", type="primary"):
+            if st.button("💾 Save to Permanent Vault", type="primary"):
                 conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
                 upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
                 cursor = conn.cursor()
                 
-                cursor.execute("DELETE FROM saved_files")
-                try:
-                    cursor.execute("DELETE FROM sqlite_sequence WHERE name='saved_files'")
-                except:
-                    pass
-
                 cursor.execute(
                     "INSERT INTO saved_files (upload_date, file_name, file_blob) VALUES (?, ?, ?)",
                     (upload_timestamp, uploaded_file.name, sqlite3.Binary(file_bytes))
                 )
                 conn.commit()
                 conn.close()
-                st.session_state.active_df = raw_df
-                st.success("✅ File saved permanently! Old data replaced & IDs reset.")
+                st.session_state.active_df = temp_df
+                st.success(f"✅ '{uploaded_file.name}' saved successfully in Vault!")
                 st.rerun()
         except Exception as err_file:
             st.error(f"❌ Upload error: {str(err_file)}")
 
     st.markdown("---")
-    st.markdown("### 🗂️ Select Table from Database")
+    st.markdown("### 🗂️ Select File from Vault (No Re-upload needed)")
     
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
-        saved_records = pd.read_sql("SELECT id, upload_date, file_name FROM saved_files", conn)
+        saved_records = pd.read_sql("SELECT id, upload_date, file_name FROM saved_files ORDER BY id DESC", conn)
         conn.close()
     except:
         saved_records = pd.DataFrame()
 
     if not saved_records.empty:
-        for _, row in saved_records.iterrows():
-            btn_label = f"📁 [{row['id']}] {row['file_name']}"
-            if st.button(btn_label, key=f"tbl_btn_{row['id']}"):
-                st.session_state.selected_file_id = row['id']
+        file_options = {f"[{row['id']}] {row['file_name']} ({row['upload_date']})": row['id'] for _, row in saved_records.iterrows()}
+        selected_file_label = st.selectbox("Choose Saved File:", options=list(file_options.keys()))
+        
+        selected_id = file_options[selected_file_label]
+        
+        col_load, col_del = st.columns(2)
+        with col_load:
+            if st.button("📂 Load File", type="primary"):
                 try:
                     conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
                     cursor = conn.cursor()
-                    cursor.execute("SELECT file_blob, file_name FROM saved_files WHERE id = ?", (row['id'],))
+                    cursor.execute("SELECT file_blob, file_name FROM saved_files WHERE id = ?", (selected_id,))
                     row_data = cursor.fetchone()
                     conn.close()
                     if row_data:
                         blob_data, fname = row_data
-                        df_from_db = pd.read_csv(io.BytesIO(blob_data)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(blob_data), sheet_name=0)
+                        df_from_db = load_and_clean_dataframe(blob_data, fname)
                         st.session_state.active_df = df_from_db
+                        st.success(f"✅ Loaded '{fname}' successfully!")
                         st.rerun()
                 except Exception as load_err:
                     st.error(f"Load error: {load_err}")
         
-        if st.button("🗑️ Delete Table & Reset IDs", type="secondary"):
-            conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM saved_files")
-            try:
-                cursor.execute("DELETE FROM sqlite_sequence WHERE name='saved_files'")
-            except:
-                pass
-            conn.commit()
-            conn.close()
-            st.session_state.active_df = None
-            st.success("🗑️ Table vanished and database IDs reset!")
-            st.rerun()
+        with col_del:
+            if st.button("🗑️ Delete File", type="secondary"):
+                try:
+                    conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM saved_files WHERE id = ?", (selected_id,))
+                    conn.commit()
+                    conn.close()
+                    st.session_state.active_df = None
+                    st.success("🗑️ File deleted from vault!")
+                    st.rerun()
+                except Exception as del_err:
+                    st.error(f"Delete error: {del_err}")
     else:
-        st.info("No saved tables found. Upload a file above.")
+        st.info("No saved files in vault. Upload a file above.")
 
 # ==============================================================================
-# AUTO-LOAD FROM DB IF SESSION IS EMPTY
+# AUTO-LOAD LATEST FILE FROM VAULT IF SESSION IS EMPTY
 # ==============================================================================
 if st.session_state.active_df is None and not saved_records.empty:
     try:
-        latest_id = saved_records.iloc[-1]['id']
+        latest_id = saved_records.iloc[0]['id']
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("SELECT file_blob, file_name FROM saved_files WHERE id = ?", (latest_id,))
@@ -225,7 +243,7 @@ if st.session_state.active_df is None and not saved_records.empty:
         conn.close()
         if row_data:
             blob_data, fname = row_data
-            df_from_db = pd.read_csv(io.BytesIO(blob_data)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(blob_data), sheet_name=0)
+            df_from_db = load_and_clean_dataframe(blob_data, fname)
             st.session_state.active_df = df_from_db
     except:
         pass
@@ -247,27 +265,20 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (WITH ROBUST COLUMN AUTO-DETECTION & MAPPING)
+    # VEHICLE TONNAGE CALCULATOR
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Billing Type F2 & BAG Slabs)", expanded=True):
         st.markdown("Select Vehicle Number and Billing Date to instantly compute exact Precision vs Standard Tonnage based on your billing records.")
         
-        # Robust Column Mapping Assistant / Auto-Detection
-        all_cols_list = list(working_df.columns)
+        all_cols_list = [str(c) for c in working_df.columns]
         
-        # Find Vehicle Column
-        default_veh_idx = 0
+        default_veh_idx, default_qty_idx = 0, 0
         for idx, c in enumerate(all_cols_list):
-            if any(k in str(c).lower() for k in ["vehicle", "truck", "veh"]):
+            c_l = c.lower()
+            if "vehicle" in c_l or "truck" in c_l or "veh" in c_l:
                 default_veh_idx = idx
-                break
-        
-        # Find Quantity Column
-        default_qty_idx = 0
-        for idx, c in enumerate(all_cols_list):
-            if any(k in str(c).lower() for k in ["invoiced quantity", "billing quantity", "qty", "quantity"]):
+            if "quantity" in c_l or "qty" in c_l:
                 default_qty_idx = idx
-                break
 
         col_m1, col_m2 = st.columns(2)
         with col_m1:
@@ -275,7 +286,6 @@ if st.session_state.active_df is not None:
         with col_m2:
             qty_col = st.selectbox("📌 Select Quantity Column:", options=all_cols_list, index=default_qty_idx, key="sel_qty_col_map")
 
-        # Find Date, Type, Unit, Desc columns automatically
         date_col, btype_col, unit_col, desc_col = None, None, None, None
         for c in working_df.columns:
             c_low = str(c).lower()
@@ -294,6 +304,10 @@ if st.session_state.active_df is not None:
                 calc_df = calc_df[calc_df[btype_col].astype(str).str.upper().str.contains("F2", na=False)]
             if unit_col:
                 calc_df = calc_df[calc_df[unit_col].astype(str).str.upper().str.contains("BAG", na=False)]
+
+            # Filter out rows where vehicle name looks like a summary total
+            if not calc_df.empty:
+                calc_df = calc_df[~calc_df[veh_col].astype(str).str.lower().str.contains("total", na=False)]
 
             unique_vehicles = sorted(calc_df[veh_col].dropna().astype(str).unique().tolist()) if not calc_df.empty else []
             
@@ -314,7 +328,12 @@ if st.session_state.active_df is not None:
                 b25_total = 0.0
                 
                 for _, r in final_veh_rows.iterrows():
-                    q = float(r[qty_col]) if pd.notna(r[qty_col]) else 0.0
+                    val = r[qty_col]
+                    try:
+                        q = float(val) if pd.notna(val) else 0.0
+                    except (ValueError, TypeError):
+                        q = 0.0
+                        
                     d_text = str(r[desc_col]).upper() if desc_col and pd.notna(r[desc_col]) else ""
                     
                     if "25" in d_text:
