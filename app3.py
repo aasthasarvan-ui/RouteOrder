@@ -3126,7 +3126,7 @@ import io
 import sqlite3
 import smtplib
 from email.message import EmailMessage
-import streamlit.components.v1 as components
+import plotly.express as px
 
 # ==============================================================================
 # PAGE CONFIGURATION & TIMEZONE
@@ -3206,7 +3206,7 @@ if "selected_file_id" not in st.session_state:
     st.session_state.selected_file_id = None
 
 # ==============================================================================
-# UI STYLING & FORCED WHITE TEXT LIVE CLOCK HEADER
+# UI STYLING & HIGH-CONTRAST WHITE TEXT LIVE CLOCK HEADER
 # ==============================================================================
 st.markdown("""
     <style>
@@ -3224,7 +3224,7 @@ st.markdown("""
             margin-bottom: 20px;
         }
         .live-clock-box {
-            background: #1e293b !important;
+            background: #1e293b;
             color: #ffffff !important;
             padding: 14px 22px;
             border-radius: 12px;
@@ -3239,7 +3239,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Live Running Clock Component with Forced White Inline Style
 clock_html = """
     <div style="width: 100%;">
         <div class="live-clock-box" id="liveClock" style="color: #ffffff !important;">🕒 Initializing Clock...</div>
@@ -3263,13 +3262,13 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">⏳ SAP Production & Expiry Intelligence Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent BLOB Storage, ID Reset, Live Clock, Multi-Select Rules & HTML Email Dispatch.
+                Permanent BLOB Storage, ID Reset, Live Clock, Visual Analytics, FEFO Simulator & HTML Email Dispatch.
             </p>
         </div>
     """, unsafe_allow_html=True)
 with col_h2:
     st.markdown("<br>", unsafe_allow_html=True)
-    components.html(clock_html, height=75)
+    st.components.v1.html(clock_html, height=75)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -3283,24 +3282,26 @@ default_shelf_days = st.number_input(
 )
 
 # ==============================================================================
-# CORE PROCESSING FUNCTION
+# CORE PROCESSING FUNCTION WITH SMART COLUMN MAPPING ASSISTANT
 # ==============================================================================
-def process_dataframe(df_raw):
+def process_dataframe(df_raw, manual_mfg=None, manual_mat=None):
     try:
         date_keywords = ["production date", "mfg date", "production_date", "mfg_date", "mfg", "production"]
-        mfg_col_found = None
-        for col_name in df_raw.columns:
-            c_str = str(col_name).strip().lower()
-            if any(kw in c_str for kw in date_keywords):
-                mfg_col_found = col_name
-                break
+        mfg_col_found = manual_mfg
+        if not mfg_col_found:
+            for col_name in df_raw.columns:
+                c_str = str(col_name).strip().lower()
+                if any(kw in c_str for kw in date_keywords):
+                    mfg_col_found = col_name
+                    break
 
-        mat_col_found = None
-        for col_name in df_raw.columns:
-            c_low = str(col_name).strip().lower()
-            if any(k in c_low for k in ["material", "sku", "item", "code", "product"]):
-                mat_col_found = col_name
-                break
+        mat_col_found = manual_mat
+        if not mat_col_found:
+            for col_name in df_raw.columns:
+                c_low = str(col_name).strip().lower()
+                if any(k in c_low for k in ["material", "sku", "item", "code", "product"]):
+                    mat_col_found = col_name
+                    break
 
         if mfg_col_found is not None:
             today_dt = pd.Timestamp(get_ist_now().date())
@@ -3341,13 +3342,12 @@ def process_dataframe(df_raw):
             
             df_raw['Inventory_Remarks'] = df_raw['Remaining_Shelf_Life_Days'].apply(make_remark)
             
-            return df_raw, mat_col_found
+            return df_raw, mat_col_found, mfg_col_found
         else:
-            st.warning("⚠️ File mein 'Production Date' column auto-detect nahi ہو paya.")
-            return None, None
+            return None, None, None
     except Exception as e_proc:
         st.error(f"❌ Processing error: {str(e_proc)}")
-        return None, None
+        return None, None, None
 
 # ==============================================================================
 # LEFT SIDEBAR: COLLAPSIBLE MASTER SUITE TAB, UPLOADER & TABLE NAVIGATION
@@ -3373,7 +3373,17 @@ with st.sidebar:
                 sheet_target = 'SAPUI5 Export' if 'SAPUI5 Export' in excel_obj.sheet_names else excel_obj.sheet_names[0]
                 raw_df = pd.read_excel(excel_obj, sheet_name=sheet_target)
 
-            processed_df, _ = process_dataframe(raw_df)
+            # Smart Column Mapping Assistant Overrides if auto-detect fails
+            st.markdown("---")
+            st.markdown("**🔍 Column Mapping Assistant:**")
+            all_cols = list(raw_df.columns)
+            mfg_override = st.selectbox("Select Production/Mfg Date Column", options=["-- Auto Detect --"] + all_cols)
+            mat_override = st.selectbox("Select Material Code Column", options=["-- Auto Detect --"] + all_cols)
+
+            man_mfg = None if mfg_override == "-- Auto Detect --" else mfg_override
+            man_mat = None if mat_override == "-- Auto Detect --" else mat_override
+
+            processed_df, _, _ = process_dataframe(raw_df, manual_mfg=man_mfg, manual_mat=man_mat)
             if processed_df is not None:
                 if st.button("💾 Save & Replace in Permanent DB", type="primary"):
                     conn = sqlite3.connect("inventory_master_hub.db", check_same_thread=False)
@@ -3395,6 +3405,8 @@ with st.sidebar:
                     st.session_state.active_df = processed_df
                     st.success("✅ File saved permanently! Old data replaced & IDs reset.")
                     st.rerun()
+            else:
+                st.warning("⚠️ Production Date column nahi mila. Please Mapping Assistant se select karein.")
         except Exception as err_file:
             st.error(f"❌ Upload error: {str(err_file)}")
 
@@ -3422,7 +3434,7 @@ with st.sidebar:
                     if row_data:
                         blob_data, fname = row_data
                         df_from_db = pd.read_csv(io.BytesIO(blob_data)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(blob_data))
-                        processed_df, _ = process_dataframe(df_from_db)
+                        processed_df, _, _ = process_dataframe(df_from_db)
                         st.session_state.active_df = processed_df
                         st.rerun()
                 except Exception as load_err:
@@ -3458,7 +3470,7 @@ if st.session_state.active_df is None and not saved_records.empty:
         if row_data:
             blob_data, fname = row_data
             df_from_db = pd.read_csv(io.BytesIO(blob_data)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(blob_data))
-            processed_df, _ = process_dataframe(df_from_db)
+            processed_df, _, _ = process_dataframe(df_from_db)
             st.session_state.active_df = processed_df
     except:
         pass
@@ -3534,6 +3546,7 @@ if st.session_state.active_df is not None:
                     st.success(f"✅ Rules updated successfully for selected materials!")
                     st.rerun()
 
+    # Metrics Display
     if "Shelf_Life_Status" in working_df.columns:
         status_counts = working_df["Shelf_Life_Status"].value_counts()
         m1, m2, m3 = st.columns(3)
@@ -3541,11 +3554,55 @@ if st.session_state.active_df is not None:
         m2.metric("🟡 Critical (<30 Days)", int(status_counts.get("🟡 Critical (<30 Days)", 0)))
         m3.metric("🔴 Expired", int(status_counts.get("🔴 Expired", 0)))
 
+        # ======================================================================
+        # NEW FEATURE 1: PLOTLY VISUAL CHARTS & ANALYTICS
+        # ======================================================================
+        with st.expander("📈 View Expiry Risk & Stock Health Visual Analytics", expanded=False):
+            chart_col1, chart_col2 = st.columns(2)
+            with chart_col1:
+                fig_pie = px.pie(
+                    names=status_counts.index, 
+                    values=status_counts.values, 
+                    title="Stock Health Distribution",
+                    hole=0.4,
+                    color=status_counts.index,
+                    color_discrete_map={"🟢 Fresh Stock": "#22c55e", "🟡 Critical (<30 Days)": "#eab308", "🔴 Expired": "#ef4444", "Unknown Date": "#94a3b8"}
+                )
+                fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font_color="#f8fafc")
+                st.plotly_chart(fig_pie, use_container_width=True)
+            with chart_col2:
+                fig_bar = px.bar(
+                    x=status_counts.index, 
+                    y=status_counts.values, 
+                    title="Stock Count by Status Category",
+                    labels={'x': 'Status Category', 'y': 'Total Items'},
+                    color=status_counts.index,
+                    color_discrete_map={"🟢 Fresh Stock": "#22c55e", "🟡 Critical (<30 Days)": "#eab308", "🔴 Expired": "#ef4444", "Unknown Date": "#94a3b8"}
+                )
+                fig_bar.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#f8fafc")
+                st.plotly_chart(fig_bar, use_container_width=True)
+
+        # ======================================================================
+        # NEW FEATURE 2: FEFO BATCH DISPATCH SIMULATOR
+        # ======================================================================
+        with st.expander("⏳ FEFO (First-Expired, First-Out) Dispatch Simulator", expanded=False):
+            st.markdown("Select a material to find which batch/production date should be dispatched first according to FEFO rule.")
+            if mat_col_target is not None:
+                sim_mats = sorted(working_df[mat_col_target].dropna().astype(str).unique().tolist())
+                chosen_sim_mat = st.selectbox("Select Material for Dispatch Simulation:", options=sim_mats, key="fefo_sim_select")
+                
+                if chosen_sim_mat:
+                    mat_subset = working_df[working_df[mat_col_target].astype(str) == chosen_sim_mat].copy()
+                    if 'Remaining_Shelf_Life_Days' in mat_subset.columns:
+                        mat_subset = mat_subset.sort_values(by='Remaining_Shelf_Life_Days', ascending=True)
+                        st.markdown(f"**Recommended Dispatch Queue for Material `{chosen_sim_mat}` (Earliest Expiry First):**")
+                        st.dataframe(mat_subset.head(10), use_container_width=True)
+
     st.markdown("<br>", unsafe_allow_html=True)
     st.dataframe(working_df, use_container_width=True)
 
     # ==========================================================================
-    # ACTION BUTTONS: PRINT (FITTED COLUMNS), EXCEL & PROFESSIONAL HTML EMAIL
+    # ACTION BUTTONS: HTML PRINT VIEW, EXCEL DOWNLOAD & LIVE EMAIL DISPATCH
     # ==========================================================================
     st.markdown("---")
     st.markdown("### 🚀 Export, Print & Email Options")
