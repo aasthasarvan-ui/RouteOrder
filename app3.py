@@ -3206,7 +3206,7 @@ if "selected_file_id" not in st.session_state:
     st.session_state.selected_file_id = None
 
 # ==============================================================================
-# UI STYLING & LIVE RUNNING DIGITAL CLOCK HEADER
+# UI STYLING & FORCED WHITE TEXT LIVE CLOCK HEADER
 # ==============================================================================
 st.markdown("""
     <style>
@@ -3224,7 +3224,7 @@ st.markdown("""
             margin-bottom: 20px;
         }
         .live-clock-box {
-            background: #1e293b;
+            background: #1e293b !important;
             color: #ffffff !important;
             padding: 14px 22px;
             border-radius: 12px;
@@ -3239,16 +3239,18 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Live Running Clock Component (Seconds auto-syncing)
+# Live Running Clock Component with Forced White Inline Style
 clock_html = """
     <div style="width: 100%;">
-        <div class="live-clock-box" id="liveClock">🕒 Initializing Clock...</div>
+        <div class="live-clock-box" id="liveClock" style="color: #ffffff !important;">🕒 Initializing Clock...</div>
     </div>
     <script>
         function updateClock() {
             const now = new Date();
             const options = { timeZone: 'Asia/Kolkata', hour12: true, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
-            document.getElementById('liveClock').innerHTML = '🕒 ' + now.toLocaleString('en-IN', options) + ' IST';
+            const clockEl = document.getElementById('liveClock');
+            clockEl.innerHTML = '🕒 ' + now.toLocaleString('en-IN', options) + ' IST';
+            clockEl.style.color = '#ffffff';
         }
         setInterval(updateClock, 1000);
         updateClock();
@@ -3341,7 +3343,7 @@ def process_dataframe(df_raw):
             
             return df_raw, mat_col_found
         else:
-            st.warning("⚠️ File mein 'Production Date' column auto-detect nahi ho paya.")
+            st.warning("⚠️ File mein 'Production Date' column auto-detect nahi ہو paya.")
             return None, None
     except Exception as e_proc:
         st.error(f"❌ Processing error: {str(e_proc)}")
@@ -3378,7 +3380,6 @@ with st.sidebar:
                     upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
                     cursor = conn.cursor()
                     
-                    # Auto-replace old records and reset ID sequence
                     cursor.execute("DELETE FROM saved_files")
                     try:
                         cursor.execute("DELETE FROM sqlite_sequence WHERE name='saved_files'")
@@ -3552,7 +3553,6 @@ if st.session_state.active_df is not None:
     col_act1, col_act2, col_act3 = st.columns(3)
 
     with col_act1:
-        # Fully responsive print HTML layout preventing column cut
         html_table_string = working_df.to_html(classes='table table-striped', index=False, border=0)
         print_html_code = f"""
             <html>
@@ -3641,7 +3641,6 @@ if st.session_state.active_df is not None:
                             msg['From'] = sender_email
                             msg['To'] = ", ".join(recipients)
                             
-                            # Professional HTML Body formatting embedding the table
                             table_html_snippet = working_df.head(50).to_html(index=False, border=1, classes='styled-table')
                             html_content = f"""
                             <html>
@@ -3660,10 +3659,9 @@ if st.session_state.active_df is not None:
                             </body>
                             </html>
                             """
-                            msg.set_content(email_body) # Fallback text
+                            msg.set_content(email_body)
                             msg.add_alternative(html_content, subtype='html')
 
-                            # Attach Excel report
                             excel_data = io.BytesIO()
                             working_df.to_excel(excel_data, index=False)
                             excel_data.seek(0)
