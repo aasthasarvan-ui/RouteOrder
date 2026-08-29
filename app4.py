@@ -532,12 +532,22 @@ if st.session_state.active_df is not None:
             except:
                 pass
         with col_m_btn4:
-            del_veh_input = st.text_input("Enter Vehicle No to Delete:", placeholder="e.g. PB03AA9029", key="del_veh_input_box")
-            if st.button("❌ Delete Vehicle", key="btn_master_delete"):
-                if del_veh_input:
-                    delete_vehicle_from_master(del_veh_input)
-                    st.success(f"❌ Vehicle `{del_veh_input.upper()}` deleted from master!")
-                    st.rerun()
+            try:
+                conn_del = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+                master_veh_list = pd.read_sql("SELECT vehicle_no FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_del)['vehicle_no'].tolist()
+                conn_del.close()
+            except:
+                master_veh_list = []
+                
+            if master_veh_list:
+                sel_veh_to_del = st.selectbox("Select Vehicle to Delete:", options=["-- Select --"] + master_veh_list, key="sel_veh_to_del")
+                if st.button("❌ Delete Selected Vehicle", key="btn_master_delete"):
+                    if sel_veh_to_del and sel_veh_to_del != "-- Select --":
+                        delete_vehicle_from_master(sel_veh_to_del)
+                        st.success(f"❌ Vehicle `{sel_veh_to_del}` deleted from master!")
+                        st.rerun()
+            else:
+                st.info("No vehicles in master registry.")
 
         # Master Table Search & View
         master_search_term = st.text_input("🔍 Search Vehicle in Master Registry:", "", key="master_search_box")
@@ -1038,7 +1048,6 @@ if st.session_state.active_df is not None:
                             msg.set_content(email_body)
                             msg.add_alternative(html_content, subtype='html')
 
-    # Quick follow-up question for open-ended interaction
                             excel_data = io.BytesIO()
                             working_df.to_excel(excel_data, index=False)
                             excel_data.seek(0)
@@ -1060,7 +1069,3 @@ if st.session_state.active_df is not None:
                             st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
     st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya saved table select kijiye.")
-
-# ==============================================================================
-# FOLLOW-UP PROMPT
-# ==============================================================================
