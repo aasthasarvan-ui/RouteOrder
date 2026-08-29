@@ -169,7 +169,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault, Merge Mode, Multi-Select Billing Docs, Item-wise Separate Details (BAG & EA), Actual VAHAN Master.
+                Permanent Vault, Merge Mode, Multi-Select Billing Docs, Separate BAG & EA Weight Calculations, Actual VAHAN Master.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -323,10 +323,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (BAG & EA SUPPORT WITH ITEM-WISE BREAKDOWN)
+    # VEHICLE TONNAGE CALCULATOR (SEPARATE BAGS & EA CALCULATIONS)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (BAG & EA Unit Support)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Date. Displays total tonnage and **item-wise separate details and weights** for each line item.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Separate BAG & EA Calculations)", expanded=True):
+        st.markdown("Select Vehicle Number and Billing Date. **BAGS** and **EA** weights are calculated and displayed completely separately.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -406,11 +406,14 @@ if st.session_state.active_df is not None:
                 else:
                     final_veh_rows = date_filtered_subset
 
-                total_weight_kgs_opt1 = 0.0
-                total_weight_kgs_opt2 = 0.0
+                # Separate Bag and EA calculations
+                bag_50_kgs = 0.0
+                bag_25_kgs = 0.0
                 bag_50_count = 0.0
                 bag_25_count = 0.0
+                
                 ea_total_qty = 0.0
+                ea_weight_kgs = 0.0
                 
                 item_details_list = []
                 
@@ -430,21 +433,18 @@ if st.session_state.active_df is not None:
                         match_wt = re.search(r'(\d+(?:\.\d+)?)\s*KG', d_text)
                         item_wt = float(match_wt.group(1)) if match_wt else 1.0
                         row_wt = q * item_wt
-                        total_weight_kgs_opt1 += row_wt
-                        total_weight_kgs_opt2 += row_wt
+                        ea_weight_kgs += row_wt
                         item_type = "EA (Loose Item)"
                     else:
                         if "25" in d_text:
                             bag_25_count += q
-                            row_wt = q * 25.120
-                            total_weight_kgs_opt1 += row_wt
-                            total_weight_kgs_opt2 += q * 25.0
+                            row_wt = q * 25.120 # Precision Opt 1 for bags
+                            bag_25_kgs += row_wt
                             item_type = "BAG (25 Kg)"
                         else:
                             bag_50_count += q
-                            row_wt = q * 50.120
-                            total_weight_kgs_opt1 += row_wt
-                            total_weight_kgs_opt2 += q * 50.0
+                            row_wt = q * 50.120 # Precision Opt 1 for bags
+                            bag_50_kgs += row_wt
                             item_type = "BAG (50 Kg)"
                     
                     item_details_list.append({
@@ -453,36 +453,45 @@ if st.session_state.active_df is not None:
                         "Unit": u_val,
                         "Item Type": item_type,
                         "Quantity": q,
-                        "Calculated Weight (Kgs)": round(row_wt, 3)
+                        "Weight (Kgs)": round(row_wt, 3)
                     })
 
-                mt1 = total_weight_kgs_opt1 / 1000.0
-                mt2 = total_weight_kgs_opt2 / 1000.0
+                total_bag_kgs_opt1 = bag_50_kgs + bag_25_kgs
+                total_bag_kgs_opt2 = (bag_50_count * 50.0) + (bag_25_count * 25.0)
+                
+                # Grand total weight for VAHAN compliance audit (Bags + EA combined net weight)
+                grand_total_kgs = total_bag_kgs_opt1 + ea_weight_kgs
+                mt_bags_opt1 = total_bag_kgs_opt1 / 1000.0
+                mt_bags_opt2 = total_bag_kgs_opt2 / 1000.0
+                mt_ea = ea_weight_kgs / 1000.0
+                grand_mt = grand_total_kgs / 1000.0
 
                 # LIVE POPULATED HEADER TOTALS
                 st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}`")
                 vb1, vb2, vb3, vb4 = st.columns(4)
-                vb1.metric("📦 50Kg / EA Qty", f"{int(bag_50_count + ea_total_qty):,}")
-                vb2.metric("📦 25 Kg Bags", f"{int(bag_25_count):,}")
-                vb3.metric("📊 Total Volume", f"{int(bag_50_count + bag_25_count + ea_total_qty):,}")
+                vb1.metric("📦 50 Kg Bags", f"{int(bag_50_count):,} Bags")
+                vb2.metric("📦 25 Kg Bags", f"{int(bag_25_count):,} Bags")
+                vb3.metric("📦 EA (Loose Qty)", f"{int(ea_total_qty):,}")
                 vb4.metric("🛡️ Actual VAHAN Limit", f"{actual_vahan_limit} MT")
 
                 st.markdown("<br>", unsafe_allow_html=True)
-                c_res1, c_res2 = st.columns(2)
+                c_res1, c_res2, c_res3 = st.columns(3)
                 with c_res1:
-                    st.metric("🔹 Precision Scale (Opt 1)", f"{mt1:,.3f} MT", f"{total_weight_kgs_opt1:,.2f} Kgs")
+                    st.metric("🔹 BAGS Tonnage (Opt 1)", f"{mt_bags_opt1:,.3f} MT", f"{total_bag_kgs_opt1:,.2f} Kgs")
                 with c_res2:
-                    st.metric("🔹 Standard Slabs (Opt 2)", f"{mt2:,.3f} MT", f"{total_weight_kgs_opt2:,.2f} Kgs")
+                    st.metric("🔹 EA (Loose) Weight", f"{mt_ea:,.3f} MT", f"{ea_weight_kgs:,.2f} Kgs")
+                with c_res3:
+                    st.metric("🚀 Grand Total Net Weight", f"{grand_mt:,.3f} MT", f"{grand_total_kgs:,.2f} Kgs")
 
-                if mt1 > actual_vahan_limit:
-                    st.error(f"🚨 **Actual VAHAN Overload Alert:** Vehicle `{sel_vehicle}` carrying **{mt1:,.3f} MT** has exceeded its actual registered capacity limit of **{actual_vahan_limit} MT**!")
+                if grand_mt > actual_vahan_limit:
+                    st.error(f"🚨 **Actual VAHAN Overload Alert:** Vehicle `{sel_vehicle}` carrying **{grand_mt:,.3f} MT** (Bags + EA) has exceeded its actual registered capacity limit of **{actual_vahan_limit} MT**!")
                 else:
-                    st.success(f"✅ **Actual VAHAN Compliance Audit:** Vehicle `{sel_vehicle}` load (**{mt1:,.3f} MT**) is strictly within its actual registered capacity limit ({actual_vahan_limit} MT).")
+                    st.success(f"✅ **Actual VAHAN Compliance Audit:** Vehicle `{sel_vehicle}` load (**{grand_mt:,.3f} MT**) is strictly within its actual registered capacity limit ({actual_vahan_limit} MT).")
 
                 # ==============================================================
-                # NEW TABLE: EACH ITEM DETAILS & SEPARATE WEIGHT
+                # ITEMIZED SEPARATE BREAKDOWN TABLE
                 # ==============================================================
-                st.markdown("#### 📋 Item-wise Detailed Breakdown (Each Material & Weight)")
+                st.markdown("#### 📋 Item-wise Detailed Breakdown (Separate BAGS & EA Weights)")
                 df_items = pd.DataFrame(item_details_list)
                 st.dataframe(df_items, use_container_width=True)
 
@@ -497,8 +506,9 @@ if st.session_state.active_df is not None:
                         b_doc = name[1] if isinstance(name, tuple) and len(name) > 1 else "N/A"
                         v_cap = saved_vahan_caps.get(str(v_no).strip().upper(), 28.0)
                         
-                        g_wt = 0.0
-                        g_50, g_25, g_ea = 0.0, 0.0, 0.0
+                        v_b_wt = 0.0
+                        v_ea_wt = 0.0
+                        v_50, v_25, v_ea = 0.0, 0.0, 0.0
                         for _, vr in group.iterrows():
                             vq_val = vr[qty_col]
                             try:
@@ -509,19 +519,20 @@ if st.session_state.active_df is not None:
                             vd_text = str(vr[desc_col]).upper() if desc_col and pd.notna(vr[desc_col]) else ""
                             
                             if "EA" in u_val:
-                                g_ea += vq
+                                v_ea += vq
                                 mw = re.search(r'(\d+(?:\.\d+)?)\s*KG', vd_text)
                                 iw = float(mw.group(1)) if mw else 1.0
-                                g_wt += vq * iw
+                                v_ea_wt += vq * iw
                             else:
                                 if "25" in vd_text:
-                                    g_25 += vq
-                                    g_wt += vq * 25.120
+                                    v_25 += vq
+                                    v_b_wt += vq * 25.120
                                 else:
-                                    g_50 += vq
-                                    g_wt += vq * 50.120
+                                    v_50 += vq
+                                    v_b_wt += vq * 50.120
                         
-                        prec_mt = g_wt / 1000.0
+                        tot_g_wt = v_b_wt + v_ea_wt
+                        prec_mt = tot_g_wt / 1000.0
                         audit_status = "Compliant"
                         if prec_mt > v_cap:
                             audit_status = "⚠️ Overloaded (> Limit)"
@@ -529,10 +540,12 @@ if st.session_state.active_df is not None:
                         summary_rows.append({
                             "Vehicle No": v_no,
                             "Billing Doc (Trip)": b_doc,
-                            "50Kg/EA": int(g_50 + g_ea),
-                            "25Kg Bags": int(g_25),
-                            "Total Qty": int(g_50 + g_25 + g_ea),
-                            "Precision MT": round(prec_mt, 3),
+                            "50Kg Bags": int(v_50),
+                            "25Kg Bags": int(v_25),
+                            "EA Qty": int(v_ea),
+                            "Bags MT": round(v_b_wt / 1000.0, 3),
+                            "EA MT": round(v_ea_wt / 1000.0, 3),
+                            "Total MT": round(prec_mt, 3),
                             "Actual Limit (MT)": v_cap,
                             "Audit Status": audit_status
                         })
