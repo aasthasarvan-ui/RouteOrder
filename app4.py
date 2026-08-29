@@ -113,6 +113,31 @@ def load_and_clean_dataframe(file_bytes, file_name):
     return df
 
 # ==============================================================================
+# ADVANCED KG / GM / LTR PARSER FOR DESCRIPTION
+# ==============================================================================
+def parse_description_weight(desc_text, qty):
+    d = str(desc_text).upper()
+    q = float(qty) if pd.notna(qty) else 0.0
+    
+    # Check for KG
+    match_kg = re.search(r'\b(\d+(?:\.\d+)?)\s*KG\b', d)
+    if match_kg:
+        return q * float(match_kg.group(1)), f"EA ({match_kg.group(1)} Kg/unit)"
+        
+    # Check for GM / GRAM
+    match_gm = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:GM|GRAM)\b', d)
+    if match_gm:
+        wt_kg = float(match_gm.group(1)) / 1000.0
+        return q * wt_kg, f"EA ({match_gm.group(1)} Gm/unit)"
+        
+    # Check for LTR / LITRE
+    match_ltr = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:LTR|LITRE)\b', d)
+    if match_ltr:
+        return q * float(match_ltr.group(1)), f"EA ({match_ltr.group(1)} Ltr/unit)"
+        
+    return 0.0, "EA (No Weight Found)"
+
+# ==============================================================================
 # UI STYLING & HIGH-CONTRAST WHITE TEXT LIVE CLOCK HEADER
 # ==============================================================================
 st.markdown("""
@@ -169,7 +194,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault, Merge Mode, Multi-Select Billing Docs, Separate BAG & EA Weight Calculations, Actual VAHAN Master.
+                Permanent Vault, Merge Mode, Multi-Select Billing Docs, KG/GM/LTR EA Parser, Actual VAHAN Master.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -323,10 +348,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (SEPARATE BAGS & EA CALCULATIONS)
+    # VEHICLE TONNAGE CALCULATOR (KG, GM, LTR PARSER FOR EA)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Separate BAG & EA Calculations)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Date. **BAGS** and **EA** weights are calculated and displayed completely separately.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (KG / GM / LTR EA Parser)", expanded=True):
+        st.markdown("Select Vehicle Number and Billing Date. Handles BAGS and extracts KG/GM/LTR weights for EA items separately.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -406,7 +431,6 @@ if st.session_state.active_df is not None:
                 else:
                     final_veh_rows = date_filtered_subset
 
-                # Separate Bag and EA calculations
                 bag_50_kgs = 0.0
                 bag_25_kgs = 0.0
                 bag_50_count = 0.0
@@ -430,20 +454,17 @@ if st.session_state.active_df is not None:
                     
                     if "EA" in u_val:
                         ea_total_qty += q
-                        match_wt = re.search(r'(\d+(?:\.\d+)?)\s*KG', d_text)
-                        item_wt = float(match_wt.group(1)) if match_wt else 1.0
-                        row_wt = q * item_wt
+                        row_wt, item_type = parse_description_weight(d_text, q)
                         ea_weight_kgs += row_wt
-                        item_type = "EA (Loose Item)"
                     else:
                         if "25" in d_text:
                             bag_25_count += q
-                            row_wt = q * 25.120 # Precision Opt 1 for bags
+                            row_wt = q * 25.120
                             bag_25_kgs += row_wt
                             item_type = "BAG (25 Kg)"
                         else:
                             bag_50_count += q
-                            row_wt = q * 50.120 # Precision Opt 1 for bags
+                            row_wt = q * 50.120
                             bag_50_kgs += row_wt
                             item_type = "BAG (50 Kg)"
                     
@@ -459,7 +480,6 @@ if st.session_state.active_df is not None:
                 total_bag_kgs_opt1 = bag_50_kgs + bag_25_kgs
                 total_bag_kgs_opt2 = (bag_50_count * 50.0) + (bag_25_count * 25.0)
                 
-                # Grand total weight for VAHAN compliance audit (Bags + EA combined net weight)
                 grand_total_kgs = total_bag_kgs_opt1 + ea_weight_kgs
                 mt_bags_opt1 = total_bag_kgs_opt1 / 1000.0
                 mt_bags_opt2 = total_bag_kgs_opt2 / 1000.0
@@ -488,9 +508,7 @@ if st.session_state.active_df is not None:
                 else:
                     st.success(f"✅ **Actual VAHAN Compliance Audit:** Vehicle `{sel_vehicle}` load (**{grand_mt:,.3f} MT**) is strictly within its actual registered capacity limit ({actual_vahan_limit} MT).")
 
-                # ==============================================================
                 # ITEMIZED SEPARATE BREAKDOWN TABLE
-                # ==============================================================
                 st.markdown("#### 📋 Item-wise Detailed Breakdown (Separate BAGS & EA Weights)")
                 df_items = pd.DataFrame(item_details_list)
                 st.dataframe(df_items, use_container_width=True)
@@ -520,9 +538,8 @@ if st.session_state.active_df is not None:
                             
                             if "EA" in u_val:
                                 v_ea += vq
-                                mw = re.search(r'(\d+(?:\.\d+)?)\s*KG', vd_text)
-                                iw = float(mw.group(1)) if mw else 1.0
-                                v_ea_wt += vq * iw
+                                r_w, _ = parse_description_weight(vd_text, vq)
+                                v_ea_wt += r_w
                             else:
                                 if "25" in vd_text:
                                     v_25 += vq
