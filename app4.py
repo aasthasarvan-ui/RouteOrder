@@ -42,6 +42,7 @@ def init_db():
                 file_blob BLOB
             )
         """)
+        # Drop and recreate to ensure all columns (including last_updated) are present
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS vehicle_capacity_master (
                 vehicle_no TEXT PRIMARY KEY,
@@ -439,7 +440,24 @@ if st.session_state.active_df is not None:
             else:
                 st.info("Master capacity table is currently empty.")
         except Exception as e_mv:
-            st.info(f"Error loading master table: {e_mv}")
+            # If table schema mismatches, drop and recreate schema automatically
+            try:
+                conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+                cursor_m = conn_m.cursor()
+                cursor_m.execute("DROP TABLE IF EXISTS vehicle_capacity_master")
+                cursor_m.execute("""
+                    CREATE TABLE vehicle_capacity_master (
+                        vehicle_no TEXT PRIMARY KEY,
+                        actual_capacity_mt REAL,
+                        last_updated TEXT
+                    )
+                """)
+                conn_m.commit()
+                conn_m.close()
+                auto_seed_master_from_df(working_df)
+                st.rerun()
+            except Exception as ex_sub:
+                st.error(f"Error rebuilding master table schema: {ex_sub}")
 
     # ==========================================================================
     # VEHICLE TONNAGE CALCULATOR (BAGS [OPT 1 & OPT 2] + EA SEPARATE)
