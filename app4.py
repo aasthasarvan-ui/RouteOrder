@@ -136,11 +136,10 @@ def check_similar_vehicle(new_veh, existing_list, threshold=0.8):
     for ev in existing_list:
         ev_clean = str(ev).strip().upper()
         if new_v == ev_clean:
-            return None # Exact match already exists
-        # Calculate text similarity ratio
+            return None
         ratio = SequenceMatcher(None, new_v, ev_clean).ratio()
         if ratio >= threshold:
-            return ev_clean # Returns the similar vehicle found
+            return ev_clean
     return None
 
 # ==============================================================================
@@ -210,11 +209,11 @@ def auto_seed_master_from_df(df):
         for v_num, group in df.groupby(veh_col_found):
             v_clean = str(v_num).strip().upper()
             if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
-                # Check for similar typo match
                 similar_match = check_similar_vehicle(v_clean, existing_master, threshold=0.82)
                 if similar_match and similar_match != v_clean:
-                    typo_queue.append((v_clean, similar_match))
-                    continue # Stored for review confirmation
+                    if (v_clean, similar_match) not in st.session_state.pending_typo_review:
+                        typo_queue.append((v_clean, similar_match))
+                    continue
                 
                 tot_kgs = 0.0
                 for _, r in group.iterrows():
@@ -238,7 +237,7 @@ def auto_seed_master_from_df(df):
                 count += 1
                 
         if typo_queue:
-            st.session_state.pending_typo_review = typo_queue
+            st.session_state.pending_typo_review.extend(typo_queue)
         return count
     return 0
 
@@ -393,6 +392,7 @@ with st.sidebar:
             if sub_cap_btn and input_veh:
                 update_vehicle_capacity_manual(input_veh, input_cap)
                 st.success(f"✅ Capacity for `{input_veh.upper()}` saved/updated successfully!")
+                st.rerun()
 
     st.markdown("---")
     st.markdown("### 🗂️ Select File from Vault")
@@ -475,25 +475,25 @@ if st.session_state.active_df is not None:
     # ==========================================================================
     # TYPO / SIMILAR VEHICLE CONFIRMATION POPUP / ALERT HANDLER
     # ==========================================================================
-    if st.session_state.get("pending_typo_review"):
-        st.warning("⚠️ **Similar / Typo Vehicle Number Detected in Uploaded File!**")
+    if st.session_state.pending_typo_review:
+        st.warning("⚠️ **Similar / Typo Vehicle Number Detected!**")
         t_new, t_exist = st.session_state.pending_typo_review[0]
         st.write(f"New vehicle `{t_new}` looks very similar to existing master vehicle `{t_exist}`. What would you like to do?")
         
         col_t1, col_t2, col_t3 = st.columns(3)
         with col_t1:
-            if st.button("➕ Create as New Unique Vehicle"):
+            if st.button("➕ Create as New Unique", key="btn_typo_new"):
                 save_vehicle_capacity_auto(t_new, 28.0)
                 st.session_state.pending_typo_review.pop(0)
                 st.success(f"✅ Vehicle `{t_new}` added as unique entry.")
                 st.rerun()
         with col_t2:
-            if st.button(f"🔗 Merge into `{t_exist}`"):
+            if st.button(f"🔗 Merge into `{t_exist}`", key="btn_typo_merge"):
                 st.session_state.pending_typo_review.pop(0)
                 st.success(f"✅ Merged with `{t_exist}`.")
                 st.rerun()
         with col_t3:
-            if st.button("🚫 Ignore Entry"):
+            if st.button("🚫 Ignore Entry", key="btn_typo_ignore"):
                 st.session_state.pending_typo_review.pop(0)
                 st.rerun()
 
@@ -513,10 +513,10 @@ if st.session_state.active_df is not None:
         
         col_m_btn1, col_m_btn2, col_m_btn3, col_m_btn4 = st.columns(4)
         with col_m_btn1:
-            if st.button("🔄 Refresh Master"):
+            if st.button("🔄 Refresh Master", key="btn_master_refresh"):
                 st.rerun()
         with col_m_btn2:
-            if st.button("🗑️ Reset Entire Master"):
+            if st.button("🗑️ Reset Entire Master", key="btn_master_reset"):
                 reset_vehicle_master()
                 st.success("🗑️ Vehicle master completely reset!")
                 st.rerun()
@@ -528,12 +528,12 @@ if st.session_state.active_df is not None:
                 
                 excel_m_buf = io.BytesIO()
                 df_master_view.to_excel(excel_m_buf, index=False)
-                st.download_button("📥 Export Master Excel", data=excel_m_buf.getvalue(), file_name="Vehicle_Master_Registry.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button("📥 Export Master Excel", data=excel_m_buf.getvalue(), file_name="Vehicle_Master_Registry.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_master_export")
             except:
                 pass
         with col_m_btn4:
             del_veh_input = st.text_input("Enter Vehicle No to Delete:", placeholder="e.g. PB03AA9029", key="del_veh_input_box")
-            if st.button("❌ Delete Vehicle"):
+            if st.button("❌ Delete Vehicle", key="btn_master_delete"):
                 if del_veh_input:
                     delete_vehicle_from_master(del_veh_input)
                     st.success(f"❌ Vehicle `{del_veh_input.upper()}` deleted from master!")
@@ -554,7 +554,23 @@ if st.session_state.active_df is not None:
             else:
                 st.info("Master capacity table is currently empty or no matches found.")
         except Exception as e_mv:
-            st.info(f"Master capacity table initialized.")
+            try:
+                conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+                cursor_m = conn_m.cursor()
+                cursor_m.execute("DROP TABLE IF EXISTS vehicle_capacity_master")
+                cursor_m.execute("""
+                    CREATE TABLE vehicle_capacity_master (
+                        vehicle_no TEXT PRIMARY KEY,
+                        actual_capacity_mt REAL,
+                        last_updated TEXT
+                    )
+                """)
+                conn_m.commit()
+                conn_m.close()
+                auto_seed_master_from_df(working_df)
+                st.rerun()
+            except Exception as ex_sub:
+                st.error(f"Error rebuilding master table schema: {ex_sub}")
 
     # ==========================================================================
     # VEHICLE TONNAGE CALCULATOR (BAGS [OPT 1 & OPT 2] + EA SEPARATE)
@@ -1022,6 +1038,7 @@ if st.session_state.active_df is not None:
                             msg.set_content(email_body)
                             msg.add_alternative(html_content, subtype='html')
 
+    # Quick follow-up question for open-ended interaction
                             excel_data = io.BytesIO()
                             working_df.to_excel(excel_data, index=False)
                             excel_data.seek(0)
@@ -1043,3 +1060,7 @@ if st.session_state.active_df is not None:
                             st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
     st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya saved table select kijiye.")
+
+# ==============================================================================
+# FOLLOW-UP PROMPT
+# ==============================================================================
