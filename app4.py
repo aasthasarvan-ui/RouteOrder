@@ -70,12 +70,11 @@ def save_vehicle_capacity_auto(veh_no, capacity_mt):
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
         v_clean = str(veh_no).strip().upper()
-        if v_clean and "TOTAL" not in v_clean and v_clean != "NAN":
-            # Insert only if not already present in master
+        if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
             cursor.execute("""
                 INSERT INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt, last_updated)
                 VALUES (?, ?, ?)
-                ON CONFLICT(vehicle_no) DO NOTHING
+                ON CONFLICT(vehicle_no) DO UPDATE SET actual_capacity_mt = MAX(vehicle_capacity_master.actual_capacity_mt, excluded.actual_capacity_mt)
             """, (v_clean, float(capacity_mt), get_ist_now().strftime('%Y-%m-%d %H:%M:%S')))
             conn.commit()
         conn.close()
@@ -138,24 +137,26 @@ def auto_seed_master_from_df(df):
     veh_col_found, qty_col_found, desc_col_found = None, None, None
     for c in df.columns:
         c_l = str(c).lower()
-        if not veh_col_found and ("vehicle" in c_l or "truck" in c_l or "veh" in c_l):
+        if not veh_col_found and any(k in c_l for k in ['vehicle', 'truck', 'veh']):
             veh_col_found = c
-        if not qty_col_found and ("quantity" in c_l or "qty" in c_l):
+        if not qty_col_found and any(k in c_l for k in ['quantity', 'qty']):
             qty_col_found = c
-        if not desc_col_found and ("description" in c_l or "desc" in c_l or "text" in c_l):
+        if not desc_col_found and any(k in c_l for k in ['description', 'desc', 'text']):
             desc_col_found = c
 
-    if veh_col_found and qty_col_found:
-        # Group by vehicle and calculate standard slab tonnage as default capacity
+    if veh_col_found:
+        # Group by vehicle and calculate standard slab tonnage as capacity
         for v_num, group in df.groupby(veh_col_found):
             v_clean = str(v_num).strip().upper()
-            if v_clean and "TOTAL" not in v_clean and v_clean != "NAN":
+            if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
                 tot_kgs = 0.0
                 for _, r in group.iterrows():
-                    try:
-                        q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
-                    except:
-                        q = 0.0
+                    q = 0.0
+                    if qty_col_found and pd.notna(r[qty_col_found]):
+                        try:
+                            q = float(r[qty_col_found])
+                        except:
+                            q = 0.0
                     d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
                     if "25" in d_txt:
                         tot_kgs += q * 25.0
@@ -164,7 +165,7 @@ def auto_seed_master_from_df(df):
                 
                 calc_mt = round(tot_kgs / 1000.0, 2)
                 if calc_mt <= 0:
-                    calc_mt = 28.0 # Default fallback if 0
+                    calc_mt = 28.0
                 save_vehicle_capacity_auto(v_clean, calc_mt)
         return len(df[veh_col_found].unique())
     return 0
