@@ -8,6 +8,7 @@ import io
 import sqlite3
 import smtplib
 from email.message import EmailMessage
+import plotly.express as px
 
 # ==============================================================================
 # PAGE CONFIGURATION & TIMEZONE
@@ -168,7 +169,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault, Merge Mode, Multi-Select Sequenced Billing Docs, Actual VAHAN Master, Manual Calculator.
+                Permanent Vault, Merge Mode, Multi-Select Sequenced Billing Docs, Corrected Billing Date Priority, Actual VAHAN Master.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -322,10 +323,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (WITH MULTI-SELECT SEQUENCED BILLING DOCS)
+    # VEHICLE TONNAGE CALCULATOR (STRICT BILLING DATE PRIORITY)
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Multi-Select Sequenced Billing Docs)", expanded=True):
-        st.markdown("Select Vehicle Number. Then **multi-select** sequenced Billing Documents (Trips) to populate total invoice quantity and tonnage at the top.")
+        st.markdown("Select Vehicle Number. **Billing Date** is prioritized correctly to ensure accurate date selection.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -344,9 +345,11 @@ if st.session_state.active_df is not None:
             qty_col = st.selectbox("📌 Select Quantity Column:", options=all_cols_list, index=default_qty_idx, key="sel_qty_col_map")
 
         date_col, btype_col, unit_col, desc_col, billdoc_col = None, None, None, None, None
+        
+        # Strict Billing Date Priority Search
         for c in working_df.columns:
             c_low = str(c).lower()
-            if not date_col and any(k in c_low for k in ["billing date", "date", "inv date", "posting"]):
+            if not date_col and "billing date" in c_low:
                 date_col = c
             if not btype_col and any(k in c_low for k in ["billing type", "btype", "type"]):
                 btype_col = c
@@ -356,6 +359,14 @@ if st.session_state.active_df is not None:
                 desc_col = c
             if not billdoc_col and any(k in c_low for k in ["billing document", "bill no", "invoice no", "sofgen bill"]):
                 billdoc_col = c
+        
+        # Fallback for date if exact 'billing date' not found
+        if not date_col:
+            for c in working_df.columns:
+                c_low = str(c).lower()
+                if "date" in c_low and "order" not in c_low:
+                    date_col = c
+                    break
 
         if veh_col and qty_col:
             calc_df = working_df.copy()
@@ -385,7 +396,7 @@ if st.session_state.active_df is not None:
                 else:
                     date_filtered_subset = veh_subset
 
-                # SEQUENCED BILLING DOCUMENTS (SORTED ASCENDING, EXCEPTIONS ATTACHED)
+                # SEQUENCED BILLING DOCUMENTS
                 unique_bills = sorted(date_filtered_subset[billdoc_col].dropna().astype(str).unique().tolist()) if billdoc_col and not date_filtered_subset.empty else []
                 
                 if unique_bills:
