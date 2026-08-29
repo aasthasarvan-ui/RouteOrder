@@ -168,7 +168,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault, Merge Mode, Vehicle Tonnage (F2 & BAG), Optional Trip Filter, Actual VAHAN Master, Manual Calculator.
+                Permanent Vault, Merge Mode, Multi-Select Sequenced Billing Docs, Actual VAHAN Master, Manual Calculator.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -322,10 +322,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (WITH OPTIONAL TRIP / BILLING DOC SELECTOR)
+    # VEHICLE TONNAGE CALCULATOR (WITH MULTI-SELECT SEQUENCED BILLING DOCS)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Billing Type F2 & BAG Slabs)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Date. Optionally, you can filter by a specific Billing Document (Trip) or view combined totals.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Multi-Select Sequenced Billing Docs)", expanded=True):
+        st.markdown("Select Vehicle Number. Then **multi-select** sequenced Billing Documents (Trips) to populate total invoice quantity and tonnage at the top.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -385,15 +385,16 @@ if st.session_state.active_df is not None:
                 else:
                     date_filtered_subset = veh_subset
 
-                # OPTIONAL TRIP / BILLING DOCUMENT SELECTOR
+                # SEQUENCED BILLING DOCUMENTS (SORTED ASCENDING, EXCEPTIONS ATTACHED)
                 unique_bills = sorted(date_filtered_subset[billdoc_col].dropna().astype(str).unique().tolist()) if billdoc_col and not date_filtered_subset.empty else []
-                if unique_bills:
-                    sel_bill = st.selectbox("🧾 (Optional) Filter by Specific Billing Doc / Trip:", options=["-- Combine All Trips / View All --"] + unique_bills, key="calc_bill_select")
-                else:
-                    sel_bill = "-- Combine All Trips / View All --"
                 
-                if sel_bill != "-- Combine All Trips / View All --" and billdoc_col:
-                    final_veh_rows = date_filtered_subset[date_filtered_subset[billdoc_col].astype(str) == sel_bill]
+                if unique_bills:
+                    sel_bills = st.multiselect("🧾 (Optional) Multi-Select Sequenced Billing Documents / Trips:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
+                else:
+                    sel_bills = []
+                
+                if sel_bills and billdoc_col:
+                    final_veh_rows = date_filtered_subset[date_filtered_subset[billdoc_col].astype(str).isin(sel_bills)]
                 else:
                     final_veh_rows = date_filtered_subset
 
@@ -420,12 +421,12 @@ if st.session_state.active_df is not None:
                 w1_opt2 = b50_total * 50.0 + b25_total * 25.0
                 mt2 = w1_opt2 / 1000.0
 
-                st.markdown(f"**Vehicle Summary for `{sel_vehicle}` (Scope: `{sel_bill}`):**")
-                
+                # LIVE POPULATED HEADER TOTALS
+                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}`")
                 vb1, vb2, vb3, vb4 = st.columns(4)
-                vb1.metric("📦 50 Kg Bags", f"{int(b50_total):,} Bags")
-                vb2.metric("📦 25 Kg Bags", f"{int(b25_total):,} Bags")
-                vb3.metric("📊 Total Volume", f"{int(b50_total + b25_total):,} Bags")
+                vb1.metric("📦 Total 50 Kg Bags", f"{int(b50_total):,} Bags")
+                vb2.metric("📦 Total 25 Kg Bags", f"{int(b25_total):,} Bags")
+                vb3.metric("📊 Total Invoice Qty", f"{int(b50_total + b25_total):,} Bags")
                 vb4.metric("🛡️ Actual VAHAN Limit", f"{actual_vahan_limit} MT")
 
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -440,7 +441,7 @@ if st.session_state.active_df is not None:
                 else:
                     st.success(f"✅ **Actual VAHAN Compliance Audit:** Vehicle `{sel_vehicle}` load (**{mt1:,.3f} MT**) is strictly within its actual registered capacity limit ({actual_vahan_limit} MT).")
 
-                with st.expander("📊 View All Vehicles & Trips Summary Table", expanded=False):
+                with st.expander("📊 View All Vehicles & Sequenced Trips Summary Table", expanded=False):
                     summary_rows = []
                     group_cols = [veh_col]
                     if billdoc_col:
@@ -474,7 +475,7 @@ if st.session_state.active_df is not None:
 
                         summary_rows.append({
                             "Vehicle No": v_no,
-                            "Billing Doc / Trip": b_doc,
+                            "Billing Doc (Trip)": b_doc,
                             "50Kg Bags": int(v_50),
                             "25Kg Bags": int(v_25),
                             "Total Bags": tot_bags,
@@ -483,7 +484,7 @@ if st.session_state.active_df is not None:
                             "Audit Status": audit_status
                         })
                     
-                    df_summary = pd.DataFrame(summary_rows)
+                    df_summary = pd.DataFrame(summary_rows).sort_values(by=["Vehicle No", "Billing Doc (Trip)"])
                     st.dataframe(df_summary, use_container_width=True)
             else:
                 st.info("ℹ️ No records found matching Billing Type 'F2' and Unit 'BAG'.")
