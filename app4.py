@@ -70,7 +70,7 @@ def save_vehicle_capacity_auto(veh_no, capacity_mt=28.0):
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
         v_clean = str(veh_no).strip().upper()
-        if v_clean and "TOTAL" not in v_clean:
+        if v_clean and "TOTAL" not in v_clean and v_clean != "NAN":
             cursor.execute("""
                 INSERT INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt, last_updated)
                 VALUES (?, ?, ?)
@@ -131,6 +131,8 @@ def load_and_clean_dataframe(file_bytes, file_name):
     return df
 
 def auto_seed_master_from_df(df):
+    if df is None or df.empty:
+        return 0
     veh_col_found, cap_col_found = None, None
     for c in df.columns:
         c_l = str(c).lower()
@@ -336,7 +338,7 @@ with st.sidebar:
                         df_from_db = load_and_clean_dataframe(blob_data, fname)
                         st.session_state.active_df = df_from_db
                         auto_seed_master_from_df(df_from_db)
-                        st.success(f"✅ Loaded '{fname}' successfully!")
+                        st.success(f"✅ Loaded '{fname}' and updated Vehicle Master successfully!")
                         st.rerun()
                 except Exception as load_err:
                     st.error(f"Load error: {load_err}")
@@ -396,7 +398,7 @@ if st.session_state.active_df is not None:
     # ==========================================================================
     # PERSISTENT VEHICLE MASTER CAPACITY TABLE VIEW
     # ==========================================================================
-    with st.expander("📋 Persistent Vehicle Master Capacity List (Page Refresh Proof)", expanded=False):
+    with st.expander("📋 Persistent Vehicle Master Capacity List (Page Refresh Proof)", expanded=True):
         st.markdown("Vehicles are auto-registered from dispatch files. You can review or update their actual legal capacity anytime.")
         try:
             conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
@@ -537,11 +539,9 @@ if st.session_state.active_df is not None:
                         "Weight (Kgs)": round(row_wt, 3)
                     })
 
-                # Option 1: Precision Slabs (50.12 & 25.12)
                 bags_wt_opt1 = (bag_50_count * 50.120) + (bag_25_count * 25.120)
                 mt_bags_opt1 = bags_wt_opt1 / 1000.0
 
-                # Option 2: Standard Slabs (50.0 & 25.0)
                 bags_wt_opt2 = (bag_50_count * 50.0) + (bag_25_count * 25.0)
                 mt_bags_opt2 = bags_wt_opt2 / 1000.0
 
