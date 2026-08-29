@@ -168,7 +168,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault, Merge Mode, Vehicle Tonnage (F2 & BAG), Actual VAHAN Master, Manual Calculator, Print & Email.
+                Permanent Vault, Merge Mode, Vehicle Tonnage (F2 & BAG), Optional Trip Filter, Actual VAHAN Master, Manual Calculator.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -322,10 +322,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR & ACTUAL VAHAN CAPACITY LOOKUP
+    # VEHICLE TONNAGE CALCULATOR (WITH OPTIONAL TRIP / BILLING DOC SELECTOR)
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Billing Type F2 & BAG Slabs)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Date to view exact bag breakdown (50kg vs 25kg), Tonnage, and Actual VAHAN Compliance Audit.")
+        st.markdown("Select Vehicle Number and Billing Date. Optionally, you can filter by a specific Billing Document (Trip) or view combined totals.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -343,7 +343,7 @@ if st.session_state.active_df is not None:
         with col_m2:
             qty_col = st.selectbox("📌 Select Quantity Column:", options=all_cols_list, index=default_qty_idx, key="sel_qty_col_map")
 
-        date_col, btype_col, unit_col, desc_col = None, None, None, None
+        date_col, btype_col, unit_col, desc_col, billdoc_col = None, None, None, None, None
         for c in working_df.columns:
             c_low = str(c).lower()
             if not date_col and any(k in c_low for k in ["billing date", "date", "inv date", "posting"]):
@@ -354,6 +354,8 @@ if st.session_state.active_df is not None:
                 unit_col = c
             if not desc_col and any(k in c_low for k in ["product description", "material description", "desc", "item description", "text"]):
                 desc_col = c
+            if not billdoc_col and any(k in c_low for k in ["billing document", "bill no", "invoice no", "sofgen bill"]):
+                billdoc_col = c
 
         if veh_col and qty_col:
             calc_df = working_df.copy()
@@ -374,14 +376,26 @@ if st.session_state.active_df is not None:
                 actual_vahan_limit = saved_vahan_caps.get(str(sel_vehicle).strip().upper(), 28.0)
 
                 veh_subset = calc_df[calc_df[veh_col].astype(str) == sel_vehicle]
-                unique_dates = sorted(veh_subset[date_col].dropna().astype(str).unique().tolist()) if date_col and not veh_subset.empty else ["All Dates"]
                 
+                unique_dates = sorted(veh_subset[date_col].dropna().astype(str).unique().tolist()) if date_col and not veh_subset.empty else ["All Dates"]
                 sel_date = st.selectbox("📅 Select Billing Date:", options=unique_dates, key="calc_date_select")
                 
                 if date_col and sel_date != "All Dates":
-                    final_veh_rows = veh_subset[veh_subset[date_col].astype(str) == sel_date]
+                    date_filtered_subset = veh_subset[veh_subset[date_col].astype(str) == sel_date]
                 else:
-                    final_veh_rows = veh_subset
+                    date_filtered_subset = veh_subset
+
+                # OPTIONAL TRIP / BILLING DOCUMENT SELECTOR
+                unique_bills = sorted(date_filtered_subset[billdoc_col].dropna().astype(str).unique().tolist()) if billdoc_col and not date_filtered_subset.empty else []
+                if unique_bills:
+                    sel_bill = st.selectbox("🧾 (Optional) Filter by Specific Billing Doc / Trip:", options=["-- Combine All Trips / View All --"] + unique_bills, key="calc_bill_select")
+                else:
+                    sel_bill = "-- Combine All Trips / View All --"
+                
+                if sel_bill != "-- Combine All Trips / View All --" and billdoc_col:
+                    final_veh_rows = date_filtered_subset[date_filtered_subset[billdoc_col].astype(str) == sel_bill]
+                else:
+                    final_veh_rows = date_filtered_subset
 
                 b50_total = 0.0
                 b25_total = 0.0
@@ -406,7 +420,7 @@ if st.session_state.active_df is not None:
                 w1_opt2 = b50_total * 50.0 + b25_total * 25.0
                 mt2 = w1_opt2 / 1000.0
 
-                st.markdown(f"**Vehicle Summary for `{sel_vehicle}`:**")
+                st.markdown(f"**Vehicle Summary for `{sel_vehicle}` (Scope: `{sel_bill}`):**")
                 
                 vb1, vb2, vb3, vb4 = st.columns(4)
                 vb1.metric("📦 50 Kg Bags", f"{int(b50_total):,} Bags")
@@ -426,13 +440,19 @@ if st.session_state.active_df is not None:
                 else:
                     st.success(f"✅ **Actual VAHAN Compliance Audit:** Vehicle `{sel_vehicle}` load (**{mt1:,.3f} MT**) is strictly within its actual registered capacity limit ({actual_vahan_limit} MT).")
 
-                with st.expander("📊 View All Vehicles Tonnage Summary Table", expanded=False):
+                with st.expander("📊 View All Vehicles & Trips Summary Table", expanded=False):
                     summary_rows = []
-                    for v in unique_vehicles:
-                        v_cap = saved_vahan_caps.get(str(v).strip().upper(), 28.0)
-                        v_subset = calc_df[calc_df[veh_col].astype(str) == v]
+                    group_cols = [veh_col]
+                    if billdoc_col:
+                        group_cols.append(billdoc_col)
+                    
+                    for name, group in calc_df.groupby(group_cols):
+                        v_no = name[0] if isinstance(name, tuple) else name
+                        b_doc = name[1] if isinstance(name, tuple) and len(name) > 1 else "N/A"
+                        v_cap = saved_vahan_caps.get(str(v_no).strip().upper(), 28.0)
+                        
                         v_50, v_25 = 0.0, 0.0
-                        for _, vr in v_subset.iterrows():
+                        for _, vr in group.iterrows():
                             vq_val = vr[qty_col]
                             try:
                                 vq = float(vq_val) if pd.notna(vq_val) else 0.0
@@ -453,7 +473,8 @@ if st.session_state.active_df is not None:
                             audit_status = "⚠️ Overloaded (> Limit)"
 
                         summary_rows.append({
-                            "Vehicle No": v,
+                            "Vehicle No": v_no,
+                            "Billing Doc / Trip": b_doc,
                             "50Kg Bags": int(v_50),
                             "25Kg Bags": int(v_25),
                             "Total Bags": tot_bags,
