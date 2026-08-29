@@ -29,7 +29,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==============================================================================
-# DATABASE INITIALIZATION (OLD & NEW CAPACITY COLUMNS)
+# DATABASE INITIALIZATION
 # ==============================================================================
 def init_db():
     try:
@@ -58,7 +58,8 @@ def init_db():
 
 init_db()
 
-def get_saved_vehicle_capacities():
+@st.cache_data
+def get_saved_vehicle_capacities_cached():
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         df_cap = pd.read_sql("SELECT vehicle_no, actual_capacity_mt FROM vehicle_capacity_master", conn)
@@ -181,12 +182,15 @@ if "ng_reset_token" not in st.session_state:
     st.session_state.ng_reset_token = 0
 if "pending_typo_review" not in st.session_state:
     st.session_state.pending_typo_review = []
+if "ignored_vehicles" not in st.session_state:
+    st.session_state.ignored_vehicles = set()
 if "file_just_loaded" not in st.session_state:
     st.session_state.file_just_loaded = False
 
 # ==============================================================================
-# SMART DATAFRAME CLEANING & HEADER DETECTION
+# SMART CACHED DATAFRAME CLEANING
 # ==============================================================================
+@st.cache_data
 def load_and_clean_dataframe(file_bytes, file_name):
     if file_name.endswith('.csv'):
         df = pd.read_csv(io.BytesIO(file_bytes))
@@ -211,7 +215,7 @@ def auto_seed_master_from_df(df, force=False):
         return 0
     
     if not force and not st.session_state.file_just_loaded:
-        return 0 # Prevent auto-reseeding if user manually deleted/wiped/reset
+        return 0
         
     veh_col_found, qty_col_found, desc_col_found = None, None, None
     for c in df.columns:
@@ -240,7 +244,7 @@ def auto_seed_master_from_df(df, force=False):
         for v_num, group in df.groupby(veh_col_found):
             v_clean = str(v_num).strip().upper()
             if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
-                if v_clean in existing_master:
+                if v_clean in existing_master or v_clean in st.session_state.ignored_vehicles:
                     continue
                     
                 similar_match = check_similar_vehicle(v_clean, existing_master, threshold=0.82)
@@ -370,7 +374,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Unique Master Registry, Select All Deletion, Permanent Wipe, Old & New Capacity Tracking.
+                Optimized Speed, Permanent Ignore Memory, Select-All Bulk Delete, Multi-Date Merge.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -558,11 +562,14 @@ if st.session_state.active_df is not None:
                         act = row["Action"]
                         if "New Unique" in act:
                             save_vehicle_capacity_auto(new_v, 28.0)
+                        st.session_state.ignored_vehicles.add(new_v)
                 st.session_state.pending_typo_review.clear()
                 st.success("✅ Bulk actions applied!")
                 st.rerun()
                 
             if ignore_all_btn:
+                for item in st.session_state.pending_typo_review:
+                    st.session_state.ignored_vehicles.add(item["new"])
                 st.session_state.pending_typo_review.clear()
                 st.rerun()
 
@@ -575,7 +582,7 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # PERSISTENT UNIQUE VEHICLE MASTER CAPACITY TABLE (SELECT ALL & PERMANENT WIPE)
+    # PERSISTENT UNIQUE VEHICLE MASTER CAPACITY TABLE
     # ==========================================================================
     with st.expander("📋 Unique Vehicle Master Capacity Registry (Select All, Delete, Wipe & Export)", expanded=True):
         st.markdown("Unique vehicle registry tracking **Old Capacity** and **New Capacity** across multi-date dispatches.")
@@ -590,6 +597,8 @@ if st.session_state.active_df is not None:
         with col_m_btn2:
             if st.button("🗑️ Permanent Clean Wipe Entire Table", key="btn_master_wipe"):
                 reset_vehicle_master()
+                st.session_state.file_just_loaded = False
+                st.session_state.pending_typo_review.clear()
                 st.success("🗑️ Master table permanently wiped clean!")
                 st.rerun()
         with col_m_btn3:
@@ -616,7 +625,6 @@ if st.session_state.active_df is not None:
             if not df_master_view.empty:
                 df_master_view.insert(0, "Select", False)
                 
-                # Select All Checkbox State Handler
                 select_all_master = st.checkbox("☑️ Select All Vehicles in Table", key="select_all_master_chk")
                 if select_all_master:
                     df_master_view["Select"] = True
@@ -640,7 +648,7 @@ if st.session_state.active_df is not None:
             st.info("Master capacity table initialized.")
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (BAGS [OPT 1 & OPT 2] + EA SEPARATE)
+    # VEHICLE TONNAGE CALCULATOR
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Precision & Standard Slabs + Separate EA)", expanded=True):
         st.markdown("Select Vehicle Number and Billing Date. Merges multi-date dispatches for precise vehicle auditing.")
