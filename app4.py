@@ -224,7 +224,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault, Auto Vehicle Master, Multi-Select Billing Docs, Standard & Precision Slabs, Manual Calculator.
+                Permanent Vault, Auto Vehicle Master, Precision & Standard Slabs, Multi-Trip Docs, Manual Calculator, Print & Email.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -245,8 +245,6 @@ with st.sidebar:
         try:
             file_bytes = uploaded_file.getvalue()
             temp_df = load_and_clean_dataframe(file_bytes, uploaded_file.name)
-            
-            # Auto seed vehicle master from uploaded file
             auto_seed_master_from_df(temp_df)
 
             save_mode = st.radio("Choose Save Action:", ["Save as New File", "Append (Smart Deduplicate)"])
@@ -540,6 +538,9 @@ if st.session_state.active_df is not None:
                 grand_total_opt1 = bags_wt_opt1 + ea_weight_kgs
                 grand_mt_opt1 = grand_total_opt1 / 1000.0
 
+                grand_total_opt2 = bags_wt_opt2 + ea_weight_kgs
+                grand_mt_opt2 = grand_total_opt2 / 1000.0
+
                 # LIVE POPULATED HEADER TOTALS
                 st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}`")
                 vb1, vb2, vb3, vb4 = st.columns(4)
@@ -551,9 +552,9 @@ if st.session_state.active_df is not None:
                 st.markdown("<br>", unsafe_allow_html=True)
                 c_res1, c_res2, c_res3 = st.columns(3)
                 with c_res1:
-                    st.metric("🔹 Precision Scale (Opt 1)", f"{mt_bags_opt1 + mt_ea:,.3f} MT", f"{grand_total_opt1:,.2f} Kgs")
+                    st.metric("🔹 Precision Scale (Opt 1)", f"{grand_mt_opt1:,.3f} MT", f"{grand_total_opt1:,.2f} Kgs")
                 with c_res2:
-                    st.metric("🔹 Standard Slabs (Opt 2)", f"{mt_bags_opt2 + mt_ea:,.3f} MT", f"{(bags_wt_opt2 + ea_weight_kgs):,.2f} Kgs")
+                    st.metric("🔹 Standard Slabs (Opt 2)", f"{grand_mt_opt2:,.3f} MT", f"{grand_total_opt2:,.2f} Kgs")
                 with c_res3:
                     st.metric("🔹 EA (Loose) Separate Weight", f"{mt_ea:,.3f} MT", f"{ea_weight_kgs:,.2f} Kgs")
 
