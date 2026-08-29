@@ -65,7 +65,7 @@ def get_saved_vehicle_capacities():
     except:
         return {}
 
-def save_vehicle_capacity_auto(veh_no):
+def save_vehicle_capacity_auto(veh_no, capacity_mt=28.0):
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
@@ -73,9 +73,9 @@ def save_vehicle_capacity_auto(veh_no):
         if v_clean and "TOTAL" not in v_clean:
             cursor.execute("""
                 INSERT INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt, last_updated)
-                VALUES (?, 28.0, ?)
+                VALUES (?, ?, ?)
                 ON CONFLICT(vehicle_no) DO NOTHING
-            """, (v_clean, get_ist_now().strftime('%Y-%m-%d %H:%M:%S')))
+            """, (v_clean, float(capacity_mt), get_ist_now().strftime('%Y-%m-%d %H:%M:%S')))
             conn.commit()
         conn.close()
     except:
@@ -131,17 +131,27 @@ def load_and_clean_dataframe(file_bytes, file_name):
     return df
 
 def auto_seed_master_from_df(df):
-    veh_col_found = None
+    veh_col_found, cap_col_found = None, None
     for c in df.columns:
         c_l = str(c).lower()
-        if "vehicle" in c_l or "truck" in c_l or "veh" in c_l:
+        if not veh_col_found and ("vehicle" in c_l or "truck" in c_l or "veh" in c_l):
             veh_col_found = c
-            break
+        if not cap_col_found and ("capacity" in c_l or "tonnage" in c_l or "max wt" in c_l):
+            cap_col_found = c
+            
     if veh_col_found:
         count = 0
-        for v in df[veh_col_found].dropna().astype(str).unique():
-            save_vehicle_capacity_auto(v)
-            count += 1
+        for _, row in df.iterrows():
+            v = str(row[veh_col_found]).strip().upper()
+            if v and "TOTAL" not in v and v != "NAN":
+                cap_val = 28.0
+                if cap_col_found and pd.notna(row[cap_col_found]):
+                    try:
+                        cap_val = float(row[cap_col_found])
+                    except:
+                        cap_val = 28.0
+                save_vehicle_capacity_auto(v, cap_val)
+                count += 1
         return count
     return 0
 
@@ -224,7 +234,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault, Auto Vehicle Master, Precision & Standard Slabs, Multi-Trip Docs, Manual Calculator, Print & Email.
+                Permanent Vault, Auto Vehicle Master from Dispatch, Multi-Select Billing Docs, Standard & Precision Slabs.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -268,6 +278,7 @@ with st.sidebar:
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = merged_df
+                    auto_seed_master_from_df(merged_df)
                     st.success("✅ Smart Append successful! Vehicle master updated.")
                     st.rerun()
                 else:
@@ -279,6 +290,7 @@ with st.sidebar:
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = temp_df
+                    auto_seed_master_from_df(temp_df)
                     st.success(f"✅ '{uploaded_file.name}' saved as new file! Vehicle master updated.")
                     st.rerun()
         except Exception as err_file:
@@ -554,7 +566,7 @@ if st.session_state.active_df is not None:
                 with c_res1:
                     st.metric("🔹 Precision Scale (Opt 1)", f"{grand_mt_opt1:,.3f} MT", f"{grand_total_opt1:,.2f} Kgs")
                 with c_res2:
-                    st.metric("🔹 Standard Slabs (Opt 2)", f"{grand_mt_opt2:,.3f} MT", f"{grand_total_opt2:,.2f} Kgs")
+                    st.metric("🔹 Standard Slabs (Opt 2)", f"{grand_mt_opt2:,.3f} MT", f"{(bags_wt_opt2 + ea_weight_kgs):,.2f} Kgs")
                 with c_res3:
                     st.metric("🔹 EA (Loose) Separate Weight", f"{mt_ea:,.3f} MT", f"{ea_weight_kgs:,.2f} Kgs")
 
