@@ -65,21 +65,21 @@ def get_saved_vehicle_capacities():
     except:
         return {}
 
-def save_vehicle_capacity(veh_no, cap_mt):
+def save_vehicle_capacity_auto(veh_no):
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
-        # Insert only if not exists, or update capacity if explicitly managed
-        cursor.execute("""
-            INSERT INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt, last_updated)
-            VALUES (?, ?, ?)
-            ON CONFLICT(vehicle_no) DO UPDATE SET last_updated=excluded.last_updated
-        """, (str(veh_no).strip().upper(), float(cap_mt), get_ist_now().strftime('%Y-%m-%d %H:%M:%S')))
-        conn.commit()
+        v_clean = str(veh_no).strip().upper()
+        if v_clean and "TOTAL" not in v_clean:
+            cursor.execute("""
+                INSERT INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt, last_updated)
+                VALUES (?, 28.0, ?)
+                ON CONFLICT(vehicle_no) DO NOTHING
+            """, (v_clean, get_ist_now().strftime('%Y-%m-%d %H:%M:%S')))
+            conn.commit()
         conn.close()
-        return True
     except:
-        return False
+        pass
 
 def update_vehicle_capacity_manual(veh_no, cap_mt):
     try:
@@ -130,24 +130,19 @@ def load_and_clean_dataframe(file_bytes, file_name):
     df = df.dropna(how='all').reset_index(drop=True)
     return df
 
-# Helper to auto-extract vehicles from dataframe and seed master table
-def auto_seed_vehicle_master(df):
+def auto_seed_master_from_df(df):
     veh_col_found = None
     for c in df.columns:
         c_l = str(c).lower()
         if "vehicle" in c_l or "truck" in c_l or "veh" in c_l:
             veh_col_found = c
             break
-    
     if veh_col_found:
-        existing_caps = get_saved_vehicle_capacities()
-        added_count = 0
-        for v_item in df[veh_col_found].dropna().astype(str).unique():
-            v_clean = v_item.strip().upper()
-            if v_clean and v_clean not in existing_caps and "TOTAL" not in v_clean:
-                save_vehicle_capacity(v_clean, 28.0) # Default 28 MT for newly discovered vehicles
-                added_count += 1
-        return added_count
+        count = 0
+        for v in df[veh_col_found].dropna().astype(str).unique():
+            save_vehicle_capacity_auto(v)
+            count += 1
+        return count
     return 0
 
 # ==============================================================================
@@ -229,7 +224,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Auto Vehicle Master from Dispatch Upload, Smart Deduplication Append, EA Separate View, Persistent Master.
+                Permanent Vault, Auto Vehicle Master, Multi-Select Billing Docs, Standard & Precision Slabs, Manual Calculator.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -240,19 +235,19 @@ with col_h2:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==============================================================================
-# LEFT SIDEBAR: DYNAMIC VAULT UPLOADER & VEHICLE CAPACITY MASTER MANAGER
+# LEFT SIDEBAR: DYNAMIC VAULT UPLOADER & VEHICLE MASTER MANAGER
 # ==============================================================================
 with st.sidebar:
-    st.markdown("### 📂 Upload / Smart Deduplication Append")
-    uploaded_file = st.file_uploader("Upload Dispatch File (.xlsx / .csv)", type=["xlsx", "csv"], key="sidebar_uploader")
+    st.markdown("### 📂 Upload / Smart Append Dispatch")
+    uploaded_file = st.file_uploader("Upload File (.xlsx / .csv)", type=["xlsx", "csv"], key="sidebar_uploader")
 
     if uploaded_file is not None:
         try:
             file_bytes = uploaded_file.getvalue()
             temp_df = load_and_clean_dataframe(file_bytes, uploaded_file.name)
-
-            # Auto create/update vehicle master from uploaded dispatch file
-            new_v_count = auto_seed_vehicle_master(temp_df)
+            
+            # Auto seed vehicle master from uploaded file
+            auto_seed_master_from_df(temp_df)
 
             save_mode = st.radio("Choose Save Action:", ["Save as New File", "Append (Smart Deduplicate)"])
 
@@ -275,7 +270,7 @@ with st.sidebar:
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = merged_df
-                    st.success(f"✅ Smart Append successful! {new_v_count} new vehicles auto-registered.")
+                    st.success("✅ Smart Append successful! Vehicle master updated.")
                     st.rerun()
                 else:
                     cursor = conn.cursor()
@@ -286,18 +281,18 @@ with st.sidebar:
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = temp_df
-                    st.success(f"✅ '{uploaded_file.name}' saved! {new_v_count} new vehicles auto-registered.")
+                    st.success(f"✅ '{uploaded_file.name}' saved as new file! Vehicle master updated.")
                     st.rerun()
         except Exception as err_file:
             st.error(f"❌ Upload error: {str(err_file)}")
 
     st.markdown("---")
-    st.markdown("### 🚛 Manage Actual Vehicle Capacity")
+    st.markdown("### 🚛 Manage Vehicle Capacity Master")
     with st.expander("🛠️ Update Vehicle Capacity (MT)"):
         with st.form("veh_cap_form"):
             input_veh = st.text_input("Vehicle Number (e.g., PB03AA9029)")
             input_cap = st.number_input("Actual Capacity (MT)", min_value=1.0, max_value=60.0, value=28.0, step=0.5)
-            sub_cap_btn = st.form_submit_button("💾 Update Capacity", type="primary")
+            sub_cap_btn = st.form_submit_button("💾 Save Capacity", type="primary")
             if sub_cap_btn and input_veh:
                 update_vehicle_capacity_manual(input_veh, input_cap)
                 st.success(f"✅ Capacity for `{input_veh.upper()}` updated to `{input_cap} MT`!")
@@ -330,7 +325,7 @@ with st.sidebar:
                         blob_data, fname = row_data
                         df_from_db = load_and_clean_dataframe(blob_data, fname)
                         st.session_state.active_df = df_from_db
-                        auto_seed_vehicle_master(df_from_db)
+                        auto_seed_master_from_df(df_from_db)
                         st.success(f"✅ Loaded '{fname}' successfully!")
                         st.rerun()
                 except Exception as load_err:
@@ -367,7 +362,7 @@ if st.session_state.active_df is None and not saved_records.empty:
             blob_data, fname = row_data
             df_from_db = load_and_clean_dataframe(blob_data, fname)
             st.session_state.active_df = df_from_db
-            auto_seed_vehicle_master(df_from_db)
+            auto_seed_master_from_df(df_from_db)
     except:
         pass
 
@@ -378,9 +373,7 @@ if st.session_state.active_df is not None:
     st.markdown("### 📊 Billing & Tonnage Data Dashboard")
 
     working_df = st.session_state.active_df.copy()
-
-    # Ensure master is updated on every run with active df
-    auto_seed_vehicle_master(working_df)
+    auto_seed_master_from_df(working_df)
 
     global_search = st.text_input("🔍 Global Keyword Search (Vehicle, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
@@ -393,8 +386,8 @@ if st.session_state.active_df is not None:
     # ==========================================================================
     # PERSISTENT VEHICLE MASTER CAPACITY TABLE VIEW
     # ==========================================================================
-    with st.expander("📋 Persistent Vehicle Master Capacity List (Auto-Generated & Page Refresh Proof)", expanded=False):
-        st.markdown("Vehicles are automatically registered from your uploaded dispatch files. You can update capacities anytime.")
+    with st.expander("📋 Persistent Vehicle Master Capacity List (Page Refresh Proof)", expanded=False):
+        st.markdown("Vehicles are auto-registered from dispatch files. You can review or update their actual legal capacity anytime.")
         try:
             conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
             df_master_view = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', actual_capacity_mt AS 'Capacity (MT)', last_updated AS 'Last Updated' FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_m)
@@ -404,10 +397,10 @@ if st.session_state.active_df is not None:
             st.info("Master capacity table is currently empty.")
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (SEPARATE BAGS & EA, SEPARATE EA INVOICE FILTER)
+    # VEHICLE TONNAGE CALCULATOR (BAGS [OPT 1 & OPT 2] + EA SEPARATE)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Separate BAG & EA Invoices)", expanded=True):
-        st.markdown("Select Vehicle Number, Billing Date, and choose whether to view **BAGS**, **EA (Loose Items)**, or Combined.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Precision & Standard Slabs + Separate EA)", expanded=True):
+        st.markdown("Select Vehicle Number and Billing Date. Displays both **Precision Slabs** and **Standard Slabs** for Bags, plus separate EA weights.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -475,7 +468,6 @@ if st.session_state.active_df is not None:
                 else:
                     date_filtered_subset = veh_subset
 
-                # EA Unit Filter Mode Selector
                 calc_mode_filter = st.radio("🔍 Select Category Scope:", ["All (Bags + EA Combined)", "Only BAGS", "Only EA (Loose Invoices)"], horizontal=True, key="calc_mode_radio")
 
                 if calc_mode_filter == "Only BAGS" and unit_col:
@@ -495,14 +487,10 @@ if st.session_state.active_df is not None:
                 else:
                     final_veh_rows = date_filtered_subset
 
-                bag_50_kgs = 0.0
-                bag_25_kgs = 0.0
                 bag_50_count = 0.0
                 bag_25_count = 0.0
-                
                 ea_total_qty = 0.0
                 ea_weight_kgs = 0.0
-                
                 item_details_list = []
                 
                 for _, r in final_veh_rows.iterrows():
@@ -524,12 +512,10 @@ if st.session_state.active_df is not None:
                         if "25" in d_text:
                             bag_25_count += q
                             row_wt = q * 25.120
-                            bag_25_kgs += row_wt
                             item_type = "BAG (25 Kg)"
                         else:
                             bag_50_count += q
                             row_wt = q * 50.120
-                            bag_50_kgs += row_wt
                             item_type = "BAG (50 Kg)"
                     
                     item_details_list.append({
@@ -541,14 +527,18 @@ if st.session_state.active_df is not None:
                         "Weight (Kgs)": round(row_wt, 3)
                     })
 
-                total_bag_kgs_opt1 = bag_50_kgs + bag_25_kgs
-                total_bag_kgs_opt2 = (bag_50_count * 50.0) + (bag_25_count * 25.0)
-                
-                grand_total_kgs = total_bag_kgs_opt1 + ea_weight_kgs
-                mt_bags_opt1 = total_bag_kgs_opt1 / 1000.0
-                mt_bags_opt2 = total_bag_kgs_opt2 / 1000.0
+                # Option 1: Precision Slabs (50.12 & 25.12)
+                bags_wt_opt1 = (bag_50_count * 50.120) + (bag_25_count * 25.120)
+                mt_bags_opt1 = bags_wt_opt1 / 1000.0
+
+                # Option 2: Standard Slabs (50.0 & 25.0)
+                bags_wt_opt2 = (bag_50_count * 50.0) + (bag_25_count * 25.0)
+                mt_bags_opt2 = bags_wt_opt2 / 1000.0
+
                 mt_ea = ea_weight_kgs / 1000.0
-                grand_mt = grand_total_kgs / 1000.0
+
+                grand_total_opt1 = bags_wt_opt1 + ea_weight_kgs
+                grand_mt_opt1 = grand_total_opt1 / 1000.0
 
                 # LIVE POPULATED HEADER TOTALS
                 st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}`")
@@ -561,16 +551,16 @@ if st.session_state.active_df is not None:
                 st.markdown("<br>", unsafe_allow_html=True)
                 c_res1, c_res2, c_res3 = st.columns(3)
                 with c_res1:
-                    st.metric("🔹 BAGS Tonnage (Opt 1)", f"{mt_bags_opt1:,.3f} MT", f"{total_bag_kgs_opt1:,.2f} Kgs")
+                    st.metric("🔹 Precision Scale (Opt 1)", f"{mt_bags_opt1 + mt_ea:,.3f} MT", f"{grand_total_opt1:,.2f} Kgs")
                 with c_res2:
-                    st.metric("🔹 EA (Loose) Weight", f"{mt_ea:,.3f} MT", f"{ea_weight_kgs:,.2f} Kgs")
+                    st.metric("🔹 Standard Slabs (Opt 2)", f"{mt_bags_opt2 + mt_ea:,.3f} MT", f"{(bags_wt_opt2 + ea_weight_kgs):,.2f} Kgs")
                 with c_res3:
-                    st.metric("🚀 Grand Total Net Weight", f"{grand_mt:,.3f} MT", f"{grand_total_kgs:,.2f} Kgs")
+                    st.metric("🔹 EA (Loose) Separate Weight", f"{mt_ea:,.3f} MT", f"{ea_weight_kgs:,.2f} Kgs")
 
-                if grand_mt > actual_vahan_limit:
-                    st.error(f"🚨 **Actual VAHAN Overload Alert:** Vehicle `{sel_vehicle}` carrying **{grand_mt:,.3f} MT** (Bags + EA) has exceeded its actual registered capacity limit of **{actual_vahan_limit} MT**!")
+                if grand_mt_opt1 > actual_vahan_limit:
+                    st.error(f"🚨 **Actual VAHAN Overload Alert:** Vehicle `{sel_vehicle}` carrying **{grand_mt_opt1:,.3f} MT** has exceeded its actual registered capacity limit of **{actual_vahan_limit} MT**!")
                 else:
-                    st.success(f"✅ **Actual VAHAN Compliance Audit:** Vehicle `{sel_vehicle}` load (**{grand_mt:,.3f} MT**) is strictly within its actual registered capacity limit ({actual_vahan_limit} MT).")
+                    st.success(f"✅ **Actual VAHAN Compliance Audit:** Vehicle `{sel_vehicle}` load (**{grand_mt_opt1:,.3f} MT**) is strictly within its actual registered capacity limit ({actual_vahan_limit} MT).")
 
                 # ITEMIZED SEPARATE BREAKDOWN TABLE
                 st.markdown("#### 📋 Item-wise Detailed Breakdown (Separate BAGS & EA Weights)")
@@ -588,7 +578,7 @@ if st.session_state.active_df is not None:
                         b_doc = name[1] if isinstance(name, tuple) and len(name) > 1 else "N/A"
                         v_cap = saved_vahan_caps.get(str(v_no).strip().upper(), 28.0)
                         
-                        v_b_wt = 0.0
+                        v_b_wt_1 = 0.0
                         v_ea_wt = 0.0
                         v_50, v_25, v_ea = 0.0, 0.0, 0.0
                         for _, vr in group.iterrows():
@@ -607,12 +597,12 @@ if st.session_state.active_df is not None:
                             else:
                                 if "25" in vd_text:
                                     v_25 += vq
-                                    v_b_wt += vq * 25.120
+                                    v_b_wt_1 += vq * 25.120
                                 else:
                                     v_50 += vq
-                                    v_b_wt += vq * 50.120
+                                    v_b_wt_1 += vq * 50.120
                         
-                        tot_g_wt = v_b_wt + v_ea_wt
+                        tot_g_wt = v_b_wt_1 + v_ea_wt
                         prec_mt = tot_g_wt / 1000.0
                         audit_status = "Compliant"
                         if prec_mt > v_cap:
@@ -624,7 +614,7 @@ if st.session_state.active_df is not None:
                             "50Kg Bags": int(v_50),
                             "25Kg Bags": int(v_25),
                             "EA Qty": int(v_ea),
-                            "Bags MT": round(v_b_wt / 1000.0, 3),
+                            "Bags MT": round(v_b_wt_1 / 1000.0, 3),
                             "EA MT": round(v_ea_wt / 1000.0, 3),
                             "Total MT": round(prec_mt, 3),
                             "Actual Limit (MT)": v_cap,
