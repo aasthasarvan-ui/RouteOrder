@@ -144,7 +144,6 @@ def auto_seed_master_from_df(df):
         if not desc_col_found and any(k in c_l for k in ['description', 'desc', 'text']):
             desc_col_found = c
 
-    # Fallback if headers are in first row values
     if not veh_col_found or not qty_col_found:
         for idx, row in df.head(5).iterrows():
             for col in df.columns:
@@ -419,7 +418,7 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # PERSISTENT VEHICLE MASTER CAPACITY TABLE VIEW WITH FORCE REBUILD BUTTON
+    # PERSISTENT VEHICLE MASTER CAPACITY TABLE VIEW
     # ==========================================================================
     with st.expander("📋 Persistent Vehicle Master Capacity List (Page Refresh Proof)", expanded=True):
         st.markdown("Vehicles are auto-registered from dispatch files. You can review or update their actual legal capacity anytime.")
@@ -435,9 +434,12 @@ if st.session_state.active_df is not None:
             conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
             df_master_view = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', actual_capacity_mt AS 'Capacity (MT)', last_updated AS 'Last Updated' FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_m)
             conn_m.close()
-            st.dataframe(df_master_view, use_container_width=True)
+            if not df_master_view.empty:
+                st.dataframe(df_master_view, use_container_width=True)
+            else:
+                st.info("Master capacity table is currently empty.")
         except Exception as e_mv:
-            st.info("Master capacity table is currently empty.")
+            st.info(f"Error loading master table: {e_mv}")
 
     # ==========================================================================
     # VEHICLE TONNAGE CALCULATOR (BAGS [OPT 1 & OPT 2] + EA SEPARATE)
