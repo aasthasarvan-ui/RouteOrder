@@ -28,7 +28,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==============================================================================
-# DATABASE INITIALIZATION (PERMANENT VAULT & VEHICLE CAPACITY MASTER)
+# DATABASE INITIALIZATION (PERMANENT VAULT & PERSISTENT VEHICLE MASTER)
 # ==============================================================================
 def init_db():
     try:
@@ -45,7 +45,8 @@ def init_db():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS vehicle_capacity_master (
                 vehicle_no TEXT PRIMARY KEY,
-                actual_capacity_mt REAL
+                actual_capacity_mt REAL,
+                last_updated TEXT
             )
         """)
         conn.commit()
@@ -68,10 +69,27 @@ def save_vehicle_capacity(veh_no, cap_mt):
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR REPLACE INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt) VALUES (?, ?)",
-            (str(veh_no).strip().upper(), float(cap_mt))
-        )
+        # Insert only if not exists, or update capacity if explicitly managed
+        cursor.execute("""
+            INSERT INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt, last_updated)
+            VALUES (?, ?, ?)
+            ON CONFLICT(vehicle_no) DO UPDATE SET last_updated=excluded.last_updated
+        """, (str(veh_no).strip().upper(), float(cap_mt), get_ist_now().strftime('%Y-%m-%d %H:%M:%S')))
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        return False
+
+def update_vehicle_capacity_manual(veh_no, cap_mt):
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt, last_updated)
+            VALUES (?, ?, ?)
+            ON CONFLICT(vehicle_no) DO UPDATE SET actual_capacity_mt=excluded.actual_capacity_mt, last_updated=excluded.last_updated
+        """, (str(veh_no).strip().upper(), float(cap_mt), get_ist_now().strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
         conn.close()
         return True
@@ -112,25 +130,42 @@ def load_and_clean_dataframe(file_bytes, file_name):
     df = df.dropna(how='all').reset_index(drop=True)
     return df
 
+# Helper to auto-extract vehicles from dataframe and seed master table
+def auto_seed_vehicle_master(df):
+    veh_col_found = None
+    for c in df.columns:
+        c_l = str(c).lower()
+        if "vehicle" in c_l or "truck" in c_l or "veh" in c_l:
+            veh_col_found = c
+            break
+    
+    if veh_col_found:
+        existing_caps = get_saved_vehicle_capacities()
+        added_count = 0
+        for v_item in df[veh_col_found].dropna().astype(str).unique():
+            v_clean = v_item.strip().upper()
+            if v_clean and v_clean not in existing_caps and "TOTAL" not in v_clean:
+                save_vehicle_capacity(v_clean, 28.0) # Default 28 MT for newly discovered vehicles
+                added_count += 1
+        return added_count
+    return 0
+
 # ==============================================================================
-# ADVANCED KG / GM / LTR PARSER FOR DESCRIPTION
+# ADVANCED KG / GM / LTR PARSER FOR EA
 # ==============================================================================
 def parse_description_weight(desc_text, qty):
     d = str(desc_text).upper()
     q = float(qty) if pd.notna(qty) else 0.0
     
-    # Check for KG
     match_kg = re.search(r'\b(\d+(?:\.\d+)?)\s*KG\b', d)
     if match_kg:
         return q * float(match_kg.group(1)), f"EA ({match_kg.group(1)} Kg/unit)"
         
-    # Check for GM / GRAM
     match_gm = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:GM|GRAM)\b', d)
     if match_gm:
         wt_kg = float(match_gm.group(1)) / 1000.0
         return q * wt_kg, f"EA ({match_gm.group(1)} Gm/unit)"
         
-    # Check for LTR / LITRE
     match_ltr = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:LTR|LITRE)\b', d)
     if match_ltr:
         return q * float(match_ltr.group(1)), f"EA ({match_ltr.group(1)} Ltr/unit)"
@@ -194,7 +229,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault, Merge Mode, Multi-Select Billing Docs, KG/GM/LTR EA Parser, Actual VAHAN Master.
+                Auto Vehicle Master from Dispatch Upload, Smart Deduplication Append, EA Separate View, Persistent Master.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -208,21 +243,24 @@ st.markdown("<br>", unsafe_allow_html=True)
 # LEFT SIDEBAR: DYNAMIC VAULT UPLOADER & VEHICLE CAPACITY MASTER MANAGER
 # ==============================================================================
 with st.sidebar:
-    st.markdown("### 📂 Upload / Append Billing Export")
-    uploaded_file = st.file_uploader("Upload File (.xlsx / .csv)", type=["xlsx", "csv"], key="sidebar_uploader")
+    st.markdown("### 📂 Upload / Smart Deduplication Append")
+    uploaded_file = st.file_uploader("Upload Dispatch File (.xlsx / .csv)", type=["xlsx", "csv"], key="sidebar_uploader")
 
     if uploaded_file is not None:
         try:
             file_bytes = uploaded_file.getvalue()
             temp_df = load_and_clean_dataframe(file_bytes, uploaded_file.name)
 
-            save_mode = st.radio("Choose Save Action:", ["Save as New File", "Append/Merge with Active Table"])
+            # Auto create/update vehicle master from uploaded dispatch file
+            new_v_count = auto_seed_vehicle_master(temp_df)
+
+            save_mode = st.radio("Choose Save Action:", ["Save as New File", "Append (Smart Deduplicate)"])
 
             if st.button("💾 Confirm & Save to Vault", type="primary"):
                 conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
                 upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
                 
-                if save_mode == "Append/Merge with Active Table" and st.session_state.active_df is not None:
+                if save_mode == "Append (Smart Deduplicate)" and st.session_state.active_df is not None:
                     merged_df = pd.concat([st.session_state.active_df, temp_df], ignore_index=True).drop_duplicates()
                     
                     output = io.BytesIO()
@@ -232,12 +270,12 @@ with st.sidebar:
                     cursor = conn.cursor()
                     cursor.execute(
                         "INSERT INTO saved_files (upload_date, file_name, file_blob) VALUES (?, ?, ?)",
-                        (upload_timestamp, f"Merged_{uploaded_file.name}", sqlite3.Binary(final_bytes))
+                        (upload_timestamp, f"SmartAppended_{uploaded_file.name}", sqlite3.Binary(final_bytes))
                     )
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = merged_df
-                    st.success("✅ New dispatch entries successfully appended & saved!")
+                    st.success(f"✅ Smart Append successful! {new_v_count} new vehicles auto-registered.")
                     st.rerun()
                 else:
                     cursor = conn.cursor()
@@ -248,21 +286,21 @@ with st.sidebar:
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = temp_df
-                    st.success(f"✅ '{uploaded_file.name}' saved successfully as new file!")
+                    st.success(f"✅ '{uploaded_file.name}' saved! {new_v_count} new vehicles auto-registered.")
                     st.rerun()
         except Exception as err_file:
             st.error(f"❌ Upload error: {str(err_file)}")
 
     st.markdown("---")
-    st.markdown("### 🚛 Manage Actual Vehicle Capacity (VAHAN Master)")
-    with st.expander("🛠️ Set Actual Capacity for Vehicle"):
+    st.markdown("### 🚛 Manage Actual Vehicle Capacity")
+    with st.expander("🛠️ Update Vehicle Capacity (MT)"):
         with st.form("veh_cap_form"):
             input_veh = st.text_input("Vehicle Number (e.g., PB03AA9029)")
-            input_cap = st.number_input("Actual Legal Capacity (MT)", min_value=1.0, max_value=60.0, value=28.0, step=0.5)
-            sub_cap_btn = st.form_submit_button("💾 Save Vehicle Capacity", type="primary")
+            input_cap = st.number_input("Actual Capacity (MT)", min_value=1.0, max_value=60.0, value=28.0, step=0.5)
+            sub_cap_btn = st.form_submit_button("💾 Update Capacity", type="primary")
             if sub_cap_btn and input_veh:
-                save_vehicle_capacity(input_veh, input_cap)
-                st.success(f"✅ Capacity for `{input_veh.upper()}` saved as `{input_cap} MT`!")
+                update_vehicle_capacity_manual(input_veh, input_cap)
+                st.success(f"✅ Capacity for `{input_veh.upper()}` updated to `{input_cap} MT`!")
 
     st.markdown("---")
     st.markdown("### 🗂️ Select File from Vault")
@@ -292,6 +330,7 @@ with st.sidebar:
                         blob_data, fname = row_data
                         df_from_db = load_and_clean_dataframe(blob_data, fname)
                         st.session_state.active_df = df_from_db
+                        auto_seed_vehicle_master(df_from_db)
                         st.success(f"✅ Loaded '{fname}' successfully!")
                         st.rerun()
                 except Exception as load_err:
@@ -328,6 +367,7 @@ if st.session_state.active_df is None and not saved_records.empty:
             blob_data, fname = row_data
             df_from_db = load_and_clean_dataframe(blob_data, fname)
             st.session_state.active_df = df_from_db
+            auto_seed_vehicle_master(df_from_db)
     except:
         pass
 
@@ -339,6 +379,9 @@ if st.session_state.active_df is not None:
 
     working_df = st.session_state.active_df.copy()
 
+    # Ensure master is updated on every run with active df
+    auto_seed_vehicle_master(working_df)
+
     global_search = st.text_input("🔍 Global Keyword Search (Vehicle, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
         term = str(global_search).strip().lower()
@@ -348,10 +391,23 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (KG, GM, LTR PARSER FOR EA)
+    # PERSISTENT VEHICLE MASTER CAPACITY TABLE VIEW
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (KG / GM / LTR EA Parser)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Date. Handles BAGS and extracts KG/GM/LTR weights for EA items separately.")
+    with st.expander("📋 Persistent Vehicle Master Capacity List (Auto-Generated & Page Refresh Proof)", expanded=False):
+        st.markdown("Vehicles are automatically registered from your uploaded dispatch files. You can update capacities anytime.")
+        try:
+            conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+            df_master_view = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', actual_capacity_mt AS 'Capacity (MT)', last_updated AS 'Last Updated' FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_m)
+            conn_m.close()
+            st.dataframe(df_master_view, use_container_width=True)
+        except Exception as e_mv:
+            st.info("Master capacity table is currently empty.")
+
+    # ==========================================================================
+    # VEHICLE TONNAGE CALCULATOR (SEPARATE BAGS & EA, SEPARATE EA INVOICE FILTER)
+    # ==========================================================================
+    with st.expander("🚚 Vehicle Tonnage Calculator (Separate BAG & EA Invoices)", expanded=True):
+        st.markdown("Select Vehicle Number, Billing Date, and choose whether to view **BAGS**, **EA (Loose Items)**, or Combined.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -418,6 +474,14 @@ if st.session_state.active_df is not None:
                     date_filtered_subset = veh_subset[veh_subset[date_col].astype(str) == sel_date]
                 else:
                     date_filtered_subset = veh_subset
+
+                # EA Unit Filter Mode Selector
+                calc_mode_filter = st.radio("🔍 Select Category Scope:", ["All (Bags + EA Combined)", "Only BAGS", "Only EA (Loose Invoices)"], horizontal=True, key="calc_mode_radio")
+
+                if calc_mode_filter == "Only BAGS" and unit_col:
+                    date_filtered_subset = date_filtered_subset[date_filtered_subset[unit_col].astype(str).str.upper().str.contains("BAG", na=False)]
+                elif calc_mode_filter == "Only EA (Loose Invoices)" and unit_col:
+                    date_filtered_subset = date_filtered_subset[date_filtered_subset[unit_col].astype(str).str.upper().str.contains("EA", na=False)]
 
                 unique_bills = sorted(date_filtered_subset[billdoc_col].dropna().astype(str).unique().tolist()) if billdoc_col and not date_filtered_subset.empty else []
                 
