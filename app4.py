@@ -9,6 +9,7 @@ import sqlite3
 import smtplib
 from email.message import EmailMessage
 import re
+from difflib import SequenceMatcher
 
 # ==============================================================================
 # PAGE CONFIGURATION & TIMEZONE
@@ -42,7 +43,6 @@ def init_db():
                 file_blob BLOB
             )
         """)
-        # Drop and recreate to ensure all columns (including last_updated) are present
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS vehicle_capacity_master (
                 vehicle_no TEXT PRIMARY KEY,
@@ -65,6 +65,15 @@ def get_saved_vehicle_capacities():
         return dict(zip(df_cap['vehicle_no'].astype(str).str.strip().str.upper(), df_cap['actual_capacity_mt']))
     except:
         return {}
+
+def get_all_master_vehicles():
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        df_cap = pd.read_sql("SELECT vehicle_no FROM vehicle_capacity_master", conn)
+        conn.close()
+        return df_cap['vehicle_no'].tolist()
+    except:
+        return []
 
 def save_vehicle_capacity_auto(veh_no, capacity_mt):
     try:
@@ -97,6 +106,43 @@ def update_vehicle_capacity_manual(veh_no, cap_mt):
     except:
         return False
 
+def delete_vehicle_from_master(veh_no):
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM vehicle_capacity_master WHERE vehicle_no = ?", (str(veh_no).strip().upper(),))
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        return False
+
+def reset_vehicle_master():
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM vehicle_capacity_master")
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        return False
+
+# ==============================================================================
+# SIMILARITY / TYPO CHECKER (STRING MATCHING)
+# ==============================================================================
+def check_similar_vehicle(new_veh, existing_list, threshold=0.8):
+    new_v = str(new_veh).strip().upper()
+    for ev in existing_list:
+        ev_clean = str(ev).strip().upper()
+        if new_v == ev_clean:
+            return None # Exact match already exists
+        # Calculate text similarity ratio
+        ratio = SequenceMatcher(None, new_v, ev_clean).ratio()
+        if ratio >= threshold:
+            return ev_clean # Returns the similar vehicle found
+    return None
+
 # ==============================================================================
 # SESSION STATE MANAGEMENT
 # ==============================================================================
@@ -108,6 +154,8 @@ if "calc_theme_choice" not in st.session_state:
     st.session_state.calc_theme_choice = "⚡ Cyber Neon Glass"
 if "ng_reset_token" not in st.session_state:
     st.session_state.ng_reset_token = 0
+if "pending_typo_review" not in st.session_state:
+    st.session_state.pending_typo_review = []
 
 # ==============================================================================
 # SMART DATAFRAME CLEANING & HEADER DETECTION
@@ -155,10 +203,19 @@ def auto_seed_master_from_df(df):
                     qty_col_found = col
 
     if veh_col_found and qty_col_found:
+        existing_master = get_all_master_vehicles()
+        typo_queue = []
         count = 0
+        
         for v_num, group in df.groupby(veh_col_found):
             v_clean = str(v_num).strip().upper()
             if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
+                # Check for similar typo match
+                similar_match = check_similar_vehicle(v_clean, existing_master, threshold=0.82)
+                if similar_match and similar_match != v_clean:
+                    typo_queue.append((v_clean, similar_match))
+                    continue # Stored for review confirmation
+                
                 tot_kgs = 0.0
                 for _, r in group.iterrows():
                     q = 0.0
@@ -176,7 +233,12 @@ def auto_seed_master_from_df(df):
                 if calc_mt <= 0:
                     calc_mt = 28.0
                 save_vehicle_capacity_auto(v_clean, calc_mt)
+                if v_clean not in existing_master:
+                    existing_master.append(v_clean)
                 count += 1
+                
+        if typo_queue:
+            st.session_state.pending_typo_review = typo_queue
         return count
     return 0
 
@@ -259,7 +321,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault, Auto Vehicle Master from Dispatch Qty, Standard & Precision Slabs, Multi-Trip Docs.
+                Unique Master Vehicle Registry, Multi-Date Dispatch Merge, Typo Confirmation, Reset, Search, Export & Mail.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -273,7 +335,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # LEFT SIDEBAR: DYNAMIC VAULT UPLOADER & VEHICLE MASTER MANAGER
 # ==============================================================================
 with st.sidebar:
-    st.markdown("### 📂 Upload / Smart Append Dispatch")
+    st.markdown("### 📂 Upload / Multi-Date Dispatch Append")
     uploaded_file = st.file_uploader("Upload File (.xlsx / .csv)", type=["xlsx", "csv"], key="sidebar_uploader")
 
     if uploaded_file is not None:
@@ -282,13 +344,13 @@ with st.sidebar:
             temp_df = load_and_clean_dataframe(file_bytes, uploaded_file.name)
             auto_seed_master_from_df(temp_df)
 
-            save_mode = st.radio("Choose Save Action:", ["Save as New File", "Append (Smart Deduplicate)"])
+            save_mode = st.radio("Choose Save Action:", ["Save as New File", "Append (Smart Deduplicate & Merge Dates)"])
 
             if st.button("💾 Confirm & Save to Vault", type="primary"):
                 conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
                 upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
                 
-                if save_mode == "Append (Smart Deduplicate)" and st.session_state.active_df is not None:
+                if save_mode == "Append (Smart Deduplicate & Merge Dates)" and st.session_state.active_df is not None:
                     merged_df = pd.concat([st.session_state.active_df, temp_df], ignore_index=True).drop_duplicates()
                     
                     output = io.BytesIO()
@@ -298,13 +360,13 @@ with st.sidebar:
                     cursor = conn.cursor()
                     cursor.execute(
                         "INSERT INTO saved_files (upload_date, file_name, file_blob) VALUES (?, ?, ?)",
-                        (upload_timestamp, f"SmartAppended_{uploaded_file.name}", sqlite3.Binary(final_bytes))
+                        (upload_timestamp, f"MergedMultiDate_{uploaded_file.name}", sqlite3.Binary(final_bytes))
                     )
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = merged_df
                     auto_seed_master_from_df(merged_df)
-                    st.success("✅ Smart Append successful! Vehicle master updated.")
+                    st.success("✅ Multi-date dispatch merged successfully! Unique master updated.")
                     st.rerun()
                 else:
                     cursor = conn.cursor()
@@ -316,21 +378,21 @@ with st.sidebar:
                     conn.close()
                     st.session_state.active_df = temp_df
                     auto_seed_master_from_df(temp_df)
-                    st.success(f"✅ '{uploaded_file.name}' saved as new file! Vehicle master updated.")
+                    st.success(f"✅ '{uploaded_file.name}' saved as new file! Unique master updated.")
                     st.rerun()
         except Exception as err_file:
             st.error(f"❌ Upload error: {str(err_file)}")
 
     st.markdown("---")
     st.markdown("### 🚛 Manage Vehicle Capacity Master")
-    with st.expander("🛠️ Update Vehicle Capacity (MT)"):
+    with st.expander("🛠️ Update / Modify Vehicle Capacity"):
         with st.form("veh_cap_form"):
             input_veh = st.text_input("Vehicle Number (e.g., PB03AA9029)")
             input_cap = st.number_input("Actual Capacity (MT)", min_value=1.0, max_value=60.0, value=28.0, step=0.5)
-            sub_cap_btn = st.form_submit_button("💾 Save Capacity", type="primary")
+            sub_cap_btn = st.form_submit_button("💾 Save / Modify Capacity", type="primary")
             if sub_cap_btn and input_veh:
                 update_vehicle_capacity_manual(input_veh, input_cap)
-                st.success(f"✅ Capacity for `{input_veh.upper()}` updated to `{input_cap} MT`!")
+                st.success(f"✅ Capacity for `{input_veh.upper()}` saved/updated successfully!")
 
     st.markdown("---")
     st.markdown("### 🗂️ Select File from Vault")
@@ -361,7 +423,7 @@ with st.sidebar:
                         df_from_db = load_and_clean_dataframe(blob_data, fname)
                         st.session_state.active_df = df_from_db
                         auto_seed_master_from_df(df_from_db)
-                        st.success(f"✅ Loaded '{fname}' and populated Vehicle Master successfully!")
+                        st.success(f"✅ Loaded '{fname}' and populated Unique Master successfully!")
                         st.rerun()
                 except Exception as load_err:
                     st.error(f"Load error: {load_err}")
@@ -410,6 +472,31 @@ if st.session_state.active_df is not None:
     working_df = st.session_state.active_df.copy()
     auto_seed_master_from_df(working_df)
 
+    # ==========================================================================
+    # TYPO / SIMILAR VEHICLE CONFIRMATION POPUP / ALERT HANDLER
+    # ==========================================================================
+    if st.session_state.get("pending_typo_review"):
+        st.warning("⚠️ **Similar / Typo Vehicle Number Detected in Uploaded File!**")
+        t_new, t_exist = st.session_state.pending_typo_review[0]
+        st.write(f"New vehicle `{t_new}` looks very similar to existing master vehicle `{t_exist}`. What would you like to do?")
+        
+        col_t1, col_t2, col_t3 = st.columns(3)
+        with col_t1:
+            if st.button("➕ Create as New Unique Vehicle"):
+                save_vehicle_capacity_auto(t_new, 28.0)
+                st.session_state.pending_typo_review.pop(0)
+                st.success(f"✅ Vehicle `{t_new}` added as unique entry.")
+                st.rerun()
+        with col_t2:
+            if st.button(f"🔗 Merge into `{t_exist}`"):
+                st.session_state.pending_typo_review.pop(0)
+                st.success(f"✅ Merged with `{t_exist}`.")
+                st.rerun()
+        with col_t3:
+            if st.button("🚫 Ignore Entry"):
+                st.session_state.pending_typo_review.pop(0)
+                st.rerun()
+
     global_search = st.text_input("🔍 Global Keyword Search (Vehicle, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
         term = str(global_search).strip().lower()
@@ -419,51 +506,61 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # PERSISTENT VEHICLE MASTER CAPACITY TABLE VIEW
+    # PERSISTENT UNIQUE VEHICLE MASTER CAPACITY TABLE WITH FULL ACTIONS
     # ==========================================================================
-    with st.expander("📋 Persistent Vehicle Master Capacity List (Page Refresh Proof)", expanded=True):
-        st.markdown("Vehicles are auto-registered from dispatch files. You can review or update their actual legal capacity anytime.")
+    with st.expander("📋 Unique Vehicle Master Capacity Registry (Manage, Delete, Reset, Export & Mail)", expanded=True):
+        st.markdown("Unique vehicle registry combined from multi-date dispatches. No duplicates allowed.")
         
-        col_m_btn1, col_m_btn2 = st.columns([1, 3])
+        col_m_btn1, col_m_btn2, col_m_btn3, col_m_btn4 = st.columns(4)
         with col_m_btn1:
-            if st.button("🔄 Rebuild Master from Active File"):
-                seeded_cnt = auto_seed_master_from_df(working_df)
-                st.success(f"✅ Successfully rebuilt master with {seeded_cnt} vehicles!")
+            if st.button("🔄 Refresh Master"):
                 st.rerun()
+        with col_m_btn2:
+            if st.button("🗑️ Reset Entire Master"):
+                reset_vehicle_master()
+                st.success("🗑️ Vehicle master completely reset!")
+                st.rerun()
+        with col_m_btn3:
+            try:
+                conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+                df_master_view = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', actual_capacity_mt AS 'Capacity (MT)', last_updated AS 'Last Updated' FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_m)
+                conn_m.close()
+                
+                excel_m_buf = io.BytesIO()
+                df_master_view.to_excel(excel_m_buf, index=False)
+                st.download_button("📥 Export Master Excel", data=excel_m_buf.getvalue(), file_name="Vehicle_Master_Registry.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            except:
+                pass
+        with col_m_btn4:
+            del_veh_input = st.text_input("Enter Vehicle No to Delete:", placeholder="e.g. PB03AA9029", key="del_veh_input_box")
+            if st.button("❌ Delete Vehicle"):
+                if del_veh_input:
+                    delete_vehicle_from_master(del_veh_input)
+                    st.success(f"❌ Vehicle `{del_veh_input.upper()}` deleted from master!")
+                    st.rerun()
 
+        # Master Table Search & View
+        master_search_term = st.text_input("🔍 Search Vehicle in Master Registry:", "", key="master_search_box")
         try:
             conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
             df_master_view = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', actual_capacity_mt AS 'Capacity (MT)', last_updated AS 'Last Updated' FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_m)
             conn_m.close()
+            
+            if master_search_term:
+                df_master_view = df_master_view[df_master_view['Vehicle Number'].astype(str).str.contains(master_search_term, case=False, na=False)]
+            
             if not df_master_view.empty:
                 st.dataframe(df_master_view, use_container_width=True)
             else:
-                st.info("Master capacity table is currently empty.")
+                st.info("Master capacity table is currently empty or no matches found.")
         except Exception as e_mv:
-            # If table schema mismatches, drop and recreate schema automatically
-            try:
-                conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
-                cursor_m = conn_m.cursor()
-                cursor_m.execute("DROP TABLE IF EXISTS vehicle_capacity_master")
-                cursor_m.execute("""
-                    CREATE TABLE vehicle_capacity_master (
-                        vehicle_no TEXT PRIMARY KEY,
-                        actual_capacity_mt REAL,
-                        last_updated TEXT
-                    )
-                """)
-                conn_m.commit()
-                conn_m.close()
-                auto_seed_master_from_df(working_df)
-                st.rerun()
-            except Exception as ex_sub:
-                st.error(f"Error rebuilding master table schema: {ex_sub}")
+            st.info(f"Master capacity table initialized.")
 
     # ==========================================================================
     # VEHICLE TONNAGE CALCULATOR (BAGS [OPT 1 & OPT 2] + EA SEPARATE)
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Precision & Standard Slabs + Separate EA)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Date. Displays both **Precision Slabs** and **Standard Slabs** for Bags, plus separate EA weights.")
+        st.markdown("Select Vehicle Number and Billing Date. Merges multi-date dispatches for precise vehicle auditing.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
