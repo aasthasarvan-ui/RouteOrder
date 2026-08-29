@@ -29,7 +29,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==============================================================================
-# DATABASE INITIALIZATION (PERMANENT VAULT & PERSISTENT VEHICLE MASTER)
+# DATABASE INITIALIZATION (OLD & NEW CAPACITY COLUMNS)
 # ==============================================================================
 def init_db():
     try:
@@ -43,9 +43,11 @@ def init_db():
                 file_blob BLOB
             )
         """)
+        # Master table with Old and New Capacity columns
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS vehicle_capacity_master (
                 vehicle_no TEXT PRIMARY KEY,
+                old_capacity_mt REAL,
                 actual_capacity_mt REAL,
                 last_updated TEXT
             )
@@ -81,11 +83,26 @@ def save_vehicle_capacity_auto(veh_no, capacity_mt):
         cursor = conn.cursor()
         v_clean = str(veh_no).strip().upper()
         if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
-            cursor.execute("""
-                INSERT INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt, last_updated)
-                VALUES (?, ?, ?)
-                ON CONFLICT(vehicle_no) DO NOTHING
-            """, (v_clean, float(capacity_mt), get_ist_now().strftime('%Y-%m-%d %H:%M:%S')))
+            # Check existing capacity
+            cursor.execute("SELECT actual_capacity_mt FROM vehicle_capacity_master WHERE vehicle_no = ?", (v_clean,))
+            row = cursor.fetchone()
+            
+            now_str = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
+            if row is None:
+                # First time entry: Old and New both set to current capacity
+                cursor.execute("""
+                    INSERT INTO vehicle_capacity_master (vehicle_no, old_capacity_mt, actual_capacity_mt, last_updated)
+                    VALUES (?, ?, ?, ?)
+                """, (v_clean, float(capacity_mt), float(capacity_mt), now_str))
+            else:
+                existing_cap = row[0]
+                if float(existing_cap) != float(capacity_mt):
+                    # If capacity changed (e.g. multi-date with different loads), shift old to old_capacity_mt and update actual to new
+                    cursor.execute("""
+                        UPDATE vehicle_capacity_master 
+                        SET old_capacity_mt = ?, actual_capacity_mt = ?, last_updated = ?
+                        WHERE vehicle_no = ?
+                    """, (existing_cap, float(capacity_mt), now_str, v_clean))
             conn.commit()
         conn.close()
     except:
@@ -95,22 +112,35 @@ def update_vehicle_capacity_manual(veh_no, cap_mt):
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt, last_updated)
-            VALUES (?, ?, ?)
-            ON CONFLICT(vehicle_no) DO UPDATE SET actual_capacity_mt=excluded.actual_capacity_mt, last_updated=excluded.last_updated
-        """, (str(veh_no).strip().upper(), float(cap_mt), get_ist_now().strftime('%Y-%m-%d %H:%M:%S')))
+        v_clean = str(veh_no).strip().upper()
+        now_str = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        cursor.execute("SELECT actual_capacity_mt FROM vehicle_capacity_master WHERE vehicle_no = ?", (v_clean,))
+        row = cursor.fetchone()
+        if row:
+            old_val = row[0]
+            cursor.execute("""
+                UPDATE vehicle_capacity_master 
+                SET old_capacity_mt = ?, actual_capacity_mt = ?, last_updated = ?
+                WHERE vehicle_no = ?
+            """, (old_val, float(cap_mt), now_str, v_clean))
+        else:
+            cursor.execute("""
+                INSERT INTO vehicle_capacity_master (vehicle_no, old_capacity_mt, actual_capacity_mt, last_updated)
+                VALUES (?, ?, ?, ?)
+            """, (v_clean, float(cap_mt), float(cap_mt), now_str))
         conn.commit()
         conn.close()
         return True
     except:
         return False
 
-def delete_vehicle_from_master(veh_no):
+def delete_vehicles_from_master(veh_list):
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM vehicle_capacity_master WHERE vehicle_no = ?", (str(veh_no).strip().upper(),))
+        for v in veh_list:
+            cursor.execute("DELETE FROM vehicle_capacity_master WHERE vehicle_no = ?", (str(v).strip().upper(),))
         conn.commit()
         conn.close()
         return True
@@ -121,7 +151,15 @@ def reset_vehicle_master():
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM vehicle_capacity_master")
+        cursor.execute("DROP TABLE IF EXISTS vehicle_capacity_master")
+        cursor.execute("""
+            CREATE TABLE vehicle_capacity_master (
+                vehicle_no TEXT PRIMARY KEY,
+                old_capacity_mt REAL,
+                actual_capacity_mt REAL,
+                last_updated TEXT
+            )
+        """)
         conn.commit()
         conn.close()
         return True
@@ -186,7 +224,7 @@ def auto_seed_master_from_df(df, force=False):
     
     file_sig = str(df.shape) + str(df.columns.tolist()[:3])
     if file_sig in st.session_state.master_seeded_files and not force:
-        return 0 # Prevent auto-overwriting user deletions/modifications
+        return 0
         
     veh_col_found, qty_col_found, desc_col_found = None, None, None
     for c in df.columns:
@@ -215,33 +253,46 @@ def auto_seed_master_from_df(df, force=False):
         for v_num, group in df.groupby(veh_col_found):
             v_clean = str(v_num).strip().upper()
             if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
-                if v_clean in existing_master:
-                    continue # Already registered, do not duplicate
-                    
                 similar_match = check_similar_vehicle(v_clean, existing_master, threshold=0.82)
                 if similar_match and similar_match != v_clean:
-                    if (v_clean, similar_match) not in st.session_state.pending_typo_review:
-                        typo_queue.append((v_clean, similar_match))
+                    if {"new": v_clean, "existing": similar_match} not in st.session_state.pending_typo_review:
+                        typo_queue.append({"new": v_clean, "existing": similar_match})
                     continue
                 
-                tot_kgs = 0.0
-                for _, r in group.iterrows():
-                    q = 0.0
-                    try:
-                        q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
-                    except:
-                        q = 0.0
-                    d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
-                    if "25" in d_txt:
-                        tot_kgs += q * 25.0
-                    else:
-                        tot_kgs += q * 50.0
+                max_trip_kgs = 0.0
+                trip_col = None
+                for tc in df.columns:
+                    if any(k in str(tc).lower() for k in ['billing document', 'bill no', 'invoice', 'trip']):
+                        trip_col = tc
+                        break
                 
-                calc_mt = round(tot_kgs / 1000.0, 2)
+                if trip_col:
+                    for _, sub_g in group.groupby(trip_col):
+                        trip_kgs = 0.0
+                        for _, r in sub_g.iterrows():
+                            q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
+                            d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
+                            if "25" in d_txt:
+                                trip_kgs += q * 25.0
+                            else:
+                                trip_kgs += q * 50.0
+                        if trip_kgs > max_trip_kgs:
+                            max_trip_kgs = trip_kgs
+                else:
+                    for _, r in group.iterrows():
+                        q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
+                        d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
+                        if "25" in d_txt:
+                            max_trip_kgs += q * 25.0
+                        else:
+                            max_trip_kgs += q * 50.0
+                
+                calc_mt = round(max_trip_kgs / 1000.0, 2)
                 if calc_mt <= 0:
                     calc_mt = 28.0
                 save_vehicle_capacity_auto(v_clean, calc_mt)
-                existing_master.append(v_clean)
+                if v_clean not in existing_master:
+                    existing_master.append(v_clean)
                 count += 1
                 
         if typo_queue:
@@ -330,7 +381,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Unique Master Registry, Smart Delete, Instant Reset, Typo Protection & Multi-Date Dispatch Merge.
+                Unique Master Registry, Old vs New Capacity Columns, Bulk Typo Manager, Permanent Clean Wipe.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -483,28 +534,43 @@ if st.session_state.active_df is not None:
     auto_seed_master_from_df(working_df)
 
     # ==========================================================================
-    # TYPO / SIMILAR VEHICLE CONFIRMATION POPUP / ALERT HANDLER
+    # BULK TABLE-STYLE TYPO / SIMILAR VEHICLE CONFIRMATION MANAGER
     # ==========================================================================
     if st.session_state.pending_typo_review:
-        st.warning("⚠️ **Similar / Typo Vehicle Number Detected!**")
-        t_new, t_exist = st.session_state.pending_typo_review[0]
-        st.write(f"New vehicle `{t_new}` looks very similar to existing master vehicle `{t_exist}`. What would you like to do?")
+        st.warning("⚠️ **Similar / Typo Vehicle Numbers Detected!**")
+        st.markdown("Select action for detected similar vehicles:")
         
-        col_t1, col_t2, col_t3 = st.columns(3)
-        with col_t1:
-            if st.button("➕ Create as New Unique", key="btn_typo_new"):
-                save_vehicle_capacity_auto(t_new, 28.0)
-                st.session_state.pending_typo_review.pop(0)
-                st.success(f"✅ Vehicle `{t_new}` added as unique entry.")
+        with st.form("bulk_typo_form"):
+            typo_df_data = []
+            for idx, item in enumerate(st.session_state.pending_typo_review):
+                typo_df_data.append({
+                    "Select": True,
+                    "New Vehicle (Detected)": item["new"],
+                    "Existing Master Vehicle": item["existing"],
+                    "Action": "Create as New Unique"
+                })
+            
+            edited_typo_df = st.data_editor(pd.DataFrame(typo_df_data), use_container_width=True, key="typo_editor_table")
+            
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                apply_bulk_btn = st.form_submit_button("🚀 Apply Actions to Selected", type="primary")
+            with col_b2:
+                ignore_all_btn = st.form_submit_button("🚫 Ignore All", type="secondary")
+            
+            if apply_bulk_btn:
+                for _, row in edited_typo_df.iterrows():
+                    if row["Select"]:
+                        new_v = row["New Vehicle (Detected)"]
+                        act = row["Action"]
+                        if "New Unique" in act:
+                            save_vehicle_capacity_auto(new_v, 28.0)
+                st.session_state.pending_typo_review.clear()
+                st.success("✅ Bulk actions applied!")
                 st.rerun()
-        with col_t2:
-            if st.button(f"🔗 Merge into `{t_exist}`", key="btn_typo_merge"):
-                st.session_state.pending_typo_review.pop(0)
-                st.success(f"✅ Merged with `{t_exist}`.")
-                st.rerun()
-        with col_t3:
-            if st.button("🚫 Ignore Entry", key="btn_typo_ignore"):
-                st.session_state.pending_typo_review.pop(0)
+                
+            if ignore_all_btn:
+                st.session_state.pending_typo_review.clear()
                 st.rerun()
 
     global_search = st.text_input("🔍 Global Keyword Search (Vehicle, Customer, Material, Document):", "", key="global_search_input")
@@ -516,10 +582,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # PERSISTENT UNIQUE VEHICLE MASTER CAPACITY TABLE WITH FULL ACTIONS
+    # PERSISTENT UNIQUE VEHICLE MASTER CAPACITY TABLE (OLD VS NEW COLUMNS)
     # ==========================================================================
-    with st.expander("📋 Unique Vehicle Master Capacity Registry (Manage, Delete, Reset, Export & Mail)", expanded=True):
-        st.markdown("Unique vehicle registry combined from multi-date dispatches. No duplicates allowed.")
+    with st.expander("📋 Unique Vehicle Master Capacity Registry (Old & New Capacity Tracking)", expanded=True):
+        st.markdown("Unique vehicle registry tracking both **Old Capacity** and **New Capacity** across multi-date dispatches.")
         
         col_m_btn1, col_m_btn2, col_m_btn3 = st.columns(3)
         with col_m_btn1:
@@ -529,15 +595,15 @@ if st.session_state.active_df is not None:
                 st.success("✅ Master registry rebuilt successfully!")
                 st.rerun()
         with col_m_btn2:
-            if st.button("🗑️ Reset Entire Master", key="btn_master_reset"):
+            if st.button("🗑️ Permanent Clean Wipe Entire Table", key="btn_master_wipe"):
                 reset_vehicle_master()
                 st.session_state.master_seeded_files.clear()
-                st.success("🗑️ Vehicle master completely reset!")
+                st.success("🗑️ Master table permanently wiped clean!")
                 st.rerun()
         with col_m_btn3:
             try:
                 conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
-                df_master_view = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', actual_capacity_mt AS 'Capacity (MT)', last_updated AS 'Last Updated' FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_m)
+                df_master_view = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', old_capacity_mt AS 'Old Capacity (MT)', actual_capacity_mt AS 'New Capacity (MT)', last_updated AS 'Last Updated' FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_m)
                 conn_m.close()
                 
                 excel_m_buf = io.BytesIO()
@@ -546,34 +612,34 @@ if st.session_state.active_df is not None:
             except:
                 pass
 
-        # Master Table Search & View with Instant Delete Button per row capability
         master_search_term = st.text_input("🔍 Search Vehicle in Master Registry:", "", key="master_search_box")
         try:
             conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
-            df_master_view = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', actual_capacity_mt AS 'Capacity (MT)', last_updated AS 'Last Updated' FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_m)
+            df_master_view = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', old_capacity_mt AS 'Old Capacity (MT)', actual_capacity_mt AS 'New Capacity (MT)', last_updated AS 'Last Updated' FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_m)
             conn_m.close()
             
             if master_search_term:
                 df_master_view = df_master_view[df_master_view['Vehicle Number'].astype(str).str.contains(master_search_term, case=False, na=False)]
             
             if not df_master_view.empty:
-                st.dataframe(df_master_view, use_container_width=True)
+                df_master_view.insert(0, "Select", False)
+                edited_master_df = st.data_editor(df_master_view, use_container_width=True, key="master_editable_table")
                 
-                # Direct Delete dropdown + button
-                col_del1, col_del2 = st.columns([2, 1])
-                with col_del1:
-                    veh_to_delete = st.selectbox("Select Vehicle to Delete:", options=["-- Select Vehicle --"] + df_master_view['Vehicle Number'].tolist(), key="dropdown_del_veh")
-                with col_del2:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("❌ Delete Vehicle", key="btn_instant_delete"):
-                        if veh_to_delete and veh_to_delete != "-- Select Vehicle --":
-                            delete_vehicle_from_master(veh_to_delete)
-                            st.success(f"❌ Vehicle `{veh_to_delete}` deleted successfully!")
+                col_md1, col_md2 = st.columns([2, 1])
+                with col_md1:
+                    if st.button("❌ Delete Selected Vehicles", key="btn_multi_delete"):
+                        selected_rows = edited_master_df[edited_master_df["Select"] == True]
+                        if not selected_rows.empty:
+                            vehicles_to_del = selected_rows["Vehicle Number"].tolist()
+                            delete_vehicles_from_master(vehicles_to_del)
+                            st.success(f"❌ Successfully deleted {len(vehicles_to_del)} vehicles from master!")
                             st.rerun()
+                        else:
+                            st.warning("⚠️ Kripya table mein se kam se kam ek vehicle select karein.")
             else:
                 st.info("Master capacity table is currently empty or no matches found.")
         except Exception as e_mv:
-            st.info(f"Master capacity table initialized.")
+            st.info("Master capacity table initialized.")
 
     # ==========================================================================
     # VEHICLE TONNAGE CALCULATOR (BAGS [OPT 1 & OPT 2] + EA SEPARATE)
