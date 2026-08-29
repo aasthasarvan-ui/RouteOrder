@@ -129,7 +129,7 @@ def reset_vehicle_master():
         return False
 
 # ==============================================================================
-# SIMILARITY / TYPO CHECKER (STRING MATCHING)
+# SIMILARITY / TYPO CHECKER
 # ==============================================================================
 def check_similar_vehicle(new_veh, existing_list, threshold=0.8):
     new_v = str(new_veh).strip().upper()
@@ -155,6 +155,8 @@ if "ng_reset_token" not in st.session_state:
     st.session_state.ng_reset_token = 0
 if "pending_typo_review" not in st.session_state:
     st.session_state.pending_typo_review = []
+if "master_seeded_files" not in st.session_state:
+    st.session_state.master_seeded_files = set()
 
 # ==============================================================================
 # SMART DATAFRAME CLEANING & HEADER DETECTION
@@ -178,10 +180,14 @@ def load_and_clean_dataframe(file_bytes, file_name):
     df = df.dropna(how='all').reset_index(drop=True)
     return df
 
-def auto_seed_master_from_df(df):
+def auto_seed_master_from_df(df, force=False):
     if df is None or df.empty:
         return 0
     
+    file_sig = str(df.shape) + str(df.columns.tolist()[:3])
+    if file_sig in st.session_state.master_seeded_files and not force:
+        return 0 # Prevent auto-overwriting user deletions/modifications
+        
     veh_col_found, qty_col_found, desc_col_found = None, None, None
     for c in df.columns:
         c_l = str(c).lower()
@@ -209,6 +215,9 @@ def auto_seed_master_from_df(df):
         for v_num, group in df.groupby(veh_col_found):
             v_clean = str(v_num).strip().upper()
             if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
+                if v_clean in existing_master:
+                    continue # Already registered, do not duplicate
+                    
                 similar_match = check_similar_vehicle(v_clean, existing_master, threshold=0.82)
                 if similar_match and similar_match != v_clean:
                     if (v_clean, similar_match) not in st.session_state.pending_typo_review:
@@ -232,12 +241,13 @@ def auto_seed_master_from_df(df):
                 if calc_mt <= 0:
                     calc_mt = 28.0
                 save_vehicle_capacity_auto(v_clean, calc_mt)
-                if v_clean not in existing_master:
-                    existing_master.append(v_clean)
+                existing_master.append(v_clean)
                 count += 1
                 
         if typo_queue:
             st.session_state.pending_typo_review.extend(typo_queue)
+            
+        st.session_state.master_seeded_files.add(file_sig)
         return count
     return 0
 
@@ -320,7 +330,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Unique Master Vehicle Registry, Multi-Date Dispatch Merge, Typo Confirmation, Reset, Search, Export & Mail.
+                Unique Master Registry, Smart Delete, Instant Reset, Typo Protection & Multi-Date Dispatch Merge.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -365,7 +375,7 @@ with st.sidebar:
                     conn.close()
                     st.session_state.active_df = merged_df
                     auto_seed_master_from_df(merged_df)
-                    st.success("✅ Multi-date dispatch merged successfully! Unique master updated.")
+                    st.success("✅ Multi-date dispatch merged successfully!")
                     st.rerun()
                 else:
                     cursor = conn.cursor()
@@ -377,7 +387,7 @@ with st.sidebar:
                     conn.close()
                     st.session_state.active_df = temp_df
                     auto_seed_master_from_df(temp_df)
-                    st.success(f"✅ '{uploaded_file.name}' saved as new file! Unique master updated.")
+                    st.success(f"✅ '{uploaded_file.name}' saved as new file!")
                     st.rerun()
         except Exception as err_file:
             st.error(f"❌ Upload error: {str(err_file)}")
@@ -423,7 +433,7 @@ with st.sidebar:
                         df_from_db = load_and_clean_dataframe(blob_data, fname)
                         st.session_state.active_df = df_from_db
                         auto_seed_master_from_df(df_from_db)
-                        st.success(f"✅ Loaded '{fname}' and populated Unique Master successfully!")
+                        st.success(f"✅ Loaded '{fname}' successfully!")
                         st.rerun()
                 except Exception as load_err:
                     st.error(f"Load error: {load_err}")
@@ -511,13 +521,17 @@ if st.session_state.active_df is not None:
     with st.expander("📋 Unique Vehicle Master Capacity Registry (Manage, Delete, Reset, Export & Mail)", expanded=True):
         st.markdown("Unique vehicle registry combined from multi-date dispatches. No duplicates allowed.")
         
-        col_m_btn1, col_m_btn2, col_m_btn3, col_m_btn4 = st.columns(4)
+        col_m_btn1, col_m_btn2, col_m_btn3 = st.columns(3)
         with col_m_btn1:
-            if st.button("🔄 Refresh Master", key="btn_master_refresh"):
+            if st.button("🔄 Force Rebuild Master", key="btn_master_refresh"):
+                st.session_state.master_seeded_files.clear()
+                auto_seed_master_from_df(working_df, force=True)
+                st.success("✅ Master registry rebuilt successfully!")
                 st.rerun()
         with col_m_btn2:
             if st.button("🗑️ Reset Entire Master", key="btn_master_reset"):
                 reset_vehicle_master()
+                st.session_state.master_seeded_files.clear()
                 st.success("🗑️ Vehicle master completely reset!")
                 st.rerun()
         with col_m_btn3:
@@ -531,25 +545,8 @@ if st.session_state.active_df is not None:
                 st.download_button("📥 Export Master Excel", data=excel_m_buf.getvalue(), file_name="Vehicle_Master_Registry.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_master_export")
             except:
                 pass
-        with col_m_btn4:
-            try:
-                conn_del = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
-                master_veh_list = pd.read_sql("SELECT vehicle_no FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_del)['vehicle_no'].tolist()
-                conn_del.close()
-            except:
-                master_veh_list = []
-                
-            if master_veh_list:
-                sel_veh_to_del = st.selectbox("Select Vehicle to Delete:", options=["-- Select --"] + master_veh_list, key="sel_veh_to_del")
-                if st.button("❌ Delete Selected Vehicle", key="btn_master_delete"):
-                    if sel_veh_to_del and sel_veh_to_del != "-- Select --":
-                        delete_vehicle_from_master(sel_veh_to_del)
-                        st.success(f"❌ Vehicle `{sel_veh_to_del}` deleted from master!")
-                        st.rerun()
-            else:
-                st.info("No vehicles in master registry.")
 
-        # Master Table Search & View
+        # Master Table Search & View with Instant Delete Button per row capability
         master_search_term = st.text_input("🔍 Search Vehicle in Master Registry:", "", key="master_search_box")
         try:
             conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
@@ -561,26 +558,22 @@ if st.session_state.active_df is not None:
             
             if not df_master_view.empty:
                 st.dataframe(df_master_view, use_container_width=True)
+                
+                # Direct Delete dropdown + button
+                col_del1, col_del2 = st.columns([2, 1])
+                with col_del1:
+                    veh_to_delete = st.selectbox("Select Vehicle to Delete:", options=["-- Select Vehicle --"] + df_master_view['Vehicle Number'].tolist(), key="dropdown_del_veh")
+                with col_del2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("❌ Delete Vehicle", key="btn_instant_delete"):
+                        if veh_to_delete and veh_to_delete != "-- Select Vehicle --":
+                            delete_vehicle_from_master(veh_to_delete)
+                            st.success(f"❌ Vehicle `{veh_to_delete}` deleted successfully!")
+                            st.rerun()
             else:
                 st.info("Master capacity table is currently empty or no matches found.")
         except Exception as e_mv:
-            try:
-                conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
-                cursor_m = conn_m.cursor()
-                cursor_m.execute("DROP TABLE IF EXISTS vehicle_capacity_master")
-                cursor_m.execute("""
-                    CREATE TABLE vehicle_capacity_master (
-                        vehicle_no TEXT PRIMARY KEY,
-                        actual_capacity_mt REAL,
-                        last_updated TEXT
-                    )
-                """)
-                conn_m.commit()
-                conn_m.close()
-                auto_seed_master_from_df(working_df)
-                st.rerun()
-            except Exception as ex_sub:
-                st.error(f"Error rebuilding master table schema: {ex_sub}")
+            st.info(f"Master capacity table initialized.")
 
     # ==========================================================================
     # VEHICLE TONNAGE CALCULATOR (BAGS [OPT 1 & OPT 2] + EA SEPARATE)
