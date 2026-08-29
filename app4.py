@@ -29,7 +29,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==============================================================================
-# DATABASE INITIALIZATION
+# DATABASE INITIALIZATION (MASTERS, SAVED FILES & PERMANENT IGNORE LIST)
 # ==============================================================================
 def init_db():
     try:
@@ -177,7 +177,7 @@ def reset_vehicle_master():
         conn.close()
         return True
     except:
-        return False
+        pass
 
 # ==============================================================================
 # SIMILARITY / TYPO CHECKER
@@ -213,8 +213,9 @@ if "file_just_loaded" not in st.session_state:
     st.session_state.file_just_loaded = False
 
 # ==============================================================================
-# SMART DATAFRAME CLEANING & HEADER DETECTION
+# SMART CACHED DATAFRAME CLEANING
 # ==============================================================================
+@st.cache_data
 def load_and_clean_dataframe(file_bytes, file_name):
     if file_name.endswith('.csv'):
         df = pd.read_csv(io.BytesIO(file_bytes))
@@ -399,7 +400,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Unique Master Registry, Persistent Ignore Memory, Bulk Select-All Delete, Old & New Capacity Tracking.
+                Unique Master Registry, Standalone Master Upload Button, Persistent Ignore Memory, Bulk Select-All Delete.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -410,11 +411,11 @@ with col_h2:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==============================================================================
-# LEFT SIDEBAR: DYNAMIC VAULT UPLOADER & VEHICLE MASTER MANAGER
+# LEFT SIDEBAR: DYNAMIC VAULT UPLOADER & STANDALONE VEHICLE MASTER UPLOADER
 # ==============================================================================
 with st.sidebar:
     st.markdown("### 📂 Upload / Multi-Date Dispatch Append")
-    uploaded_file = st.file_uploader("Upload File (.xlsx / .csv)", type=["xlsx", "csv"], key="sidebar_uploader")
+    uploaded_file = st.file_uploader("Upload Dispatch File (.xlsx / .csv)", type=["xlsx", "csv"], key="sidebar_uploader")
 
     if uploaded_file is not None:
         try:
@@ -463,6 +464,30 @@ with st.sidebar:
                     st.rerun()
         except Exception as err_file:
             st.error(f"❌ Upload error: {str(err_file)}")
+
+    st.markdown("---")
+    st.markdown("### 📥 Standalone Vehicle Master Uploader")
+    master_upload = st.file_uploader("Upload Master File (.xlsx / .csv)", type=["xlsx", "csv"], key="standalone_master_uploader")
+    if master_upload is not None:
+        try:
+            if master_upload.name.endswith('.csv'):
+                df_mu = pd.read_csv(io.BytesIO(master_upload.getvalue()))
+            else:
+                df_mu = pd.read_excel(io.BytesIO(master_upload.getvalue()))
+            
+            v_col_m = [c for c in df_mu.columns if any(k in str(c).lower() for k in ['veh', 'vehicle', 'truck'])][0]
+            c_col_m = [c for c in df_mu.columns if any(k in str(c).lower() for k in ['cap', 'ton', 'weight', 'limit'])][0]
+            
+            mu_count = 0
+            for _, rm in df_mu.iterrows():
+                v_val = str(rm[v_col_m]).strip().upper()
+                c_val = float(rm[c_col_m]) if pd.notna(rm[c_col_m]) else 28.0
+                if v_val and "NAN" not in v_val:
+                    update_vehicle_capacity_manual(v_val, c_val)
+                    mu_count += 1
+            st.success(f"✅ Successfully uploaded {mu_count} vehicles into master registry!")
+        except Exception as ex_mu:
+            st.error(f"❌ Master upload error: {ex_mu}")
 
     st.markdown("---")
     st.markdown("### 🚛 Manage Vehicle Capacity Master")
