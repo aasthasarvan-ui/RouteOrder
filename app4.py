@@ -29,7 +29,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==============================================================================
-# DATABASE INITIALIZATION (MASTERS, SAVED FILES & PERMANENT IGNORE LIST)
+# DATABASE INITIALIZATION
 # ==============================================================================
 def init_db():
     try:
@@ -79,7 +79,7 @@ def get_all_master_vehicles():
         conn.close()
         return df_cap['vehicle_no'].tolist()
     except:
-        return {}
+        return []
 
 def get_ignored_vehicles():
     try:
@@ -731,7 +731,7 @@ if st.session_state.active_df is not None:
             if unique_vehicles:
                 sel_vehicle = st.selectbox("🚛 Select Vehicle Number:", options=unique_vehicles, key="calc_veh_select")
                 
-                saved_vahan_caps = get_saved_vehicle_capacities_cached()
+                saved_vahan_caps = get_saved_vehicle_capacities()
                 actual_vahan_limit = saved_vahan_caps.get(str(sel_vehicle).strip().upper(), 28.0)
 
                 veh_subset = calc_df[calc_df[veh_col].astype(str) == sel_vehicle]
