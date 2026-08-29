@@ -29,7 +29,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==============================================================================
-# DATABASE INITIALIZATION
+# DATABASE INITIALIZATION (MASTERS, SAVED FILES & PERMANENT IGNORE LIST)
 # ==============================================================================
 def init_db():
     try:
@@ -51,6 +51,11 @@ def init_db():
                 last_updated TEXT
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ignored_typos (
+                vehicle_no TEXT PRIMARY KEY
+            )
+        """)
         conn.commit()
         conn.close()
     except:
@@ -58,8 +63,7 @@ def init_db():
 
 init_db()
 
-@st.cache_data
-def get_saved_vehicle_capacities_cached():
+def get_saved_vehicle_capacities():
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         df_cap = pd.read_sql("SELECT vehicle_no, actual_capacity_mt FROM vehicle_capacity_master", conn)
@@ -75,7 +79,26 @@ def get_all_master_vehicles():
         conn.close()
         return df_cap['vehicle_no'].tolist()
     except:
-        return []
+        return {}
+
+def get_ignored_vehicles():
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        df_ign = pd.read_sql("SELECT vehicle_no FROM ignored_typos", conn)
+        conn.close()
+        return set(df_ign['vehicle_no'].tolist())
+    except:
+        return set()
+
+def add_ignored_vehicle(veh_no):
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR IGNORE INTO ignored_typos (vehicle_no) VALUES (?)", (str(veh_no).strip().upper(),))
+        conn.commit()
+        conn.close()
+    except:
+        pass
 
 def save_vehicle_capacity_auto(veh_no, capacity_mt):
     try:
@@ -149,6 +172,7 @@ def reset_vehicle_master():
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM vehicle_capacity_master")
+        cursor.execute("DELETE FROM ignored_typos")
         conn.commit()
         conn.close()
         return True
@@ -160,6 +184,9 @@ def reset_vehicle_master():
 # ==============================================================================
 def check_similar_vehicle(new_veh, existing_list, threshold=0.8):
     new_v = str(new_veh).strip().upper()
+    ignored_set = get_ignored_vehicles()
+    if new_v in ignored_set:
+        return None
     for ev in existing_list:
         ev_clean = str(ev).strip().upper()
         if new_v == ev_clean:
@@ -182,15 +209,12 @@ if "ng_reset_token" not in st.session_state:
     st.session_state.ng_reset_token = 0
 if "pending_typo_review" not in st.session_state:
     st.session_state.pending_typo_review = []
-if "ignored_vehicles" not in st.session_state:
-    st.session_state.ignored_vehicles = set()
 if "file_just_loaded" not in st.session_state:
     st.session_state.file_just_loaded = False
 
 # ==============================================================================
-# SMART CACHED DATAFRAME CLEANING
+# SMART DATAFRAME CLEANING & HEADER DETECTION
 # ==============================================================================
-@st.cache_data
 def load_and_clean_dataframe(file_bytes, file_name):
     if file_name.endswith('.csv'):
         df = pd.read_csv(io.BytesIO(file_bytes))
@@ -238,13 +262,14 @@ def auto_seed_master_from_df(df, force=False):
 
     if veh_col_found and qty_col_found:
         existing_master = get_all_master_vehicles()
+        ignored_set = get_ignored_vehicles()
         typo_queue = []
         count = 0
         
         for v_num, group in df.groupby(veh_col_found):
             v_clean = str(v_num).strip().upper()
             if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
-                if v_clean in existing_master or v_clean in st.session_state.ignored_vehicles:
+                if v_clean in existing_master or v_clean in ignored_set:
                     continue
                     
                 similar_match = check_similar_vehicle(v_clean, existing_master, threshold=0.82)
@@ -374,7 +399,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Optimized Speed, Permanent Ignore Memory, Select-All Bulk Delete, Multi-Date Merge.
+                Unique Master Registry, Persistent Ignore Memory, Bulk Select-All Delete, Old & New Capacity Tracking.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -396,7 +421,7 @@ with st.sidebar:
             file_bytes = uploaded_file.getvalue()
             temp_df = load_and_clean_dataframe(file_bytes, uploaded_file.name)
             st.session_state.file_just_loaded = True
-            auto_seed_master_from_df(temp_df, force=True)
+            auto_seed_master_from_df(temp_df)
 
             save_mode = st.radio("Choose Save Action:", ["Save as New File", "Append (Smart Deduplicate & Merge Dates)"])
 
@@ -562,14 +587,14 @@ if st.session_state.active_df is not None:
                         act = row["Action"]
                         if "New Unique" in act:
                             save_vehicle_capacity_auto(new_v, 28.0)
-                        st.session_state.ignored_vehicles.add(new_v)
+                        add_ignored_vehicle(new_v)
                 st.session_state.pending_typo_review.clear()
                 st.success("✅ Bulk actions applied!")
                 st.rerun()
                 
             if ignore_all_btn:
                 for item in st.session_state.pending_typo_review:
-                    st.session_state.ignored_vehicles.add(item["new"])
+                    add_ignored_vehicle(item["new"])
                 st.session_state.pending_typo_review.clear()
                 st.rerun()
 
@@ -706,7 +731,7 @@ if st.session_state.active_df is not None:
             if unique_vehicles:
                 sel_vehicle = st.selectbox("🚛 Select Vehicle Number:", options=unique_vehicles, key="calc_veh_select")
                 
-                saved_vahan_caps = get_saved_vehicle_capacities()
+                saved_vahan_caps = get_saved_vehicle_capacities_cached()
                 actual_vahan_limit = saved_vahan_caps.get(str(sel_vehicle).strip().upper(), 28.0)
 
                 veh_subset = calc_df[calc_df[veh_col].astype(str) == sel_vehicle]
