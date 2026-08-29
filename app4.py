@@ -65,12 +65,13 @@ def get_saved_vehicle_capacities():
     except:
         return {}
 
-def save_vehicle_capacity_auto(veh_no, capacity_mt=28.0):
+def save_vehicle_capacity_auto(veh_no, capacity_mt):
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
         v_clean = str(veh_no).strip().upper()
         if v_clean and "TOTAL" not in v_clean and v_clean != "NAN":
+            # Insert only if not already present in master
             cursor.execute("""
                 INSERT INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt, last_updated)
                 VALUES (?, ?, ?)
@@ -133,28 +134,39 @@ def load_and_clean_dataframe(file_bytes, file_name):
 def auto_seed_master_from_df(df):
     if df is None or df.empty:
         return 0
-    veh_col_found, cap_col_found = None, None
+    
+    veh_col_found, qty_col_found, desc_col_found = None, None, None
     for c in df.columns:
         c_l = str(c).lower()
         if not veh_col_found and ("vehicle" in c_l or "truck" in c_l or "veh" in c_l):
             veh_col_found = c
-        if not cap_col_found and ("capacity" in c_l or "tonnage" in c_l or "max wt" in c_l):
-            cap_col_found = c
-            
-    if veh_col_found:
-        count = 0
-        for _, row in df.iterrows():
-            v = str(row[veh_col_found]).strip().upper()
-            if v and "TOTAL" not in v and v != "NAN":
-                cap_val = 28.0
-                if cap_col_found and pd.notna(row[cap_col_found]):
+        if not qty_col_found and ("quantity" in c_l or "qty" in c_l):
+            qty_col_found = c
+        if not desc_col_found and ("description" in c_l or "desc" in c_l or "text" in c_l):
+            desc_col_found = c
+
+    if veh_col_found and qty_col_found:
+        # Group by vehicle and calculate standard slab tonnage as default capacity
+        for v_num, group in df.groupby(veh_col_found):
+            v_clean = str(v_num).strip().upper()
+            if v_clean and "TOTAL" not in v_clean and v_clean != "NAN":
+                tot_kgs = 0.0
+                for _, r in group.iterrows():
                     try:
-                        cap_val = float(row[cap_col_found])
+                        q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
                     except:
-                        cap_val = 28.0
-                save_vehicle_capacity_auto(v, cap_val)
-                count += 1
-        return count
+                        q = 0.0
+                    d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
+                    if "25" in d_txt:
+                        tot_kgs += q * 25.0
+                    else:
+                        tot_kgs += q * 50.0
+                
+                calc_mt = round(tot_kgs / 1000.0, 2)
+                if calc_mt <= 0:
+                    calc_mt = 28.0 # Default fallback if 0
+                save_vehicle_capacity_auto(v_clean, calc_mt)
+        return len(df[veh_col_found].unique())
     return 0
 
 # ==============================================================================
@@ -236,7 +248,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault, Auto Vehicle Master from Dispatch, Multi-Select Billing Docs, Standard & Precision Slabs.
+                Permanent Vault, Auto Vehicle Master from Dispatch Qty, Standard & Precision Slabs, Multi-Trip Docs.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -338,7 +350,7 @@ with st.sidebar:
                         df_from_db = load_and_clean_dataframe(blob_data, fname)
                         st.session_state.active_df = df_from_db
                         auto_seed_master_from_df(df_from_db)
-                        st.success(f"✅ Loaded '{fname}' and updated Vehicle Master successfully!")
+                        st.success(f"✅ Loaded '{fname}' and populated Vehicle Master successfully!")
                         st.rerun()
                 except Exception as load_err:
                     st.error(f"Load error: {load_err}")
