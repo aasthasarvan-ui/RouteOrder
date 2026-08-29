@@ -74,7 +74,7 @@ def save_vehicle_capacity_auto(veh_no, capacity_mt):
             cursor.execute("""
                 INSERT INTO vehicle_capacity_master (vehicle_no, actual_capacity_mt, last_updated)
                 VALUES (?, ?, ?)
-                ON CONFLICT(vehicle_no) DO UPDATE SET actual_capacity_mt = MAX(vehicle_capacity_master.actual_capacity_mt, excluded.actual_capacity_mt)
+                ON CONFLICT(vehicle_no) DO NOTHING
             """, (v_clean, float(capacity_mt), get_ist_now().strftime('%Y-%m-%d %H:%M:%S')))
             conn.commit()
         conn.close()
@@ -144,19 +144,28 @@ def auto_seed_master_from_df(df):
         if not desc_col_found and any(k in c_l for k in ['description', 'desc', 'text']):
             desc_col_found = c
 
-    if veh_col_found:
-        # Group by vehicle and calculate standard slab tonnage as capacity
+    # Fallback if headers are in first row values
+    if not veh_col_found or not qty_col_found:
+        for idx, row in df.head(5).iterrows():
+            for col in df.columns:
+                val_str = str(row[col]).lower()
+                if not veh_col_found and ('vehicle' in val_str or 'veh' in val_str):
+                    veh_col_found = col
+                if not qty_col_found and ('quantity' in val_str or 'qty' in val_str):
+                    qty_col_found = col
+
+    if veh_col_found and qty_col_found:
+        count = 0
         for v_num, group in df.groupby(veh_col_found):
             v_clean = str(v_num).strip().upper()
             if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
                 tot_kgs = 0.0
                 for _, r in group.iterrows():
                     q = 0.0
-                    if qty_col_found and pd.notna(r[qty_col_found]):
-                        try:
-                            q = float(r[qty_col_found])
-                        except:
-                            q = 0.0
+                    try:
+                        q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
+                    except:
+                        q = 0.0
                     d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
                     if "25" in d_txt:
                         tot_kgs += q * 25.0
@@ -167,7 +176,8 @@ def auto_seed_master_from_df(df):
                 if calc_mt <= 0:
                     calc_mt = 28.0
                 save_vehicle_capacity_auto(v_clean, calc_mt)
-        return len(df[veh_col_found].unique())
+                count += 1
+        return count
     return 0
 
 # ==============================================================================
@@ -409,10 +419,18 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # PERSISTENT VEHICLE MASTER CAPACITY TABLE VIEW
+    # PERSISTENT VEHICLE MASTER CAPACITY TABLE VIEW WITH FORCE REBUILD BUTTON
     # ==========================================================================
     with st.expander("📋 Persistent Vehicle Master Capacity List (Page Refresh Proof)", expanded=True):
         st.markdown("Vehicles are auto-registered from dispatch files. You can review or update their actual legal capacity anytime.")
+        
+        col_m_btn1, col_m_btn2 = st.columns([1, 3])
+        with col_m_btn1:
+            if st.button("🔄 Rebuild Master from Active File"):
+                seeded_cnt = auto_seed_master_from_df(working_df)
+                st.success(f"✅ Successfully rebuilt master with {seeded_cnt} vehicles!")
+                st.rerun()
+
         try:
             conn_m = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
             df_master_view = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', actual_capacity_mt AS 'Capacity (MT)', last_updated AS 'Last Updated' FROM vehicle_capacity_master ORDER BY vehicle_no ASC", conn_m)
