@@ -8,7 +8,7 @@ import io
 import sqlite3
 import smtplib
 from email.message import EmailMessage
-import plotly.express as px
+import re
 
 # ==============================================================================
 # PAGE CONFIGURATION & TIMEZONE
@@ -169,7 +169,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Permanent Vault, Merge Mode, Multi-Select Sequenced Billing Docs, Corrected Billing Date Priority, Actual VAHAN Master.
+                Permanent Vault, Merge Mode, Multi-Select Sequenced Billing Docs, BAG & EA Unit Support, Actual VAHAN Master.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -323,10 +323,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (STRICT BILLING DATE PRIORITY)
+    # VEHICLE TONNAGE CALCULATOR (BAG & EA SUPPORT WITH CORRECT DATE PRIORITY)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Multi-Select Sequenced Billing Docs)", expanded=True):
-        st.markdown("Select Vehicle Number. **Billing Date** is prioritized correctly to ensure accurate date selection.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (BAG & EA Unit Support)", expanded=True):
+        st.markdown("Select Vehicle Number and Billing Date. Supports both **BAG** (with 50kg/25kg precision slabs) and **EA** (extracted directly from description without extra packaging weight).")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -346,7 +346,6 @@ if st.session_state.active_df is not None:
 
         date_col, btype_col, unit_col, desc_col, billdoc_col = None, None, None, None, None
         
-        # Strict Billing Date Priority Search
         for c in working_df.columns:
             c_low = str(c).lower()
             if not date_col and "billing date" in c_low:
@@ -360,7 +359,6 @@ if st.session_state.active_df is not None:
             if not billdoc_col and any(k in c_low for k in ["billing document", "bill no", "invoice no", "sofgen bill"]):
                 billdoc_col = c
         
-        # Fallback for date if exact 'billing date' not found
         if not date_col:
             for c in working_df.columns:
                 c_low = str(c).lower()
@@ -373,7 +371,7 @@ if st.session_state.active_df is not None:
             if btype_col:
                 calc_df = calc_df[calc_df[btype_col].astype(str).str.upper().str.contains("F2", na=False)]
             if unit_col:
-                calc_df = calc_df[calc_df[unit_col].astype(str).str.upper().str.contains("BAG", na=False)]
+                calc_df = calc_df[calc_df[unit_col].astype(str).str.upper().str.contains("BAG|EA", na=False, regex=True)]
 
             if not calc_df.empty:
                 calc_df = calc_df[~calc_df[veh_col].astype(str).str.lower().str.contains("total", na=False)]
@@ -396,7 +394,6 @@ if st.session_state.active_df is not None:
                 else:
                     date_filtered_subset = veh_subset
 
-                # SEQUENCED BILLING DOCUMENTS
                 unique_bills = sorted(date_filtered_subset[billdoc_col].dropna().astype(str).unique().tolist()) if billdoc_col and not date_filtered_subset.empty else []
                 
                 if unique_bills:
@@ -409,8 +406,12 @@ if st.session_state.active_df is not None:
                 else:
                     final_veh_rows = date_filtered_subset
 
-                b50_total = 0.0
-                b25_total = 0.0
+                total_weight_kgs_opt1 = 0.0
+                total_weight_kgs_opt2 = 0.0
+                bag_50_count = 0.0
+                bag_25_count = 0.0
+                ea_total_qty = 0.0
+                ea_weight_kgs = 0.0
                 
                 for _, r in final_veh_rows.iterrows():
                     val = r[qty_col]
@@ -419,33 +420,44 @@ if st.session_state.active_df is not None:
                     except (ValueError, TypeError):
                         q = 0.0
                         
+                    u_val = str(r[unit_col]).upper() if unit_col and pd.notna(r[unit_col]) else "BAG"
                     d_text = str(r[desc_col]).upper() if desc_col and pd.notna(r[desc_col]) else ""
                     
-                    if "25" in d_text:
-                        b25_total += q
+                    if "EA" in u_val:
+                        ea_total_qty += q
+                        match_wt = re.search(r'(\d+(?:\.\d+)?)\s*KG', d_text)
+                        item_wt = float(match_wt.group(1)) if match_wt else 1.0
+                        item_total_wt = q * item_wt
+                        ea_weight_kgs += item_total_wt
+                        total_weight_kgs_opt1 += item_total_wt
+                        total_weight_kgs_opt2 += item_total_wt
                     else:
-                        b50_total += q
+                        if "25" in d_text:
+                            bag_25_count += q
+                            total_weight_kgs_opt1 += q * 25.120
+                            total_weight_kgs_opt2 += q * 25.0
+                        else:
+                            bag_50_count += q
+                            total_weight_kgs_opt1 += q * 50.120
+                            total_weight_kgs_opt2 += q * 50.0
 
-                w1_opt1 = b50_total * 50.120 + b25_total * 25.120
-                mt1 = w1_opt1 / 1000.0
-
-                w1_opt2 = b50_total * 50.0 + b25_total * 25.0
-                mt2 = w1_opt2 / 1000.0
+                mt1 = total_weight_kgs_opt1 / 1000.0
+                mt2 = total_weight_kgs_opt2 / 1000.0
 
                 # LIVE POPULATED HEADER TOTALS
                 st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}`")
                 vb1, vb2, vb3, vb4 = st.columns(4)
-                vb1.metric("📦 Total 50 Kg Bags", f"{int(b50_total):,} Bags")
-                vb2.metric("📦 Total 25 Kg Bags", f"{int(b25_total):,} Bags")
-                vb3.metric("📊 Total Invoice Qty", f"{int(b50_total + b25_total):,} Bags")
+                vb1.metric("📦 50Kg / EA Qty", f"{int(bag_50_count + ea_total_qty):,}")
+                vb2.metric("📦 25 Kg Bags", f"{int(bag_25_count):,}")
+                vb3.metric("📊 Total Volume", f"{int(bag_50_count + bag_25_count + ea_total_qty):,}")
                 vb4.metric("🛡️ Actual VAHAN Limit", f"{actual_vahan_limit} MT")
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 c_res1, c_res2 = st.columns(2)
                 with c_res1:
-                    st.metric("🔹 Precision Scale (Opt 1: 50.12 & 25.12)", f"{mt1:,.3f} MT", f"{w1_opt1:,.2f} Kgs")
+                    st.metric("🔹 Precision Scale (Opt 1)", f"{mt1:,.3f} MT", f"{total_weight_kgs_opt1:,.2f} Kgs")
                 with c_res2:
-                    st.metric("🔹 Standard Slabs (Opt 2: 50.0 & 25.0)", f"{mt2:,.3f} MT", f"{w1_opt2:,.2f} Kgs")
+                    st.metric("🔹 Standard Slabs (Opt 2)", f"{mt2:,.3f} MT", f"{total_weight_kgs_opt2:,.2f} Kgs")
 
                 if mt1 > actual_vahan_limit:
                     st.error(f"🚨 **Actual VAHAN Overload Alert:** Vehicle `{sel_vehicle}` carrying **{mt1:,.3f} MT** has exceeded its actual registered capacity limit of **{actual_vahan_limit} MT**!")
@@ -463,23 +475,31 @@ if st.session_state.active_df is not None:
                         b_doc = name[1] if isinstance(name, tuple) and len(name) > 1 else "N/A"
                         v_cap = saved_vahan_caps.get(str(v_no).strip().upper(), 28.0)
                         
-                        v_50, v_25 = 0.0, 0.0
+                        g_wt = 0.0
+                        g_50, g_25, g_ea = 0.0, 0.0, 0.0
                         for _, vr in group.iterrows():
                             vq_val = vr[qty_col]
                             try:
                                 vq = float(vq_val) if pd.notna(vq_val) else 0.0
                             except:
                                 vq = 0.0
+                            u_val = str(vr[unit_col]).upper() if unit_col and pd.notna(vr[unit_col]) else "BAG"
                             vd_text = str(vr[desc_col]).upper() if desc_col and pd.notna(vr[desc_col]) else ""
-                            if "25" in vd_text:
-                                v_25 += vq
+                            
+                            if "EA" in u_val:
+                                g_ea += vq
+                                mw = re.search(r'(\d+(?:\.\d+)?)\s*KG', vd_text)
+                                iw = float(mw.group(1)) if mw else 1.0
+                                g_wt += vq * iw
                             else:
-                                v_50 += vq
+                                if "25" in vd_text:
+                                    g_25 += vq
+                                    g_wt += vq * 25.120
+                                else:
+                                    g_50 += vq
+                                    g_wt += vq * 50.120
                         
-                        tot_bags = int(v_50 + v_25)
-                        prec_mt = (v_50 * 50.120 + v_25 * 25.120) / 1000.0
-                        std_mt = (v_50 * 50.0 + v_25 * 25.0) / 1000.0
-                        
+                        prec_mt = g_wt / 1000.0
                         audit_status = "Compliant"
                         if prec_mt > v_cap:
                             audit_status = "⚠️ Overloaded (> Limit)"
@@ -487,9 +507,9 @@ if st.session_state.active_df is not None:
                         summary_rows.append({
                             "Vehicle No": v_no,
                             "Billing Doc (Trip)": b_doc,
-                            "50Kg Bags": int(v_50),
-                            "25Kg Bags": int(v_25),
-                            "Total Bags": tot_bags,
+                            "50Kg/EA": int(g_50 + g_ea),
+                            "25Kg Bags": int(g_25),
+                            "Total Qty": int(g_50 + g_25 + g_ea),
                             "Precision MT": round(prec_mt, 3),
                             "Actual Limit (MT)": v_cap,
                             "Audit Status": audit_status
@@ -498,7 +518,7 @@ if st.session_state.active_df is not None:
                     df_summary = pd.DataFrame(summary_rows).sort_values(by=["Vehicle No", "Billing Doc (Trip)"])
                     st.dataframe(df_summary, use_container_width=True)
             else:
-                st.info("ℹ️ No records found matching Billing Type 'F2' and Unit 'BAG'.")
+                st.info("ℹ️ No records found matching Billing Type 'F2' and Unit 'BAG' or 'EA'.")
         else:
             st.warning("⚠️ Please select valid Vehicle and Quantity columns above.")
 
