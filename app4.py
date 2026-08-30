@@ -313,7 +313,7 @@ with st.sidebar:
 if st.session_state.active_df is not None:
     working_df = st.session_state.active_df.copy()
 
-    # Detect Dispatch / Billing Date column dynamically and get exact unique dates formatted cleanly
+    # Detect Dispatch / Billing Date column dynamically
     dispatch_date_col = None
     for c in working_df.columns:
         if "billing date" in str(c).lower() or "date" in str(c).lower():
@@ -347,7 +347,7 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (TRIP 1 & TRIP 2 SELECTION + TOTAL BAGS)
+    # VEHICLE TONNAGE CALCULATOR (RELIABLE VEHICLE FILTERING & TRIP MODES)
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1 & Trip 2 Separate Selection Suite)", expanded=True):
         st.markdown("Select Vehicle Number and choose Trip Mode to get exact non-combined results instantly.")
@@ -392,8 +392,8 @@ if st.session_state.active_df is not None:
 
         if veh_col and qty_col:
             calc_df = working_df.copy()
-            if btype_col:
-                calc_df = calc_df[calc_df[btype_col].astype(str).str.upper().str.contains("F2", na=False)]
+            
+            # Relaxed filter: Allow BAG and EA units reliably
             if unit_col:
                 calc_df = calc_df[calc_df[unit_col].astype(str).str.upper().str.contains("BAG|EA", na=False, regex=True)]
 
@@ -580,7 +580,7 @@ if st.session_state.active_df is not None:
                     df_summary = pd.DataFrame(summary_rows).sort_values(by=["Vehicle No", "Billing Doc (Trip)"])
                     st.dataframe(df_summary, use_container_width=True)
             else:
-                st.info("ℹ️ No records found matching Billing Type 'F2' and Unit 'BAG' or 'EA'.")
+                st.info("ℹ️ No records found matching Unit 'BAG' or 'EA'.")
         else:
             st.warning("⚠️ Please select valid Vehicle and Quantity columns above.")
 
