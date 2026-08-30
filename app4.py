@@ -353,10 +353,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[search_mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (INDEPENDENT TRIP 1 & TRIP 2 AUDIT)
+    # VEHICLE TONNAGE CALCULATOR (SMART GAP-DETECTED TRIP SEQUENCING)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Independent Trip 1 & Trip 2 Audit)", expanded=True):
-        st.markdown("Type last 4 digits (e.g. `2680`, `1765`) to search vehicle. Choose **Trip 1**, **Trip 2** or **Custom Multi-Select** to calculate independent weights.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Smart Gap-Detected Sequence Audit)", expanded=True):
+        st.markdown("Type last 4 digits (e.g. `2680`, `1765`, `0440`) to search vehicle. App automatically detects continuous billing runs (Trip 1 & Trip 2) based on numerical gaps.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -443,21 +443,46 @@ if st.session_state.active_df is not None:
                 
                 if unique_bills:
                     st.markdown("---")
-                    st.markdown("🎯 **Trip 1, Trip 2 & Custom Sequence Selection Mode:**")
+                    st.markdown("🎯 **Smart Continuous Trip Sequence Detection:**")
                     
-                    trip_mode = st.radio(
-                        "Choose Trip Mode:", 
-                        ["Trip 1 (First Batch)", "Trip 2 (Second Batch onwards)", "Custom Multi-Select (Manual Sequence)"], 
-                        horizontal=True,
-                        key="exclusive_trip_mode_radio"
-                    )
+                    # INTELLIGENT GAP DETECTOR: Automatically find continuous blocks in bill numbers (e.g. 6432-6434 vs 6485+)
+                    numeric_bills = []
+                    for b in unique_bills:
+                        nums = re.findall(r'\d+', str(b))
+                        if nums:
+                            numeric_bills.append((int(nums[-1]), b))
+                        else:
+                            numeric_bills.append((0, b))
                     
-                    # FIXED: Distinct default bill separation for Trip 1 vs Trip 2
-                    mid_idx = max(1, len(unique_bills) // 2)
-                    if trip_mode == "Trip 1 (First Batch)":
-                        default_bills = unique_bills[:mid_idx]
-                    elif trip_mode == "Trip 2 (Second Batch onwards)":
-                        default_bills = unique_bills[mid_idx:]
+                    numeric_bills.sort(key=lambda x: x[0])
+                    
+                    # Group into continuous runs (gap > 3 means a new trip started)
+                    trips_groups = []
+                    current_trip = []
+                    prev_num = None
+                    
+                    for num, original_b in numeric_bills:
+                        if prev_num is None or (num - prev_num <= 3):
+                            current_trip.append(original_b)
+                        else:
+                            trips_groups.append(current_trip)
+                            current_trip = [original_b]
+                        prev_num = num if num > 0 else prev_num
+                    if current_trip:
+                        trips_groups.append(current_trip)
+
+                    trip_options = ["Custom Multi-Select (Manual Sequence)"]
+                    for idx, grp in enumerate(trips_groups):
+                        trip_options.insert(idx, f"Trip {idx+1} (Bills: {grp[0]} to {grp[-1]})")
+
+                    trip_mode = st.radio("Choose Trip Mode:", options=trip_options, horizontal=True, key="exclusive_trip_mode_radio")
+                    
+                    if "Trip 1" in trip_mode and len(trips_groups) > 0:
+                        default_bills = trips_groups[0]
+                    elif "Trip 2" in trip_mode and len(trips_groups) > 1:
+                        default_bills = trips_groups[1]
+                    elif "Trip 3" in trip_mode and len(trips_groups) > 2:
+                        default_bills = trips_groups[2]
                     else:
                         default_bills = unique_bills
 
