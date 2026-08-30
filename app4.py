@@ -342,7 +342,7 @@ if st.session_state.active_df is not None:
     st.markdown("### 📊 Billing & Tonnage Data Dashboard")
 
     # ==========================================================================
-    # SUPER-ROBUST SAFE GLOBAL SEARCH (FIXED FOR ARROW/PANDAS TYPE CONFLICTS)
+    # SUPER-ROBUST SAFE GLOBAL SEARCH (EXACT VEHICLE / KEYWORD FILTER)
     # ==========================================================================
     global_search = st.text_input("🔍 Global Keyword Search (Vehicle No e.g. 2680, 1765, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
@@ -353,7 +353,7 @@ if st.session_state.active_df is not None:
         working_df = working_df[search_mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (TRIP 1 & TRIP 2 WITH BILLING SEQUENCE)
+    # VEHICLE TONNAGE CALCULATOR (PRECISE VEHICLE DROPDOWN & SEQUENCE AUDIT)
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1 & Trip 2 Billing Sequence Audit)", expanded=True):
         st.markdown("Select Vehicle Number and choose Trip Mode or Custom Billing Sequence to audit separate trip weights.")
@@ -404,12 +404,14 @@ if st.session_state.active_df is not None:
             if not calc_df.empty:
                 calc_df = calc_df[~calc_df[veh_col].astype(str).str.lower().str.contains("total", na=False)]
 
-            unique_vehicles = sorted(calc_df[veh_col].dropna().astype(str).unique().tolist()) if not calc_df.empty else []
+            # Clean and get strictly unique vehicle numbers without duplicates/whitespace
+            unique_vehicles = sorted([str(v).strip() for v in calc_df[veh_col].dropna().unique() if str(v).strip() != '' and str(v) != '#'])
             
             if unique_vehicles:
                 sel_vehicle = st.selectbox("🚛 Select Vehicle Number:", options=unique_vehicles, key="calc_veh_select")
 
-                veh_subset = calc_df[calc_df[veh_col].astype(str) == sel_vehicle]
+                # Filter subset strictly for selected vehicle (cleaning whitespace)
+                veh_subset = calc_df[calc_df[veh_col].astype(str).str.strip() == sel_vehicle]
                 
                 unique_dates = sorted(veh_subset[date_col].dropna().astype(str).unique().tolist()) if date_col and not veh_subset.empty else ["All Dates"]
                 sel_date = st.selectbox("📅 Select Billing Date:", options=unique_dates, key="calc_date_select")
