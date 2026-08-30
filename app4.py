@@ -118,12 +118,14 @@ def save_vehicle_capacity_auto(veh_no, capacity_mt):
                 """, (v_clean, float(capacity_mt), float(capacity_mt), now_str))
             else:
                 existing_cap = row[0]
-                if float(existing_cap) != float(capacity_mt):
+                # Keep the maximum capacity found across uploads/trips
+                max_cap = max(float(existing_cap), float(capacity_mt))
+                if float(existing_cap) != max_cap:
                     cursor.execute("""
                         UPDATE vehicle_capacity_master 
                         SET old_capacity_mt = ?, actual_capacity_mt = ?, last_updated = ?
                         WHERE vehicle_no = ?
-                    """, (existing_cap, float(capacity_mt), now_str, v_clean))
+                    """, (existing_cap, max_cap, now_str, v_clean))
             conn.commit()
         conn.close()
     except:
@@ -213,7 +215,7 @@ if "file_just_loaded" not in st.session_state:
     st.session_state.file_just_loaded = False
 
 # ==============================================================================
-# SMART CACHED DATAFRAME CLEANING
+# SMART CACHED DATAFRAME CLEANING & FIXED MASTER SEEDING
 # ==============================================================================
 @st.cache_data
 def load_and_clean_dataframe(file_bytes, file_name):
@@ -234,7 +236,8 @@ def load_and_clean_dataframe(file_bytes, file_name):
     
     df = df.dropna(how='all').reset_index(drop=True)
     return df
-    def auto_seed_master_from_df(df, force=False):
+
+def auto_seed_master_from_df(df, force=False):
     if df is None or df.empty:
         return 0
     
@@ -266,7 +269,6 @@ def load_and_clean_dataframe(file_bytes, file_name):
         typo_queue = []
         count = 0
         
-        # Unit aur Billing Document columns dhundhein
         unit_col_local = None
         trip_col_local = None
         for tc in df.columns:
@@ -280,7 +282,6 @@ def load_and_clean_dataframe(file_bytes, file_name):
             v_clean = str(v_num).strip().upper()
             if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
                 
-                # Similar / Typo check
                 similar_match = check_similar_vehicle(v_clean, existing_master, threshold=0.82)
                 if similar_match and similar_match != v_clean and v_clean not in existing_master and v_clean not in ignored_set:
                     if {"new": v_clean, "existing": similar_match} not in st.session_state.pending_typo_review:
@@ -289,7 +290,6 @@ def load_and_clean_dataframe(file_bytes, file_name):
                 
                 max_trip_kgs = 0.0
                 
-                # Agar Billing Document / Trip column milta hai, toh har trip ka alag sum nikalo
                 if trip_col_local:
                     for _, sub_g in group.groupby(trip_col_local):
                         trip_kgs = 0.0
@@ -298,14 +298,12 @@ def load_and_clean_dataframe(file_bytes, file_name):
                             d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
                             u_txt = str(r[unit_col_local]).upper() if unit_col_local and pd.notna(r[unit_col_local]) else ""
                             
-                            # Weight calculation logic (Bags vs EA)
                             if "EA" in u_txt:
-                                # EA ke liye parse function ya default weight
                                 match_kg = re.search(r'\b(\d+(?:\.\d+)?)\s*KG\b', d_txt)
                                 if match_kg:
                                     trip_kgs += q * float(match_kg.group(1))
                                 else:
-                                    trip_kgs += q * 1.0 # Default fallback
+                                    trip_kgs += q * 1.0
                             else:
                                 if "25" in d_txt:
                                     trip_kgs += q * 25.120
@@ -315,7 +313,6 @@ def load_and_clean_dataframe(file_bytes, file_name):
                         if trip_kgs > max_trip_kgs:
                             max_trip_kgs = trip_kgs
                 else:
-                    # Agar trip column nahi hai, toh saare rows ka total ya max calculate karo
                     total_veh_kgs = 0.0
                     for _, r in group.iterrows():
                         q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
@@ -335,7 +332,6 @@ def load_and_clean_dataframe(file_bytes, file_name):
                 if calc_mt <= 0:
                     calc_mt = 28.0
                 
-                # Master table me save ya update karein (Agar pehle se kam hai toh max wala update hoga)
                 save_vehicle_capacity_auto(v_clean, calc_mt)
                 if v_clean not in existing_master:
                     existing_master.append(v_clean)
@@ -347,6 +343,7 @@ def load_and_clean_dataframe(file_bytes, file_name):
         st.session_state.file_just_loaded = False
         return count
     return 0
+
 # ==============================================================================
 # ADVANCED KG / GM / LTR PARSER FOR EA
 # ==============================================================================
@@ -1199,7 +1196,7 @@ if st.session_state.active_df is not None:
                             server.send_message(msg)
                             server.quit()
 
-                            st.success(f"✅ Professional email with Excel attachment successfully dispatched to: **{', '.join(recipient)}**!")
+                            st.success(f"✅ Professional email with Excel attachment successfully dispatched to: **{', '.join(recipients)}**!")
                         except Exception as mail_err:
                             st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
@@ -1207,7 +1204,6 @@ else:
 
 # ==============================================================================
 # 🌟 COMBINED ENTERPRISE UTILITY MODULES: WEIGHT CATEGORIES & COMPLIANCE TRACKER
-# (PASTE THIS ENTIRE BLOCK AT THE VERY END OF YOUR app.py)
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -1219,7 +1215,6 @@ with st.expander("⚖️ Toggle Open/Close: Vehicle Weight Category Classificati
     st.write("Yeh module aapke master vehicles ko unki registered actual capacity (MT) ke mutabiq automatic categories mein divide karta hai.")
     
     try:
-        import sqlite3
         conn_cat = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         df_cat_master = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', old_capacity_mt AS 'Old Capacity (MT)', actual_capacity_mt AS 'Capacity (MT)' FROM vehicle_capacity_master", conn_cat)
         conn_cat.close()
@@ -1277,7 +1272,6 @@ with st.expander("🛡️ Toggle Open/Close: Industry Mandatory Vehicle Fitness 
     st.write("Industry standard ke mutabiq fleet gadiyon ke statutory documents (Insurance, Fitness, Permit, PUC) ki expiry tracking.")
     
     try:
-        import sqlite3
         conn_comp = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor_comp = conn_comp.cursor()
         
@@ -1336,6 +1330,3 @@ with st.expander("🛡️ Toggle Open/Close: Industry Mandatory Vehicle Fitness 
             conn_comp.close()
     except Exception as e_comp:
         st.info("ℹ️ Vehicle Compliance Tracker module ready.")
-# ==============================================================================
-# END OF COMBINED ENTERPRISE UTILITY MODULES
-# ==============================================================================
