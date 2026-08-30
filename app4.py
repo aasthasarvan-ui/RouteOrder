@@ -59,35 +59,6 @@ if "calc_theme_choice" not in st.session_state:
 if "ng_reset_token" not in st.session_state:
     st.session_state.ng_reset_token = 0
 
-# Auto-load latest vault file on initial load or refresh so user never loses data
-if st.session_state.active_df is None:
-    try:
-        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
-        saved_records = pd.read_sql("SELECT id, file_blob, file_name FROM saved_files ORDER BY id DESC LIMIT 1", conn)
-        conn.close()
-        if not saved_records.empty:
-            blob_data = saved_records.iloc[0]['file_blob']
-            fname = saved_records.iloc[0]['file_name']
-            
-            if fname.endswith('.csv'):
-                st.session_state.active_df = pd.read_csv(io.BytesIO(blob_data))
-            else:
-                excel_obj = pd.ExcelFile(io.BytesIO(blob_data))
-                sheet_target = 'Sheet1' if 'Sheet1' in excel_obj.sheet_names else excel_obj.sheet_names[0]
-                st.session_state.active_df = pd.read_excel(excel_obj, sheet_name=sheet_target)
-            
-            df_temp = st.session_state.active_df
-            if any(str(c).startswith("Unnamed") for c in df_temp.columns):
-                for idx, row in df_temp.head(10).iterrows():
-                    row_str = str(row.values).lower()
-                    if "vehicle" in row_str or "quantity" in row_str or "billing type" in row_str:
-                        df_temp.columns = df_temp.iloc[idx]
-                        df_temp = df_temp.iloc[idx+1:].reset_index(drop=True)
-                        break
-            st.session_state.active_df = df_temp.dropna(how='all').reset_index(drop=True)
-    except:
-        pass
-
 # ==============================================================================
 # SMART DATAFRAME CLEANING & PLANT 2100 FILTER
 # ==============================================================================
@@ -109,7 +80,7 @@ def load_and_clean_dataframe(file_bytes, file_name):
     
     df = df.dropna(how='all').reset_index(drop=True)
 
-    # Automatically filter Plant "2100" if Plant column exists
+    # Automatically filter Plant 2100 if Plant column exists
     plant_col = None
     for c in df.columns:
         if str(c).strip().lower() in ["plant", "plant code"]:
@@ -117,10 +88,22 @@ def load_and_clean_dataframe(file_bytes, file_name):
             break
     
     if plant_col:
-        # Keep rows where plant matches 2100 (string or numeric conversion)
         df = df[df[plant_col].astype(str).str.contains("2100", na=False)].reset_index(drop=True)
 
     return df
+
+# Auto-load latest vault file on initial load or refresh
+if st.session_state.active_df is None:
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        saved_records = pd.read_sql("SELECT id, file_blob, file_name FROM saved_files ORDER BY id DESC LIMIT 1", conn)
+        conn.close()
+        if not saved_records.empty:
+            blob_data = saved_records.iloc[0]['file_blob']
+            fname = saved_records.iloc[0]['file_name']
+            st.session_state.active_df = load_and_clean_dataframe(blob_data, fname)
+    except:
+        pass
 
 # ==============================================================================
 # ADVANCED KG / GM / LTR PARSER FOR EA
@@ -199,7 +182,7 @@ col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
     st.markdown("""
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
-            <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage Hub</h2>
+            <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage Hub (Plant 2100)</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
                 Persistent Vault Storage, Precision Tonnage Calculators & Report Export Suite.
             </p>
@@ -286,9 +269,7 @@ with st.sidebar:
                     conn.close()
                     if row_data:
                         blob_data, fname = row_data
-                        # Load and filter Plant 2100
-                        df_from_db = load_and_clean_dataframe(blob_data, fname)
-                        st.session_state.active_df = df_from_db
+                        st.session_state.active_df = load_and_clean_dataframe(blob_data, fname)
                         st.success(f"✅ Loaded '{fname}' successfully!")
                         st.rerun()
                 except Exception as load_err:
@@ -314,25 +295,24 @@ with st.sidebar:
 # MAIN DASHBOARD & TONNAGE CALCULATORS
 # ==============================================================================
 if st.session_state.active_df is not None:
-    st.markdown("### 📊 Billing & Tonnage Data Dashboard (Plant 2100 Filtered)")
+    st.markdown("### 📊 Billing & Tonnage Data Dashboard")
 
     working_df = st.session_state.active_df.copy()
 
     # ==========================================================================
-    # SUPER-ROBUST GLOBAL SEARCH (FIXED FOR 4-DIGIT VEHICLE NO LIKE '2680')
+    # ROBUST GLOBAL SEARCH (FIXED FOR 4-DIGIT VEHICLE NO LIKE '2680')
     # ==========================================================================
     global_search = st.text_input("🔍 Global Keyword Search (Vehicle No e.g. 2680, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
         term = str(global_search).strip().lower()
-        # Search specifically across vehicle columns first, or across all columns using exact substring
         mask = working_df.astype(str).apply(lambda row: row.str.lower().str.contains(term, na=False).any(), axis=1)
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (SMART DEFAULT FULL TRIP & SELECTIVE AUDIT)
+    # VEHICLE TONNAGE CALCULATOR (TRIP 1 & TRIP 2 SELECTION + TOTAL BAGS)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Smart Trip & Billing Sequence Audit)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Documents. By default, all bills for the selected vehicle load together as a complete trip.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1 & Trip 2 Separate Selection Suite)", expanded=True):
+        st.markdown("Select Vehicle Number and choose Trip Mode to get exact non-combined results instantly.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -408,8 +388,23 @@ if st.session_state.active_df is not None:
                 
                 if unique_bills:
                     st.markdown("---")
-                    st.markdown("🧾 **Billing Documents / Trip Sequence Selection (By default, all bills of this vehicle are selected together):**")
-                    sel_bills = st.multiselect("Select Billing Documents / Sequences:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
+                    st.markdown("🎯 **Exclusive Trip Mode (Select Trip 1 or Trip 2 to isolate results completely):**")
+                    
+                    trip_mode = st.radio(
+                        "Choose Trip Selection Mode:", 
+                        ["Trip 1 (First Batch)", "Trip 2 (Second Batch onwards)", "Full Trip / Custom Multi-Select"], 
+                        horizontal=True,
+                        key="exclusive_trip_mode_radio"
+                    )
+                    
+                    if trip_mode == "Trip 1 (First Batch)":
+                        sel_bills = unique_bills[:3] if len(unique_bills) >= 3 else unique_bills
+                        st.info(f"📍 **Trip 1 Auto-Selected Bills:** {', '.join(sel_bills)}")
+                    elif trip_mode == "Trip 2 (Second Batch onwards)":
+                        sel_bills = unique_bills[3:] if len(unique_bills) > 3 else unique_bills
+                        st.info(f"📍 **Trip 2 Auto-Selected Bills:** {', '.join(sel_bills)}")
+                    else:
+                        sel_bills = st.multiselect("🧾 Custom Select Billing Documents:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
                 else:
                     sel_bills = []
                 
@@ -474,7 +469,7 @@ if st.session_state.active_df is not None:
                 grand_total_opt2 = bags_wt_opt2 + ea_weight_kgs
                 grand_mt_opt2 = grand_total_opt2 / 1000.0
 
-                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}`")
+                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` ({trip_mode})")
                 
                 vb1, vb2, vb3, vb4 = st.columns(4)
                 vb1.metric("📦 50 Kg Bags", f"{int(bag_50_count):,} Bags")
