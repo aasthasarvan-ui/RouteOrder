@@ -60,6 +60,8 @@ if "calc_theme_choice" not in st.session_state:
     st.session_state.calc_theme_choice = "⚡ Cyber Neon Glass"
 if "ng_reset_token" not in st.session_state:
     st.session_state.ng_reset_token = 0
+if "selected_trip_bills" not in st.session_state:
+    st.session_state.selected_trip_bills = []
 
 # ==============================================================================
 # FAST CACHED DATAFRAME CLEANING & PLANT 2100 FILTER
@@ -354,10 +356,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[search_mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (FAST & ACCURATE TRIP 1 / TRIP 2 AUDIT)
+    # VEHICLE TONNAGE CALCULATOR (ACCURATE STATE-MANAGED TRIP AUDIT)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Optimized Trip Sequence Audit)", expanded=True):
-        st.markdown("Type last 4 digits (e.g. `2680`, `1765`, `0440`) to search vehicle. Select Trip 1, Trip 2 or Custom sequence for precise calculations.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Gap-Detected Trip Sequence Audit)", expanded=True):
+        st.markdown("Type last 4 digits (e.g. `2680`, `1765`, `0440`) to search vehicle. Select Trip 1, Trip 2, or Custom sequence for precise calculations.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -446,7 +448,7 @@ if st.session_state.active_df is not None:
                     st.markdown("---")
                     st.markdown("🎯 **Smart Continuous Trip Sequence Detection:**")
                     
-                    # INTELLIGENT GAP DETECTOR: Automatically find continuous blocks in bill numbers
+                    # INTELLIGENT GAP DETECTOR
                     numeric_bills = []
                     for b in unique_bills:
                         nums = re.findall(r'\d+', str(b))
@@ -477,17 +479,17 @@ if st.session_state.active_df is not None:
 
                     trip_mode = st.radio("Choose Trip Mode:", options=trip_options, horizontal=True, key="exclusive_trip_mode_radio")
                     
-                    # ACCURATE DEFAULT BILL SELECTION BASED ON CHOSEN TRIP
+                    # STATE-MANAGED DYNAMIC BILL ASSIGNMENT
                     if "Trip 1" in trip_mode and len(trips_groups) > 0:
-                        default_bills = trips_groups[0]
+                        target_default = trips_groups[0]
                     elif "Trip 2" in trip_mode and len(trips_groups) > 1:
-                        default_bills = trips_groups[1]
+                        target_default = trips_groups[1]
                     elif "Trip 3" in trip_mode and len(trips_groups) > 2:
-                        default_bills = trips_groups[2]
+                        target_default = trips_groups[2]
                     else:
-                        default_bills = unique_bills
+                        target_default = unique_bills
 
-                    sel_bills = st.multiselect("🧾 Select Exact Billing Sequence / Documents for this Trip:", options=unique_bills, default=default_bills, key="calc_multibill_select")
+                    sel_bills = st.multiselect("🧾 Select Exact Billing Sequence / Documents for this Trip:", options=unique_bills, default=target_default, key="calc_multibill_select")
                 else:
                     sel_bills = []
                 
