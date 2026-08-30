@@ -295,12 +295,11 @@ if st.session_state.active_df is not None:
     working_df = st.session_state.active_df.copy()
 
     # ==========================================================================
-    # ROBUST GLOBAL SEARCH (FIXED FOR VEHICLE & ANY KEYWORD)
+    # ROBUST GLOBAL SEARCH (FULLY FUNCTIONAL FOR VEHICLE NO & KEYWORDS)
     # ==========================================================================
     global_search = st.text_input("🔍 Global Keyword Search (Vehicle No, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
         term = str(global_search).strip().lower()
-        # Combine all columns into a single string series for extremely robust partial matching
         mask = working_df.astype(str).apply(lambda row: row.str.lower().str.contains(term, na=False).any(), axis=1)
         working_df = working_df[mask]
 
@@ -308,7 +307,7 @@ if st.session_state.active_df is not None:
     # VEHICLE TONNAGE CALCULATOR (SMART DEFAULT FULL TRIP & SELECTIVE AUDIT)
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Smart Trip & Billing Sequence Audit)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Documents. By default, all bills for the selected vehicle/date load together as a complete trip.")
+        st.markdown("Select Vehicle Number and Billing Documents. By default, all bills for the selected vehicle load together as a complete trip.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
