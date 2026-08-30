@@ -303,10 +303,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (SEPARATE TRIP AUDIT & SMART TRIP GROUPING)
+    # VEHICLE TONNAGE CALCULATOR (TRIP 1 / TRIP 2 SEPARATE SELECTION + TOTAL BAGS)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Separate Trip & Billing Sequence Audit)", expanded=True):
-        st.markdown("Select Vehicle Number and specific Trip / Billing Sequence to get exact separate weights for each trip.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1 & Trip 2 Separate Selection Suite)", expanded=True):
+        st.markdown("Select Vehicle Number and specific Trip / Billing Sequences to audit separate trip weights and total bags.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -381,9 +381,21 @@ if st.session_state.active_df is not None:
                 unique_bills = sorted(date_filtered_subset[billdoc_col].dropna().astype(str).unique().tolist()) if billdoc_col and not date_filtered_subset.empty else []
                 
                 if unique_bills:
-                    st.markdown("🧾 **Trip / Billing Sequence Selection (Aap alag-alag trip ke bills select karein taaki weight combine na ho):**")
-                    # Default to selecting ONLY the first bill/trip so trips are never combined by default
-                    sel_bills = st.multiselect("Select Billing Sequences / Trip Documents:", options=unique_bills, default=unique_bills[:3] if len(unique_bills) >= 3 else unique_bills, key="calc_multibill_select")
+                    st.markdown("---")
+                    st.markdown("🎯 **Trip-wise Separate Selection (Trip 1 & Trip 2 ke bills alag select karein taaki weight combine na ho):**")
+                    
+                    # Group billing documents into logical trips or let user select cleanly
+                    trip_choice = st.radio("Choose Trip Audit Mode:", ["Manual Multi-Select Bills", "Quick Trip 1 (First Batch)", "Quick Trip 2 (Second Batch)"], horizontal=True)
+                    
+                    if trip_choice == "Quick Trip 1 (First Batch)":
+                        # Auto-select first few sequential billing docs (e.g. up to 3 bills or first block)
+                        default_selected_bills = unique_bills[:3] if len(unique_bills) >= 3 else unique_bills
+                    elif trip_choice == "Quick Trip 2 (Second Batch)":
+                        default_selected_bills = unique_bills[3:] if len(unique_bills) > 3 else unique_bills
+                    else:
+                        default_selected_bills = unique_bills[:1] if unique_bills else []
+
+                    sel_bills = st.multiselect("🧾 Select Billing Documents / Sequence for this Trip:", options=unique_bills, default=default_selected_bills, key="calc_multibill_select")
                 else:
                     sel_bills = []
                 
@@ -432,6 +444,8 @@ if st.session_state.active_df is not None:
                         "Weight (Kgs)": round(row_wt, 3)
                     })
 
+                total_bags_combined = bag_50_count + bag_25_count
+
                 bags_wt_opt1 = (bag_50_count * 50.120) + (bag_25_count * 25.120)
                 mt_bags_opt1 = bags_wt_opt1 / 1000.0
 
@@ -446,11 +460,14 @@ if st.session_state.active_df is not None:
                 grand_total_opt2 = bags_wt_opt2 + ea_weight_kgs
                 grand_mt_opt2 = grand_total_opt2 / 1000.0
 
-                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` (Selected Trip / Bills)")
-                vb1, vb2, vb3 = st.columns(3)
+                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` (Selected Trip)")
+                
+                # Metrics layout including Total Bags
+                vb1, vb2, vb3, vb4 = st.columns(4)
                 vb1.metric("📦 50 Kg Bags", f"{int(bag_50_count):,} Bags")
                 vb2.metric("📦 25 Kg Bags", f"{int(bag_25_count):,} Bags")
-                vb3.metric("📦 EA (Loose Qty)", f"{int(ea_total_qty):,}")
+                vb3.metric("📦 Total Bags (50+25)", f"{int(total_bags_combined):,} Bags")
+                vb4.metric("📦 EA (Loose Qty)", f"{int(ea_total_qty):,}")
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 c_res1, c_res2, c_res3 = st.columns(3)
@@ -461,11 +478,11 @@ if st.session_state.active_df is not None:
                 with c_res3:
                     st.metric("🔹 EA (Loose) Separate Weight", f"{mt_ea:,.3f} MT", f"{ea_weight_kgs:,.2f} Kgs")
 
-                st.markdown("#### 📋 Item-wise Detailed Breakdown (Separate BAGS & EA Weights)")
+                st.markdown("#### 📋 Item-wise Detailed Breakdown (Separate Trip Breakdown)")
                 df_items = pd.DataFrame(item_details_list)
                 st.dataframe(df_items, use_container_width=True)
 
-                with st.expander("📊 View All Vehicles & Sequenced Trips Summary Table (Trip-wise Separate Rows)", expanded=False):
+                with st.expander("📊 View All Vehicles & Sequenced Trips Summary Table (Trip-wise)", expanded=False):
                     summary_rows = []
                     group_cols = [veh_col]
                     if billdoc_col:
@@ -507,6 +524,7 @@ if st.session_state.active_df is not None:
                             "Billing Doc (Trip)": b_doc,
                             "50Kg Bags": int(v_50),
                             "25Kg Bags": int(v_25),
+                            "Total Bags": int(v_50 + v_25),
                             "EA Qty": int(v_ea),
                             "Bags MT": round(v_b_wt_1 / 1000.0, 3),
                             "EA MT": round(v_ea_wt / 1000.0, 3),
