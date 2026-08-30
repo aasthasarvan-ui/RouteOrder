@@ -189,8 +189,8 @@ with st.sidebar:
                 upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
                 
                 if save_mode == "Append & Merge with Current (Only New Data)" and st.session_state.active_df is not None:
-                    # Merge only unique/new rows or combine dataframe
-                    merged_df = pd.concat([st.session_state.active_df, temp_df], ignore_index=True).drop_duplicates()
+                    # Strict deduplication: combine current df and temp_df, drop exact duplicate rows so old data stays untouched
+                    merged_df = pd.concat([st.session_state.active_df, temp_df], ignore_index=True).drop_duplicates().reset_index(drop=True)
                     
                     output = io.BytesIO()
                     merged_df.to_excel(output, index=False)
@@ -204,7 +204,7 @@ with st.sidebar:
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = merged_df
-                    st.success("✅ Files merged and saved successfully!")
+                    st.success("✅ Only new unique data appended successfully! Existing history untouched.")
                     st.rerun()
                 else:
                     cursor = conn.cursor()
@@ -270,7 +270,7 @@ with st.sidebar:
         st.info("No saved files in vault. Upload a file above.")
 
 # ==============================================================================
-# AUTO-LOAD LATEST FILE FROM VAULT IF SESSION IS EMPTY (PREVENTS DATA LOSS ON REFRESH)
+# AUTO-LOAD LATEST FILE FROM VAULT IF SESSION IS EMPTY
 # ==============================================================================
 if st.session_state.active_df is None and not saved_records.empty:
     try:
@@ -304,10 +304,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (BAGS + EA SEPARATE)
+    # VEHICLE TONNAGE CALCULATOR (MULTI-TRIP / MULTI-SEQUENCE SUPPORT)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Precision & Standard Slabs + Separate EA)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Date for precise vehicle auditing.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Multi-Trip & Delayed Billing Sequences Support)", expanded=True):
+        st.markdown("Select Vehicle Number, Billing Date, and specific Billing Sequences/Trips (handles multiple trips and delayed billing sequences independently).")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -382,7 +382,8 @@ if st.session_state.active_df is not None:
                 unique_bills = sorted(date_filtered_subset[billdoc_col].dropna().astype(str).unique().tolist()) if billdoc_col and not date_filtered_subset.empty else []
                 
                 if unique_bills:
-                    sel_bills = st.multiselect("🧾 (Optional) Multi-Select Sequenced Billing Documents / Trips:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
+                    st.markdown("🧾 **Trip / Billing Sequence Selection (Select separate trips or delayed bill sequences):**")
+                    sel_bills = st.multiselect("Select Billing Sequences / Trips for audit:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
                 else:
                     sel_bills = []
                 
@@ -445,7 +446,7 @@ if st.session_state.active_df is not None:
                 grand_total_opt2 = bags_wt_opt2 + ea_weight_kgs
                 grand_mt_opt2 = grand_total_opt2 / 1000.0
 
-                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}`")
+                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` (Selected Trips)")
                 vb1, vb2, vb3 = st.columns(3)
                 vb1.metric("📦 50 Kg Bags", f"{int(bag_50_count):,} Bags")
                 vb2.metric("📦 25 Kg Bags", f"{int(bag_25_count):,} Bags")
@@ -627,7 +628,9 @@ if st.session_state.active_df is not None:
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.dataframe(working_df, use_container_width=True)
+    
+    with st.expander("📋 View Master Cleaned Dataframe Table", expanded=False):
+        st.dataframe(working_df, use_container_width=True)
 
     # ==========================================================================
     # ACTION BUTTONS: HTML PRINT VIEW, EXCEL DOWNLOAD & EMAIL DISPATCH
