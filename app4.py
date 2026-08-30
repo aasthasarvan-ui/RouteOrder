@@ -353,10 +353,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[search_mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (SMART SEQUENCE & INTELLIGENT TRIP ASSIGNMENT)
+    # VEHICLE TONNAGE CALCULATOR (INDEPENDENT TRIP 1 & TRIP 2 AUDIT)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Smart Continuous Sequence & Trip Audit)", expanded=True):
-        st.markdown("Type last 4 digits (e.g. `2680`, `1765`, `0440`) to search vehicle. App automatically detects continuous billing sequences for Trip 1, Trip 2, or Custom selection.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Independent Trip 1 & Trip 2 Audit)", expanded=True):
+        st.markdown("Type last 4 digits (e.g. `2680`, `1765`) to search vehicle. Choose **Trip 1**, **Trip 2** or **Custom Multi-Select** to calculate independent weights.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -443,22 +443,21 @@ if st.session_state.active_df is not None:
                 
                 if unique_bills:
                     st.markdown("---")
-                    st.markdown("🎯 **Smart Continuous Trip Sequence Mode:**")
-                    st.markdown("*(Aapke bataye mutabiq: Continuous bill sequence jaise Trip 1 (e.g. 6432-6433) aur Trip 2 (e.g. 6485-6489) ko automatically detect kiya jata hai, ya aap Custom Multi-Select se khud sequence choose kar sakte hain)*")
+                    st.markdown("🎯 **Trip 1, Trip 2 & Custom Sequence Selection Mode:**")
                     
                     trip_mode = st.radio(
                         "Choose Trip Mode:", 
-                        ["Trip 1 (First Continuous Sequence)", "Trip 2 (Second Continuous Sequence onwards)", "Custom Multi-Select (Manual Sequence)"], 
+                        ["Trip 1 (First Batch)", "Trip 2 (Second Batch onwards)", "Custom Multi-Select (Manual Sequence)"], 
                         horizontal=True,
                         key="exclusive_trip_mode_radio"
                     )
                     
-                    # Intelligent automatic continuous sequence splitter
-                    if trip_mode == "Trip 1 (First Continuous Sequence)":
-                        # Find first continuous block or take first half of unique bills
-                        default_bills = unique_bills[:len(unique_bills)//2] if len(unique_bills) > 1 else unique_bills
-                    elif trip_mode == "Trip 2 (Second Continuous Sequence onwards)":
-                        default_bills = unique_bills[len(unique_bills)//2:] if len(unique_bills) > 1 else unique_bills
+                    # FIXED: Distinct default bill separation for Trip 1 vs Trip 2
+                    mid_idx = max(1, len(unique_bills) // 2)
+                    if trip_mode == "Trip 1 (First Batch)":
+                        default_bills = unique_bills[:mid_idx]
+                    elif trip_mode == "Trip 2 (Second Batch onwards)":
+                        default_bills = unique_bills[mid_idx:]
                     else:
                         default_bills = unique_bills
 
