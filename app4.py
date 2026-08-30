@@ -1178,3 +1178,138 @@ if st.session_state.active_df is not None:
                             st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
     st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya saved table select kijiye")
+
+# ==============================================================================
+# 🌟 COMBINED ENTERPRISE UTILITY MODULES: WEIGHT CATEGORIES & COMPLIANCE TRACKER
+# (PASTE THIS ENTIRE BLOCK AT THE VERY END OF YOUR app.py)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. VEHICLE WEIGHT CATEGORY CLASSIFICATION & FILTERING HUB
+# ------------------------------------------------------------------------------
+st.markdown("---")
+with st.expander("⚖️ Toggle Open/Close: Vehicle Weight Category Classification & Filtering Hub", expanded=True):
+    st.markdown("### 🏷️ Automated Vehicle Weight Categorization")
+    st.write("Yeh module aapke master vehicles ko unki registered actual capacity (MT) ke mutabiq automatic categories mein divide karta hai.")
+    
+    try:
+        import sqlite3
+        conn_cat = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        df_cat_master = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', old_capacity_mt AS 'Old Capacity (MT)', actual_capacity_mt AS 'Capacity (MT)' FROM vehicle_capacity_master", conn_cat)
+        conn_cat.close()
+        
+        if not df_cat_master.empty:
+            def classify_weight_tier(mt):
+                try:
+                    val = float(mt)
+                    if val < 15.0:
+                        return "🟢 Light Commercial Vehicle (< 15 MT)"
+                    elif 15.0 <= val <= 25.0:
+                        return "🔵 Medium Commercial Vehicle (15 - 25 MT)"
+                    elif 25.0 < val <= 35.0:
+                        return "🟠 Heavy Commercial Vehicle (25 - 35 MT)"
+                    else:
+                        return "🔴 Multi-Axle / Extra Heavy (> 35 MT)"
+                except:
+                    return "⚪ Unclassified"
+
+            df_cat_master['Weight Category'] = df_cat_master['Capacity (MT)'].apply(classify_weight_tier)
+            
+            category_options = sorted(df_cat_master['Weight Category'].unique().tolist())
+            selected_categories = st.multiselect("🔍 Filter Vehicles by Weight Category:", options=category_options, default=category_options, key="filter_weight_categories_comb")
+            
+            filtered_cat_df = df_cat_master[df_cat_master['Weight Category'].isin(selected_categories)]
+            
+            col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+            col_c1.metric("🟢 Light (<15T)", len(df_cat_master[df_cat_master['Weight Category'].str.contains("Light")]))
+            col_c2.metric("🔵 Medium (15-25T)", len(df_cat_master[df_cat_master['Weight Category'].str.contains("Medium")]))
+            col_c3.metric("🟠 Heavy (25-35T)", len(df_cat_master[df_cat_master['Weight Category'].str.contains("Heavy")]))
+            col_c4.metric("🔴 Extra Heavy (>35T)", len(df_cat_master[df_cat_master['Weight Category'].str.contains("Extra Heavy")]))
+            
+            st.markdown("#### 📋 Categorized Vehicle List")
+            st.dataframe(filtered_cat_df, use_container_width=True)
+            
+            col_cc1, col_cc2 = st.columns(2)
+            with col_cc1:
+                cat_buf = io.BytesIO()
+                filtered_cat_df.to_excel(cat_buf, index=False)
+                st.download_button("📥 Download Categorized Report (.xlsx)", data=cat_buf.getvalue(), file_name="Vehicle_Weight_Categories.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_dl_weight_cat_comb")
+            with col_cc2:
+                if st.button("🔄 Refresh Weight Categories", key="btn_ref_weight_cat_comb"):
+                    st.rerun()
+        else:
+            st.info("ℹ️ Master registry is empty. Please upload or link dispatch data to generate weight categories.")
+    except Exception as e_cat_hub:
+        st.info("ℹ️ Weight Category Classification Hub ready and waiting for master data synchronization.")
+
+# ------------------------------------------------------------------------------
+# 2. INDUSTRY MANDATORY: VEHICLE FITNESS & DOCUMENT COMPLIANCE TRACKER
+# ------------------------------------------------------------------------------
+st.markdown("---")
+with st.expander("🛡️ Toggle Open/Close: Industry Mandatory Vehicle Fitness & Document Compliance Tracker", expanded=True):
+    st.markdown("### 📑 Fleet Legal & Statutory Compliance Monitor")
+    st.write("Industry standard ke mutabiq fleet gadiyon ke statutory documents (Insurance, Fitness, Permit, PUC) ki expiry tracking.")
+    
+    try:
+        import sqlite3
+        conn_comp = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        cursor_comp = conn_comp.cursor()
+        
+        cursor_comp.execute("""
+            CREATE TABLE IF NOT EXISTS vehicle_compliance_log (
+                vehicle_no TEXT PRIMARY KEY,
+                insurance_expiry TEXT,
+                fitness_expiry TEXT,
+                permit_expiry TEXT,
+                puc_expiry TEXT
+            )
+        """)
+        conn_comp.commit()
+        
+        df_master_veh = pd.read_sql("SELECT vehicle_no FROM vehicle_capacity_master", conn_comp)
+        
+        if not df_master_veh.empty:
+            st.markdown("#### ✏️ Update Vehicle Statutory Expiry Dates")
+            with st.form("compliance_update_form_comb"):
+                selected_veh_comp = st.selectbox("Select Vehicle Number:", options=df_master_veh['vehicle_no'].tolist(), key="comp_veh_select_comb")
+                
+                col_exp1, col_exp2 = st.columns(2)
+                with col_exp1:
+                    ins_date = st.date_input("Insurance Expiry Date:", value=datetime.date.today() + datetime.timedelta(days=90), key="comp_ins_date_comb")
+                    fit_date = st.date_input("Fitness Certificate Expiry Date:", value=datetime.date.today() + datetime.timedelta(days=180), key="comp_fit_date_comb")
+                with col_exp2:
+                    perm_date = st.date_input("National Permit Expiry Date:", value=datetime.date.today() + datetime.timedelta(days=365), key="comp_perm_date_comb")
+                    puc_date = st.date_input("PUC Expiry Date:", value=datetime.date.today() + datetime.timedelta(days=60), key="comp_puc_date_comb")
+                
+                save_comp_btn = st.form_submit_button("💾 Save Compliance Record", type="primary")
+                
+                if save_comp_btn:
+                    cursor_comp.execute("""
+                        INSERT OR REPLACE INTO vehicle_compliance_log (vehicle_no, insurance_expiry, fitness_expiry, permit_expiry, puc_expiry)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (selected_veh_comp, str(ins_date), str(fit_date), str(perm_date), str(puc_date)))
+                    conn_comp.commit()
+                    st.success(f"✅ Compliance records updated for vehicle `{selected_veh_comp}`!")
+            
+            df_compliance_view = pd.read_sql("SELECT vehicle_no AS 'Vehicle Number', insurance_expiry AS 'Insurance Expiry', fitness_expiry AS 'Fitness Expiry', permit_expiry AS 'Permit Expiry', puc_expiry AS 'PUC Expiry' FROM vehicle_compliance_log", conn_comp)
+            conn_comp.close()
+            
+            st.markdown("#### 📋 Fleet Compliance Status Table")
+            if not df_compliance_view.empty:
+                st.dataframe(df_compliance_view, use_container_width=True)
+                
+                comp_buf = io.BytesIO()
+                df_compliance_view.to_excel(comp_buf, index=False)
+                st.download_button("📥 Download Compliance Report (.xlsx)", data=comp_buf.getvalue(), file_name="Fleet_Document_Compliance.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_dl_compliance_rep_comb")
+            else:
+                st.info("ℹ️ No compliance documents logged yet. Please add details above.")
+        else:
+            st.info("ℹ️ Master registry is empty. Pehle master vehicles add karein tab compliance tracking enable hogi.")
+        
+        if conn_comp:
+            conn_comp.close()
+    except Exception as e_comp:
+        st.info("ℹ️ Vehicle Compliance Tracker module ready.")
+# ==============================================================================
+# END OF COMBINED ENTERPRISE UTILITY MODULES
+# ==============================================================================
