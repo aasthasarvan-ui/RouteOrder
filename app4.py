@@ -400,7 +400,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage & Actual VAHAN Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Unique Master Registry, Standalone Master Upload Button, Persistent Ignore Memory, Bulk Select-All Delete.
+                Unique Master Registry, Standalone Master Uploader, Persistent Ignore Memory, Multi-Select Multi-Delete.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -632,9 +632,9 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # PERSISTENT UNIQUE VEHICLE MASTER CAPACITY TABLE
+    # PERSISTENT UNIQUE VEHICLE MASTER CAPACITY TABLE (MULTI-SELECT DELETE)
     # ==========================================================================
-    with st.expander("📋 Unique Vehicle Master Capacity Registry (Select All, Delete, Wipe & Export)", expanded=True):
+    with st.expander("📋 Unique Vehicle Master Capacity Registry (Multi-Delete, Wipe & Export)", expanded=True):
         st.markdown("Unique vehicle registry tracking **Old Capacity** and **New Capacity** across multi-date dispatches.")
         
         col_m_btn1, col_m_btn2, col_m_btn3 = st.columns(3)
@@ -673,32 +673,26 @@ if st.session_state.active_df is not None:
                 df_master_view = df_master_view[df_master_view['Vehicle Number'].astype(str).str.contains(master_search_term, case=False, na=False)]
             
             if not df_master_view.empty:
-                df_master_view.insert(0, "Select", False)
+                st.markdown("👇 **Select Vehicles to Delete:**")
+                all_master_veh_options = df_master_view['Vehicle Number'].tolist()
+                selected_veh_to_delete = st.multiselect("Choose vehicles for multi-delete:", options=all_master_veh_options, key="multi_del_multiselect")
                 
-                select_all_master = st.checkbox("☑️ Select All Vehicles in Table", key="select_all_master_chk")
-                if select_all_master:
-                    df_master_view["Select"] = True
+                if st.button("❌ Delete Selected Vehicles", key="btn_multi_delete_action"):
+                    if selected_veh_to_delete:
+                        delete_vehicles_from_master(selected_veh_to_delete)
+                        st.success(f"❌ Successfully deleted {len(selected_veh_to_delete)} vehicles from master!")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Kripya multi-select mein se kam se kam ek vehicle chunein.")
 
-                edited_master_df = st.data_editor(df_master_view, use_container_width=True, key="master_editable_table")
-                
-                col_md1, _ = st.columns([2, 1])
-                with col_md1:
-                    if st.button("❌ Delete Selected Vehicles", key="btn_multi_delete"):
-                        selected_rows = edited_master_df[edited_master_df["Select"] == True]
-                        if not selected_rows.empty:
-                            vehicles_to_del = selected_rows["Vehicle Number"].tolist()
-                            delete_vehicles_from_master(vehicles_to_del)
-                            st.success(f"❌ Successfully deleted {len(vehicles_to_del)} vehicles from master!")
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Kripya table mein se kam se kam ek vehicle select karein.")
+                st.dataframe(df_master_view, use_container_width=True)
             else:
                 st.info("Master capacity table is currently empty or no matches found.")
         except Exception as e_mv:
             st.info("Master capacity table initialized.")
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR
+    # VEHICLE TONNAGE CALCULATOR (BAGS [OPT 1 & OPT 2] + EA SEPARATE)
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Precision & Standard Slabs + Separate EA)", expanded=True):
         st.markdown("Select Vehicle Number and Billing Date. Merges multi-date dispatches for precise vehicle auditing.")
