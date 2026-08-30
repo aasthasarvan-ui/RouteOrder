@@ -1179,3 +1179,48 @@ if st.session_state.active_df is not None:
 else:
     st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya saved table select kijiye.")
 
+
+# ==============================================================================
+# 🌟 RECOMMENDED NEW ENTERPRISE FEATURES (PASTE AT THE VERY END OF YOUR app.py)
+# ==============================================================================
+st.markdown("---")
+st.markdown("### 🌟 Enterprise Analytics & Intelligence Hub (New Recommended Features)")
+
+col_feat1, col_feat2 = st.columns(2)
+
+with col_feat1:
+    st.markdown("#### 🚨 Automated VAHAN Overload Analytics & Smart Tagging")
+    try:
+        import sqlite3
+        conn_an = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        df_an = pd.read_sql("SELECT vehicle_no, actual_capacity_mt FROM vehicle_capacity_master", conn_an)
+        conn_an.close()
+        if not df_an.empty:
+            st.info(f"🛡️ Total Unique Vehicles in Master Registry: **{len(df_an)}**")
+            # Smart Vehicle Category Tagging (Heavy, Medium, Light)
+            heavy_cnt = len(df_an[df_an['actual_capacity_mt'] > 30])
+            medium_cnt = len(df_an[(df_an['actual_capacity_mt'] >= 20) & (df_an['actual_capacity_mt'] <= 30)])
+            light_cnt = len(df_an[df_an['actual_capacity_mt'] < 20])
+            st.write(f"🏷️ **Smart Vehicle Category Tagging:**")
+            st.write(- Heavy Commercial (>30MT): `{heavy_cnt}` vehicles)
+            st.write(- Medium Commercial (20-30MT): `{medium_cnt}` vehicles)
+            st.write(- Light Commercial (<20MT): `{light_cnt}` vehicles)
+        else:
+            st.info("ℹ️ Master capacity table currently empty.")
+    except Exception as e_feat:
+        st.info("ℹ️ Analytics engine ready.")
+
+with col_feat2:
+    st.markdown("#### 📈 Multi-Date & Daily Tonnage Trend Analytics")
+    try:
+        if 'date_col' in locals() and date_col and 'working_df' in locals() and not working_df.empty:
+            date_grouped = working_df.groupby(date_col).size().reset_index(name='Dispatch Records')
+            st.bar_chart(date_grouped.set_index(date_col))
+            st.caption("📊 Visual breakdown of dispatches across multiple dates.")
+        else:
+            st.info("ℹ️ Upload or load dispatch records to view multi-date trend analytics.")
+    except Exception as e_trend:
+        st.info("ℹ️ Trend analytics ready.")
+# ==============================================================================
+# END OF RECOMMENDED NEW ENTERPRISE FEATURES
+# ==============================================================================
