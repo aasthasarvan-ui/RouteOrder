@@ -1178,4 +1178,3 @@ if st.session_state.active_df is not None:
                             st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
     st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya saved table select kijiye.")
-
