@@ -162,7 +162,9 @@ def delete_vehicles_from_master(veh_list):
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         cursor = conn.cursor()
         for v in veh_list:
-            cursor.execute("DELETE FROM vehicle_capacity_master WHERE vehicle_no = ?", (str(v).strip().upper(),))
+            v_clean = str(v).strip().upper()
+            cursor.execute("DELETE FROM vehicle_capacity_master WHERE vehicle_no = ?", (v_clean,))
+            cursor.execute("DELETE FROM ignored_typos WHERE vehicle_no = ?", (v_clean,))
         conn.commit()
         conn.close()
         return True
@@ -238,7 +240,7 @@ if "processed_file_signatures" not in st.session_state:
     st.session_state.processed_file_signatures = set()
 
 # ==============================================================================
-# SMART CACHED DATAFRAME CLEANING & EXACT MATCH MASTER SEEDING
+# SMART CACHED DATAFRAME CLEANING & ROBUST MASTER SEEDING
 # ==============================================================================
 @st.cache_data
 def load_and_clean_dataframe(file_bytes, file_name):
@@ -315,8 +317,7 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
                         typo_queue.append({"new": v_clean, "existing": similar_match})
                     continue
                 
-                max_trip_kgs = 0.0
-                
+                # Filter matching calculator rules (F2 & BAG/EA if present)
                 sub_calc_group = group.copy()
                 if btype_col_local:
                     sub_calc_group = sub_calc_group[sub_calc_group[btype_col_local].astype(str).str.upper().str.contains("F2", na=False)]
@@ -326,6 +327,9 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
                 if sub_calc_group.empty:
                     sub_calc_group = group
 
+                max_trip_kgs = 0.0
+                
+                # Trip/Billing Document wise complete calculation (Exact match with calculator)
                 if trip_col_local:
                     for _, sub_g in sub_calc_group.groupby(trip_col_local):
                         trip_kgs = 0.0
@@ -366,6 +370,7 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
                 if calc_mt <= 0:
                     calc_mt = 28.0
                 
+                # Save or update max capacity directly in master registry
                 save_vehicle_capacity_auto(v_clean, calc_mt)
                 if v_clean not in existing_master:
                     existing_master.append(v_clean)
