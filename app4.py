@@ -325,11 +325,9 @@ if st.session_state.active_df is not None:
     
     date_info_str = "N/A"
     if dispatch_date_col and not working_df.empty:
-        # Extract unique dates and highlight the latest/most frequent or show all cleanly
         raw_dates = working_df[dispatch_date_col].dropna().unique()
         formatted_dates = sorted([str(d).split()[0] for d in raw_dates if str(d).strip() != '' and str(d) != '#'])
         if len(formatted_dates) > 0:
-            # If filename contains a date stamp, prioritize matching or display all
             date_info_str = ", ".join(formatted_dates)
 
     # Display Active File & Dispatch Date Banner
@@ -344,18 +342,20 @@ if st.session_state.active_df is not None:
     st.markdown("### 📊 Billing & Tonnage Data Dashboard")
 
     # ==========================================================================
-    # SUPER-ROBUST GLOBAL SEARCH (FIXED FOR VEHICLE NO LIKE '2680', '1765')
+    # SUPER-ROBUST SAFE GLOBAL SEARCH (FIXED FOR ARROW/PANDAS TYPE CONFLICTS)
     # ==========================================================================
     global_search = st.text_input("🔍 Global Keyword Search (Vehicle No e.g. 2680, 1765, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
         term = str(global_search).strip().lower()
-        mask = working_df.astype(str).apply(lambda row: row.str.lower().str.contains(term, na=False).any(), axis=1)
-        working_df = working_df[mask]
+        search_mask = pd.Series(False, index=working_df.index)
+        for col in working_df.columns:
+            search_mask = search_mask | working_df[col].astype(str).str.lower().str.contains(term, na=False)
+        working_df = working_df[search_mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (FLEXIBLE TRIP & SEQUENCE SELECTION)
+    # VEHICLE TONNAGE CALCULATOR (TRIP 1 & TRIP 2 WITH BILLING SEQUENCE)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1 & Trip 2 Flexible Sequence Audit)", expanded=True):
+    with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1 & Trip 2 Billing Sequence Audit)", expanded=True):
         st.markdown("Select Vehicle Number and choose Trip Mode or Custom Billing Sequence to audit separate trip weights.")
         
         all_cols_list = [str(c) for c in working_df.columns]
@@ -440,14 +440,12 @@ if st.session_state.active_df is not None:
                     )
                     
                     if trip_mode == "Trip 1 (First Batch)":
-                        # Flexible split or let user adjust via multiselect below
                         default_bills = unique_bills[:len(unique_bills)//2] if len(unique_bills) > 1 else unique_bills
                     elif trip_mode == "Trip 2 (Second Batch onwards)":
                         default_bills = unique_bills[len(unique_bills)//2:] if len(unique_bills) > 1 else unique_bills
                     else:
                         default_bills = unique_bills
 
-                    # Fully flexible multiselect so user can choose exact billing sequence (e.g. 2 to 8, or 15 to 27)
                     sel_bills = st.multiselect("🧾 Select Exact Billing Documents / Sequence for this Trip:", options=unique_bills, default=default_bills, key="calc_multibill_select")
                 else:
                     sel_bills = []
