@@ -118,6 +118,7 @@ def save_vehicle_capacity_auto(veh_no, capacity_mt):
                 """, (v_clean, float(capacity_mt), float(capacity_mt), now_str))
             else:
                 existing_cap = row[0]
+                # Ensure we keep the maximum capacity across multiple files/uploads without compounding
                 max_cap = max(float(existing_cap), float(capacity_mt))
                 if float(existing_cap) != max_cap:
                     cursor.execute("""
@@ -234,9 +235,11 @@ if "pending_typo_review" not in st.session_state:
     st.session_state.pending_typo_review = []
 if "file_just_loaded" not in st.session_state:
     st.session_state.file_just_loaded = False
+if "processed_file_signatures" not in st.session_state:
+    st.session_state.processed_file_signatures = set()
 
 # ==============================================================================
-# SMART CACHED DATAFRAME CLEANING & FULLY FIXED MASTER SEEDING
+# SMART CACHED DATAFRAME CLEANING & STRICT UNIQUE SEEDING
 # ==============================================================================
 @st.cache_data
 def load_and_clean_dataframe(file_bytes, file_name):
@@ -258,11 +261,13 @@ def load_and_clean_dataframe(file_bytes, file_name):
     df = df.dropna(how='all').reset_index(drop=True)
     return df
 
-def auto_seed_master_from_df(df, force=False):
+def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
     if df is None or df.empty:
         return 0
     
-    if not force and not st.session_state.file_just_loaded:
+    # Check if this exact file signature was already processed to avoid duplicate additions
+    file_sig = str(file_identifier) + "_" + str(len(df))
+    if not force and file_sig in st.session_state.processed_file_signatures:
         return 0
         
     veh_col_found, qty_col_found, desc_col_found = None, None, None
@@ -290,7 +295,6 @@ def auto_seed_master_from_df(df, force=False):
         typo_queue = []
         count = 0
         
-        # Unit aur Trip columns identify karna
         unit_col_local = None
         trip_col_local = None
         for tc in df.columns:
@@ -312,7 +316,7 @@ def auto_seed_master_from_df(df, force=False):
                 
                 max_trip_kgs = 0.0
                 
-                # Agar Billing Document / Trip column maujud hai, toh har trip ke line items ka sum nikalo
+                # Ek vehicle ke saare trips / invoices ko properly group karke max single-trip weight nikalna
                 if trip_col_local:
                     for _, sub_g in group.groupby(trip_col_local):
                         trip_kgs = 0.0
@@ -333,7 +337,6 @@ def auto_seed_master_from_df(df, force=False):
                         if trip_kgs > max_trip_kgs:
                             max_trip_kgs = trip_kgs
                 else:
-                    # Agar trip column nahi hai, toh vehicle ke saare line items ka total sum kar lo
                     total_veh_kgs = 0.0
                     for _, r in group.iterrows():
                         q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
@@ -362,6 +365,7 @@ def auto_seed_master_from_df(df, force=False):
         if typo_queue:
             st.session_state.pending_typo_review.extend(typo_queue)
             
+        st.session_state.processed_file_signatures.add(file_sig)
         st.session_state.file_just_loaded = False
         return count
     return 0
@@ -445,7 +449,7 @@ with st.sidebar:
             file_bytes = uploaded_file.getvalue()
             temp_df = load_and_clean_dataframe(file_bytes, uploaded_file.name)
             st.session_state.file_just_loaded = True
-            auto_seed_master_from_df(temp_df)
+            auto_seed_master_from_df(temp_df, file_identifier=uploaded_file.name)
 
             save_mode = st.radio("Choose Save Action:", ["Save as New File", "Append (Smart Deduplicate & Merge Dates)"])
 
@@ -469,7 +473,7 @@ with st.sidebar:
                     conn.close()
                     st.session_state.active_df = merged_df
                     st.session_state.file_just_loaded = True
-                    auto_seed_master_from_df(merged_df, force=True)
+                    auto_seed_master_from_df(merged_df, file_identifier=f"Merged_{uploaded_file.name}", force=True)
                     st.success("✅ Multi-date dispatch merged successfully!")
                     st.rerun()
                 else:
@@ -482,7 +486,7 @@ with st.sidebar:
                     conn.close()
                     st.session_state.active_df = temp_df
                     st.session_state.file_just_loaded = True
-                    auto_seed_master_from_df(temp_df, force=True)
+                    auto_seed_master_from_df(temp_df, file_identifier=uploaded_file.name, force=True)
                     st.success(f"✅ '{uploaded_file.name}' saved as new file!")
                     st.rerun()
         except Exception as err_file:
@@ -553,7 +557,7 @@ with st.sidebar:
                         df_from_db = load_and_clean_dataframe(blob_data, fname)
                         st.session_state.active_df = df_from_db
                         st.session_state.file_just_loaded = True
-                        auto_seed_master_from_df(df_from_db, force=True)
+                        auto_seed_master_from_df(df_from_db, file_identifier=fname, force=True)
                         st.success(f"✅ Loaded '{fname}' successfully!")
                         st.rerun()
                 except Exception as load_err:
@@ -591,7 +595,7 @@ if st.session_state.active_df is None and not saved_records.empty:
             df_from_db = load_and_clean_dataframe(blob_data, fname)
             st.session_state.active_df = df_from_db
             st.session_state.file_just_loaded = True
-            auto_seed_master_from_df(df_from_db, force=True)
+            auto_seed_master_from_df(df_from_db, file_identifier=fname, force=True)
     except:
         pass
 
@@ -664,7 +668,7 @@ if st.session_state.active_df is not None:
         with col_m_btn1:
             if st.button("🔄 Force Rebuild Master", key="btn_master_refresh"):
                 st.session_state.file_just_loaded = True
-                auto_seed_master_from_df(working_df, force=True)
+                auto_seed_master_from_df(working_df, file_identifier="force_rebuild", force=True)
                 st.success("✅ Master registry rebuilt successfully!")
                 st.rerun()
         with col_m_btn2:
@@ -672,6 +676,7 @@ if st.session_state.active_df is not None:
                 reset_vehicle_master()
                 st.session_state.file_just_loaded = False
                 st.session_state.pending_typo_review.clear()
+                st.session_state.processed_file_signatures.clear()
                 st.success("🗑️ Master table permanently wiped clean!")
                 st.rerun()
         with col_m_btn3:
@@ -1328,3 +1333,6 @@ with st.expander("🛡️ Toggle Open/Close: Industry Mandatory Vehicle Fitness 
             conn_comp.close()
     except Exception as e_comp:
         st.info("ℹ️ Vehicle Compliance Tracker module ready.")
+# ==============================================================================
+# END OF COMBINED ENTERPRISE UTILITY MODULES
+# ==============================================================================
