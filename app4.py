@@ -50,7 +50,7 @@ def init_db():
 init_db()
 
 # ==============================================================================
-# SESSION STATE & PERSISTENT AUTO-LOAD ON REFRESH
+# SESSION STATE INITIALIZATION
 # ==============================================================================
 if "active_df" not in st.session_state:
     st.session_state.active_df = None
@@ -62,9 +62,10 @@ if "ng_reset_token" not in st.session_state:
     st.session_state.ng_reset_token = 0
 
 # ==============================================================================
-# SMART DATAFRAME CLEANING & PLANT 2100 FILTER
+# FAST CACHED DATAFRAME CLEANING & PLANT 2100 FILTER
 # ==============================================================================
-def load_and_clean_dataframe(file_bytes, file_name):
+@st.cache_data
+def load_and_clean_dataframe_cached(file_bytes, file_name):
     if file_name.endswith('.csv'):
         df = pd.read_csv(io.BytesIO(file_bytes))
     else:
@@ -103,7 +104,7 @@ if st.session_state.active_df is None:
         if not saved_records.empty:
             blob_data = saved_records.iloc[0]['file_blob']
             fname = saved_records.iloc[0]['file_name']
-            st.session_state.active_df = load_and_clean_dataframe(blob_data, fname)
+            st.session_state.active_df = load_and_clean_dataframe_cached(blob_data, fname)
             st.session_state.active_filename = fname
     except:
         pass
@@ -199,7 +200,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage Hub (Plant 2100)</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Persistent Vault Storage, Precision Tonnage Calculators & Report Export Suite.
+                Persistent Vault Storage, Lightning-Fast Tonnage Calculators & Report Export Suite.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -219,7 +220,7 @@ with st.sidebar:
     if uploaded_file is not None:
         try:
             file_bytes = uploaded_file.getvalue()
-            temp_df = load_and_clean_dataframe(file_bytes, uploaded_file.name)
+            temp_df = load_and_clean_dataframe_cached(file_bytes, uploaded_file.name)
 
             save_mode = st.radio("Choose Save Action:", ["Save as New File", "Append & Merge with Current (Only New Data)"])
 
@@ -286,7 +287,7 @@ with st.sidebar:
                     conn.close()
                     if row_data:
                         blob_data, fname = row_data
-                        st.session_state.active_df = load_and_clean_dataframe(blob_data, fname)
+                        st.session_state.active_df = load_and_clean_dataframe_cached(blob_data, fname)
                         st.session_state.active_filename = fname
                         st.success(f"✅ Loaded '{fname}' successfully!")
                         st.rerun()
@@ -353,10 +354,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[search_mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (SMART GAP-DETECTED TRIP SEQUENCING)
+    # VEHICLE TONNAGE CALCULATOR (FAST & ACCURATE TRIP 1 / TRIP 2 AUDIT)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Smart Gap-Detected Sequence Audit)", expanded=True):
-        st.markdown("Type last 4 digits (e.g. `2680`, `1765`, `0440`) to search vehicle. App automatically detects continuous billing runs (Trip 1 & Trip 2) based on numerical gaps.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Optimized Trip Sequence Audit)", expanded=True):
+        st.markdown("Type last 4 digits (e.g. `2680`, `1765`, `0440`) to search vehicle. Select Trip 1, Trip 2 or Custom sequence for precise calculations.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -445,7 +446,7 @@ if st.session_state.active_df is not None:
                     st.markdown("---")
                     st.markdown("🎯 **Smart Continuous Trip Sequence Detection:**")
                     
-                    # INTELLIGENT GAP DETECTOR: Automatically find continuous blocks in bill numbers (e.g. 6432-6434 vs 6485+)
+                    # INTELLIGENT GAP DETECTOR: Automatically find continuous blocks in bill numbers
                     numeric_bills = []
                     for b in unique_bills:
                         nums = re.findall(r'\d+', str(b))
@@ -456,7 +457,6 @@ if st.session_state.active_df is not None:
                     
                     numeric_bills.sort(key=lambda x: x[0])
                     
-                    # Group into continuous runs (gap > 3 means a new trip started)
                     trips_groups = []
                     current_trip = []
                     prev_num = None
@@ -477,6 +477,7 @@ if st.session_state.active_df is not None:
 
                     trip_mode = st.radio("Choose Trip Mode:", options=trip_options, horizontal=True, key="exclusive_trip_mode_radio")
                     
+                    # ACCURATE DEFAULT BILL SELECTION BASED ON CHOSEN TRIP
                     if "Trip 1" in trip_mode and len(trips_groups) > 0:
                         default_bills = trips_groups[0]
                     elif "Trip 2" in trip_mode and len(trips_groups) > 1:
