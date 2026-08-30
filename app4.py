@@ -1179,7 +1179,6 @@ if st.session_state.active_df is not None:
 else:
     st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya saved table select kijiye.")
 
-
 # ==============================================================================
 # 🌟 RECOMMENDED NEW ENTERPRISE FEATURES (PASTE AT THE VERY END OF YOUR app.py)
 # ==============================================================================
@@ -1201,10 +1200,10 @@ with col_feat1:
             heavy_cnt = len(df_an[df_an['actual_capacity_mt'] > 30])
             medium_cnt = len(df_an[(df_an['actual_capacity_mt'] >= 20) & (df_an['actual_capacity_mt'] <= 30)])
             light_cnt = len(df_an[df_an['actual_capacity_mt'] < 20])
-            st.write(f"🏷️ **Smart Vehicle Category Tagging:**")
-            st.write(- Heavy Commercial (>30MT): `{heavy_cnt}` vehicles)
-            st.write(- Medium Commercial (20-30MT): `{medium_cnt}` vehicles)
-            st.write(- Light Commercial (<20MT): `{light_cnt}` vehicles)
+            st.write("🏷️ **Smart Vehicle Category Tagging:**")
+            st.write(f"- Heavy Commercial (>30MT): `{heavy_cnt}` vehicles")
+            st.write(f"- Medium Commercial (20-30MT): `{medium_cnt}` vehicles")
+            st.write(f"- Light Commercial (<20MT): `{light_cnt}` vehicles")
         else:
             st.info("ℹ️ Master capacity table currently empty.")
     except Exception as e_feat:
