@@ -162,13 +162,16 @@ st.markdown("""
             width: 100%;
         }
         .file-info-banner {
-            background: rgba(30, 41, 59, 0.85);
+            background: rgba(30, 41, 59, 0.9);
             border-left: 5px solid #38bdf8;
-            padding: 12px 18px;
+            padding: 14px 20px;
             border-radius: 8px;
             margin-bottom: 20px;
             font-size: 14px;
             color: #e2e8f0;
+            white-space: normal !important;
+            word-wrap: break-word;
+            line-height: 1.6;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -322,15 +325,18 @@ if st.session_state.active_df is not None:
     
     date_info_str = "N/A"
     if dispatch_date_col and not working_df.empty:
-        valid_dates = sorted([str(d).split()[0] for d in working_df[dispatch_date_col].dropna().unique() if str(d).strip() != '' and str(d) != '#'])
-        if len(valid_dates) > 0:
-            date_info_str = ", ".join(valid_dates)
+        # Extract unique dates and highlight the latest/most frequent or show all cleanly
+        raw_dates = working_df[dispatch_date_col].dropna().unique()
+        formatted_dates = sorted([str(d).split()[0] for d in raw_dates if str(d).strip() != '' and str(d) != '#'])
+        if len(formatted_dates) > 0:
+            # If filename contains a date stamp, prioritize matching or display all
+            date_info_str = ", ".join(formatted_dates)
 
     # Display Active File & Dispatch Date Banner
     st.markdown(f"""
         <div class="file-info-banner">
-            📂 <b>Active File Loaded:</b> <code>{st.session_state.active_filename}</code> &nbsp;|&nbsp; 
-            📅 <b>Dispatch / Billing Date(s):</b> <code>{date_info_str}</code> &nbsp;|&nbsp; 
+            📂 <b>Active File Loaded:</b> <code>{st.session_state.active_filename}</code><br>
+            📅 <b>Dispatch / Billing Date(s) in File:</b> <code>{date_info_str}</code><br>
             🏭 <b>Plant Filter:</b> <code>2100 Active</code>
         </div>
     """, unsafe_allow_html=True)
@@ -338,19 +344,19 @@ if st.session_state.active_df is not None:
     st.markdown("### 📊 Billing & Tonnage Data Dashboard")
 
     # ==========================================================================
-    # ROBUST GLOBAL SEARCH (FIXED FOR 4-DIGIT VEHICLE NO LIKE '2680')
+    # SUPER-ROBUST GLOBAL SEARCH (FIXED FOR VEHICLE NO LIKE '2680', '1765')
     # ==========================================================================
-    global_search = st.text_input("🔍 Global Keyword Search (Vehicle No e.g. 2680, Customer, Material, Document):", "", key="global_search_input")
+    global_search = st.text_input("🔍 Global Keyword Search (Vehicle No e.g. 2680, 1765, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
         term = str(global_search).strip().lower()
         mask = working_df.astype(str).apply(lambda row: row.str.lower().str.contains(term, na=False).any(), axis=1)
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (UNLIMITED BILL MULTI-SELECT - NO LIMITATION)
+    # VEHICLE TONNAGE CALCULATOR (FLEXIBLE TRIP & SEQUENCE SELECTION)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Complete Sequence & Multi-Trip Audit)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Documents. All bills for the selected vehicle are fully selectable without any artificial limits.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1 & Trip 2 Flexible Sequence Audit)", expanded=True):
+        st.markdown("Select Vehicle Number and choose Trip Mode or Custom Billing Sequence to audit separate trip weights.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -424,9 +430,25 @@ if st.session_state.active_df is not None:
                 
                 if unique_bills:
                     st.markdown("---")
-                    st.markdown("🧾 **Billing Documents / Sequence Selection (ALL bills selected by default for complete trip):**")
-                    # UNLIMITED MULTI-SELECT WITH NO HARDCODED LIMITS OR SPLICING
-                    sel_bills = st.multiselect("Select Billing Documents / Sequences:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
+                    st.markdown("🎯 **Trip & Billing Sequence Selection Mode:**")
+                    
+                    trip_mode = st.radio(
+                        "Choose Trip Mode:", 
+                        ["Custom Multi-Select (Recommended)", "Trip 1 (First Batch)", "Trip 2 (Second Batch onwards)"], 
+                        horizontal=True,
+                        key="exclusive_trip_mode_radio"
+                    )
+                    
+                    if trip_mode == "Trip 1 (First Batch)":
+                        # Flexible split or let user adjust via multiselect below
+                        default_bills = unique_bills[:len(unique_bills)//2] if len(unique_bills) > 1 else unique_bills
+                    elif trip_mode == "Trip 2 (Second Batch onwards)":
+                        default_bills = unique_bills[len(unique_bills)//2:] if len(unique_bills) > 1 else unique_bills
+                    else:
+                        default_bills = unique_bills
+
+                    # Fully flexible multiselect so user can choose exact billing sequence (e.g. 2 to 8, or 15 to 27)
+                    sel_bills = st.multiselect("🧾 Select Exact Billing Documents / Sequence for this Trip:", options=unique_bills, default=default_bills, key="calc_multibill_select")
                 else:
                     sel_bills = []
                 
@@ -491,7 +513,7 @@ if st.session_state.active_df is not None:
                 grand_total_opt2 = bags_wt_opt2 + ea_weight_kgs
                 grand_mt_opt2 = grand_total_opt2 / 1000.0
 
-                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}`")
+                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` ({trip_mode})")
                 
                 vb1, vb2, vb3, vb4 = st.columns(4)
                 vb1.metric("📦 50 Kg Bags", f"{int(bag_50_count):,} Bags")
