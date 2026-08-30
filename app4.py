@@ -313,7 +313,7 @@ with st.sidebar:
 if st.session_state.active_df is not None:
     working_df = st.session_state.active_df.copy()
 
-    # Detect Dispatch / Billing Date column for summary banner
+    # Detect Dispatch / Billing Date column dynamically and get exact unique dates formatted cleanly
     dispatch_date_col = None
     for c in working_df.columns:
         if "billing date" in str(c).lower() or "date" in str(c).lower():
@@ -322,9 +322,9 @@ if st.session_state.active_df is not None:
     
     date_info_str = "N/A"
     if dispatch_date_col and not working_df.empty:
-        valid_dates = working_df[dispatch_date_col].dropna().astype(str).unique()
+        valid_dates = sorted([str(d).split()[0] for d in working_df[dispatch_date_col].dropna().unique() if str(d).strip() != '' and str(d) != '#'])
         if len(valid_dates) > 0:
-            date_info_str = f"{valid_dates[0]} (Total Unique Dates: {len(valid_dates)})"
+            date_info_str = ", ".join(valid_dates)
 
     # Display Active File & Dispatch Date Banner
     st.markdown(f"""
@@ -347,10 +347,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (ALL BILLS SELECTED BY DEFAULT = 1 TRIP)
+    # VEHICLE TONNAGE CALCULATOR (TRIP 1 & TRIP 2 SELECTION + TOTAL BAGS)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Smart Trip & Billing Sequence Audit)", expanded=True):
-        st.markdown("Select Vehicle Number and Billing Documents. By default, all bills for the selected vehicle load together as a complete single trip.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1 & Trip 2 Separate Selection Suite)", expanded=True):
+        st.markdown("Select Vehicle Number and choose Trip Mode to get exact non-combined results instantly.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -426,9 +426,23 @@ if st.session_state.active_df is not None:
                 
                 if unique_bills:
                     st.markdown("---")
-                    st.markdown("🧾 **Billing Documents / Trip Sequence Selection (By default, ALL bills are selected together for a single complete trip):**")
-                    # NO LIMIT OR SPLICING: All bills are selected by default
-                    sel_bills = st.multiselect("Select Billing Documents / Sequences:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
+                    st.markdown("🎯 **Exclusive Trip Mode (Select Trip 1 or Trip 2 to isolate results completely):**")
+                    
+                    trip_mode = st.radio(
+                        "Choose Trip Selection Mode:", 
+                        ["Trip 1 (First Batch)", "Trip 2 (Second Batch onwards)", "Full Trip / Custom Multi-Select"], 
+                        horizontal=True,
+                        key="exclusive_trip_mode_radio"
+                    )
+                    
+                    if trip_mode == "Trip 1 (First Batch)":
+                        sel_bills = unique_bills[:3] if len(unique_bills) >= 3 else unique_bills
+                        st.info(f"📍 **Trip 1 Auto-Selected Bills:** {', '.join(sel_bills)}")
+                    elif trip_mode == "Trip 2 (Second Batch onwards)":
+                        sel_bills = unique_bills[3:] if len(unique_bills) > 3 else unique_bills
+                        st.info(f"📍 **Trip 2 Auto-Selected Bills:** {', '.join(sel_bills)}")
+                    else:
+                        sel_bills = st.multiselect("🧾 Custom Select Billing Documents:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
                 else:
                     sel_bills = []
                 
@@ -493,7 +507,7 @@ if st.session_state.active_df is not None:
                 grand_total_opt2 = bags_wt_opt2 + ea_weight_kgs
                 grand_mt_opt2 = grand_total_opt2 / 1000.0
 
-                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}`")
+                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` ({trip_mode})")
                 
                 vb1, vb2, vb3, vb4 = st.columns(4)
                 vb1.metric("📦 50 Kg Bags", f"{int(bag_50_count):,} Bags")
