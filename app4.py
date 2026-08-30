@@ -63,7 +63,8 @@ def init_db():
 
 init_db()
 
-def get_saved_vehicle_capacities():
+@st.cache_data
+def get_saved_vehicle_capacities_cached():
     try:
         conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
         df_cap = pd.read_sql("SELECT vehicle_no, actual_capacity_mt FROM vehicle_capacity_master", conn)
@@ -175,7 +176,6 @@ def reset_vehicle_master():
         cursor.execute("DELETE FROM ignored_typos")
         conn.commit()
         conn.close()
-        return True
     except:
         pass
 
@@ -756,7 +756,7 @@ if st.session_state.active_df is not None:
             if unique_vehicles:
                 sel_vehicle = st.selectbox("🚛 Select Vehicle Number:", options=unique_vehicles, key="calc_veh_select")
                 
-                saved_vahan_caps = get_saved_vehicle_capacities()
+                saved_vahan_caps = get_saved_vehicle_capacities_cached()
                 actual_vahan_limit = saved_vahan_caps.get(str(sel_vehicle).strip().upper(), 28.0)
 
                 veh_subset = calc_df[calc_df[veh_col].astype(str) == sel_vehicle]
