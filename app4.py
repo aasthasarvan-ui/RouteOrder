@@ -353,10 +353,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[search_mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (SMART LAST-4-DIGIT SEARCH & INDEPENDENT TRIP AUDIT)
+    # VEHICLE TONNAGE CALCULATOR (CONTINUOUS TRIP SEQUENCE AUDIT)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Independent Trip 1 & Trip 2 Audit)", expanded=True):
-        st.markdown("Type last 4 digits (e.g. `2680`, `1765`, `0440`) or full vehicle number. Then select exact billing sequence for Trip 1 or Trip 2 independently.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Continuous Trip Sequence Audit)", expanded=True):
+        st.markdown("Type last 4 digits (e.g. `2680`, `1765`) to search vehicle. Select exact continuous billing sequence for Trip 1, Trip 2, etc.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -443,11 +443,10 @@ if st.session_state.active_df is not None:
                 
                 if unique_bills:
                     st.markdown("---")
-                    st.markdown("🎯 **Independent Trip Audit & Exact Billing Sequence Selection:**")
-                    st.markdown("*(Aap yahan apni marzi se Trip 1 ke bills (jaise 2 se 8) ya Trip 2 ke bills (jaise 15 se 27) tick karke alag-alag calculation dekh sakte hain)*")
+                    st.markdown("🎯 **Continuous Trip Sequence Selection (Select exact bills for Trip 1, Trip 2, etc.):**")
+                    st.markdown("*(Aapke bataye mutabiq: Bill 1 se jahan tak pehla trip khatam ho wahan tak tick karein, fir doosre trip ke liye alag sequence select karein)*")
                     
-                    # Fully flexible multiselect without any hardcoded slicing
-                    sel_bills = st.multiselect("🧾 Select Exact Billing Sequence / Documents for this Trip:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
+                    sel_bills = st.multiselect("🧾 Select Continuous Billing Sequence for this Trip:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
                 else:
                     sel_bills = []
                 
@@ -512,7 +511,7 @@ if st.session_state.active_df is not None:
                 grand_total_opt2 = bags_wt_opt2 + ea_weight_kgs
                 grand_mt_opt2 = grand_total_opt2 / 1000.0
 
-                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` (Selected Sequence)")
+                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` (Selected Trip Sequence)")
                 
                 vb1, vb2, vb3, vb4 = st.columns(4)
                 vb1.metric("📦 50 Kg Bags", f"{int(bag_50_count):,} Bags")
