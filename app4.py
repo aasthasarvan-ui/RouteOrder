@@ -5,6 +5,7 @@ import openpyxl
 import datetime
 import pytz
 import io
+import sqlite3
 import smtplib
 from email.message import EmailMessage
 import re
@@ -25,6 +26,28 @@ except:
 IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
+
+# ==============================================================================
+# DATABASE INITIALIZATION (PERSISTENT VAULT FOR FILES)
+# ==============================================================================
+def init_db():
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS saved_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                upload_date TEXT,
+                file_name TEXT,
+                file_blob BLOB
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except:
+        pass
+
+init_db()
 
 # ==============================================================================
 # SESSION STATE MANAGEMENT
@@ -137,7 +160,7 @@ with col_h1:
         <div class="main-hero" style="margin-bottom:0px; padding:18px;">
             <h2 style="color: #f8fafc; margin: 0;">🚚 Enterprise Vehicle Tonnage Hub</h2>
             <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-                Precision Tonnage Calculator, Manual Calculator & Report Export Hub.
+                Persistent Vault Storage, Precision Tonnage Calculators & Report Export Suite.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -148,26 +171,121 @@ with col_h2:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==============================================================================
-# LEFT SIDEBAR: FILE UPLOADER
+# LEFT SIDEBAR: VAULT UPLOADER & FILE MANAGEMENT
 # ==============================================================================
 with st.sidebar:
-    st.markdown("### 📂 Upload Dispatch File")
+    st.markdown("### 📂 Upload / Append Dispatch File")
     uploaded_file = st.file_uploader("Upload Dispatch File (.xlsx / .csv)", type=["xlsx", "csv"], key="sidebar_uploader")
 
     if uploaded_file is not None:
         try:
             file_bytes = uploaded_file.getvalue()
             temp_df = load_and_clean_dataframe(file_bytes, uploaded_file.name)
-            st.session_state.active_df = temp_df
-            st.success(f"✅ '{uploaded_file.name}' loaded successfully!")
+
+            save_mode = st.radio("Choose Save Action:", ["Save as New File", "Append & Merge with Current (Only New Data)"])
+
+            if st.button("💾 Confirm & Save to Vault", type="primary"):
+                conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+                upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
+                
+                if save_mode == "Append & Merge with Current (Only New Data)" and st.session_state.active_df is not None:
+                    # Merge only unique/new rows or combine dataframe
+                    merged_df = pd.concat([st.session_state.active_df, temp_df], ignore_index=True).drop_duplicates()
+                    
+                    output = io.BytesIO()
+                    merged_df.to_excel(output, index=False)
+                    final_bytes = output.getvalue()
+                    
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO saved_files (upload_date, file_name, file_blob) VALUES (?, ?, ?)",
+                        (upload_timestamp, f"Merged_{uploaded_file.name}", sqlite3.Binary(final_bytes))
+                    )
+                    conn.commit()
+                    conn.close()
+                    st.session_state.active_df = merged_df
+                    st.success("✅ Files merged and saved successfully!")
+                    st.rerun()
+                else:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO saved_files (upload_date, file_name, file_blob) VALUES (?, ?, ?)",
+                        (upload_timestamp, uploaded_file.name, sqlite3.Binary(file_bytes))
+                    )
+                    conn.commit()
+                    conn.close()
+                    st.session_state.active_df = temp_df
+                    st.success(f"✅ '{uploaded_file.name}' saved to vault!")
+                    st.rerun()
         except Exception as err_file:
             st.error(f"❌ Upload error: {str(err_file)}")
 
-    if st.session_state.active_df is not None:
-        st.markdown("---")
-        if st.button("🗑️ Clear Current File", type="secondary"):
-            st.session_state.active_df = None
-            st.rerun()
+    st.markdown("---")
+    st.markdown("### 🗂️ Persistent Vault Files")
+    
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        saved_records = pd.read_sql("SELECT id, upload_date, file_name FROM saved_files ORDER BY id DESC", conn)
+        conn.close()
+    except:
+        saved_records = pd.DataFrame()
+
+    if not saved_records.empty:
+        file_options = {f"[{row['id']}] {row['file_name']} ({row['upload_date']})": row['id'] for _, row in saved_records.iterrows()}
+        selected_file_label = st.selectbox("Choose Saved File:", options=list(file_options.keys()))
+        selected_id = file_options[selected_file_label]
+        
+        col_load, col_del = st.columns(2)
+        with col_load:
+            if st.button("📂 Load File", type="primary"):
+                try:
+                    conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT file_blob, file_name FROM saved_files WHERE id = ?", (selected_id,))
+                    row_data = cursor.fetchone()
+                    conn.close()
+                    if row_data:
+                        blob_data, fname = row_data
+                        df_from_db = load_and_clean_dataframe(blob_data, fname)
+                        st.session_state.active_df = df_from_db
+                        st.success(f"✅ Loaded '{fname}' successfully!")
+                        st.rerun()
+                except Exception as load_err:
+                    st.error(f"Load error: {load_err}")
+        
+        with col_del:
+            if st.button("🗑️ Delete File", type="secondary"):
+                try:
+                    conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM saved_files WHERE id = ?", (selected_id,))
+                    conn.commit()
+                    conn.close()
+                    st.session_state.active_df = None
+                    st.success("🗑️ File deleted from vault!")
+                    st.rerun()
+                except Exception as del_err:
+                    st.error(f"Delete error: {del_err}")
+    else:
+        st.info("No saved files in vault. Upload a file above.")
+
+# ==============================================================================
+# AUTO-LOAD LATEST FILE FROM VAULT IF SESSION IS EMPTY (PREVENTS DATA LOSS ON REFRESH)
+# ==============================================================================
+if st.session_state.active_df is None and not saved_records.empty:
+    try:
+        latest_id = saved_records.iloc[0]['id']
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT file_blob, file_name FROM saved_files WHERE id = ?", (latest_id,))
+        row_data = cursor.fetchone()
+        conn.close()
+        if row_data:
+            blob_data, fname = row_data
+            df_from_db = load_and_clean_dataframe(blob_data, fname)
+            st.session_state.active_df = df_from_db
+    except:
+        pass
 
 # ==============================================================================
 # MAIN DASHBOARD & TONNAGE CALCULATORS
@@ -654,4 +772,4 @@ if st.session_state.active_df is not None:
                         except Exception as mail_err:
                             st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
-    st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein")
+    st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya vault me se file load karein.")
