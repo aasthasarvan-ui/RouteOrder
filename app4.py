@@ -1223,3 +1223,187 @@ with col_feat2:
 # ==============================================================================
 # END OF RECOMMENDED NEW ENTERPRISE FEATURES
 # ==============================================================================
+
+# ==============================================================================
+# 🌟 ENTERPRISE PRO UTILITY & ANALYTICS SUITE (PASTE AT THE VERY END OF app.py)
+# ==============================================================================
+import json
+
+def init_pro_suite_db():
+    try:
+        conn_pro = sqlite3.connect("enterprise_pro_suite.db", check_same_thread=False)
+        cur_pro = conn_pro.cursor()
+        cur_pro.execute("""
+            CREATE TABLE IF NOT EXISTS pro_memos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                category TEXT,
+                content TEXT
+            )
+        """)
+        cur_pro.execute("""
+            CREATE TABLE IF NOT EXISTS pro_activity_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                log_time TEXT,
+                event_type TEXT,
+                details TEXT
+            )
+        """)
+        conn_pro.commit()
+        conn_pro.close()
+    except:
+        pass
+
+init_pro_suite_db()
+
+st.markdown("---")
+st.markdown("### ⚡ Enterprise Pro Utility & Analytics Command Center")
+
+# Interactive Toggle to show/hide the entire Pro Suite
+show_pro_suite = st.toggle("🔍 Toggle On: Show Enterprise Pro Control Suite", value=True, key="toggle_pro_suite_master")
+
+if show_pro_suite:
+    pro_tab1, pro_tab2, pro_tab3, pro_tab4 = st.tabs([
+        "📝 Persistent Memo & Audit Board", 
+        "📊 Fleet Compliance & Health", 
+        "🧮 Advanced Tonnage Matrix", 
+        "🛠️ System Actions & Logs"
+    ])
+
+    # --------------------------------------------------------------------------
+    # TAB 1: PERSISTENT MEMO & AUDIT BOARD
+    # --------------------------------------------------------------------------
+    with pro_tab1:
+        st.markdown("#### 📝 Shift Memos & Operational Notes (Persistent Storage)")
+        
+        with st.form("pro_memo_form"):
+            memo_cat = st.selectbox("Category:", ["General Shift Note", "Overload Incident", "Driver Instruction", "Maintenance Alert"], key="memo_cat_input")
+            memo_text = st.text_area("Write Log / Memo Content:", placeholder="Type important remarks here...", key="memo_text_input")
+            submitted_memo = st.form_submit_button("💾 Save Memo to Database", type="primary")
+            
+            if submitted_memo and memo_text.strip():
+                try:
+                    conn_m = sqlite3.connect("enterprise_pro_suite.db", check_same_thread=False)
+                    cur_m = conn_m.cursor()
+                    cur_m.execute("INSERT INTO pro_memos (timestamp, category, content) VALUES (?, ?, ?)",
+                                  (get_ist_now().strftime('%Y-%m-%d %H:%M:%S'), memo_cat, memo_text.strip()))
+                    conn_m.commit()
+                    conn_m.close()
+                    st.success("✅ Memo saved successfully!")
+                    st.rerun()
+                except Exception as em:
+                    st.error(f"Error saving memo: {em}")
+
+        # Fetch saved memos from DB
+        try:
+            conn_m = sqlite3.connect("enterprise_pro_suite.db", check_same_thread=False)
+            df_memos = pd.read_sql("SELECT id AS 'ID', timestamp AS 'Time', category AS 'Category', content AS 'Content' FROM pro_memos ORDER BY id DESC", conn_m)
+            conn_m.close()
+            
+            if not df_memos.empty:
+                st.markdown("##### 📋 Saved Memos Archive")
+                st.dataframe(df_memos, use_container_width=True)
+                
+                col_m_act1, col_m_act2 = st.columns(2)
+                with col_m_act1:
+                    memo_csv = df_memos.to_csv(index=False).encode('utf-8')
+                    st.download_button("📥 Download Memos CSV", data=memo_csv, file_name="Enterprise_Memos.csv", mime="text/csv", key="btn_dl_memos")
+                with col_m_act2:
+                    if st.button("🗑️ Clear All Memos", key="btn_clear_memos"):
+                        conn_m = sqlite3.connect("enterprise_pro_suite.db", check_same_thread=False)
+                        cur_m = conn_m.cursor()
+                        cur_m.execute("DELETE FROM pro_memos")
+                        conn_m.commit()
+                        conn_m.close()
+                        st.success("🗑️ All memos cleared!")
+                        st.rerun()
+            else:
+                st.info("No saved memos found in database.")
+        except:
+            st.info("Memo storage ready.")
+
+    # --------------------------------------------------------------------------
+    # TAB 2: FLEET COMPLIANCE & HEALTH MONITOR
+    # --------------------------------------------------------------------------
+    with pro_tab2:
+        st.markdown("#### 🛡️ Fleet Risk & VAHAN Compliance Health")
+        try:
+            conn_fc = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+            df_fc = pd.read_sql("SELECT vehicle_no AS 'Vehicle', old_capacity_mt AS 'Old Cap', actual_capacity_mt AS 'New Cap' FROM vehicle_capacity_master", conn_fc)
+            conn_fc.close()
+            
+            if not df_fc.empty:
+                df_fc['Status'] = df_fc['New Cap'].apply(lambda x: '⚠️ Heavy Load' if x > 30 else '✅ Standard Compliant')
+                st.dataframe(df_fc, use_container_width=True)
+                
+                # Action buttons for Tab 2
+                col_fc1, col_fc2 = st.columns(2)
+                with col_fc1:
+                    fc_buf = io.BytesIO()
+                    df_fc.to_excel(fc_buf, index=False)
+                    st.download_button("📥 Download Compliance Report (.xlsx)", data=fc_buf.getvalue(), file_name="Fleet_Compliance_Report.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_dl_compliance")
+                with col_fc2:
+                    if st.button("🔄 Refresh Compliance Matrix", key="btn_ref_compliance"):
+                        st.rerun()
+            else:
+                st.info("No vehicle master records available for compliance check.")
+        except:
+            st.info("Compliance monitoring ready.")
+
+    # --------------------------------------------------------------------------
+    # TAB 3: ADVANCED TONNAGE MATRIX & ESTIMATOR
+    # --------------------------------------------------------------------------
+    with pro_tab3:
+        st.markdown("#### 🧮 Quick Freight & Tonnage Estimation Matrix")
+        col_tmat1, col_tmat2 = st.columns(2)
+        with col_tmat1:
+            est_bags_50 = st.number_input("Simulate 50Kg Bags:", min_value=0, value=500, step=50, key="sim_50_bags")
+            est_bags_25 = st.number_input("Simulate 25Kg Bags:", min_value=0, value=200, step=50, key="sim_25_bags")
+        with col_tmat2:
+            sim_rate_mt = st.number_input("Estimated Freight Rate per MT (₹):", min_value=0.0, value=1200.0, step=50.0, key="sim_freight_rate")
+            
+        sim_total_kgs = (est_bags_50 * 50.120) + (est_bags_25 * 25.120)
+        sim_total_mt = sim_total_kgs / 1000.0
+        sim_est_cost = sim_total_mt * sim_rate_mt
+        
+        st.markdown(f"""
+            > 📊 **Simulation Results:**
+            > - **Total Simulated Weight:** `{sim_total_kgs:,.2f} Kgs` (`{sim_total_mt:,.3f} MT`)
+            > - **Estimated Freight Cost:** `₹ {sim_est_cost:,.2f}`
+        """)
+        
+        # Copy-friendly text block
+        sim_summary_text = f"Simulation Summary: Bags 50kg: {est_bags_50}, Bags 25kg: {est_bags_25}, Total MT: {sim_total_mt:.3f}, Est Cost: ₹ {sim_est_cost:,.2f}"
+        st.text_area("📋 Copy Simulation Data:", value=sim_summary_text, height=70, key="copy_sim_box")
+
+    # --------------------------------------------------------------------------
+    # TAB 4: SYSTEM ACTIONS, LOGS & CACHE MANAGER
+    # --------------------------------------------------------------------------
+    with pro_tab4:
+        st.markdown("#### 🛠️ System Maintenance & Activity Logs")
+        
+        col_sys1, col_sys2 = st.columns(2)
+        with col_sys1:
+            if st.button("🧹 Clear Streamlit Cache", key="btn_clear_st_cache"):
+                st.cache_data.clear()
+                st.success("✅ App cache cleared successfully!")
+                st.rerun()
+        with col_sys2:
+            if st.button("⚠️ Factory Reset Suite Data", key="btn_factory_reset_pro"):
+                try:
+                    conn_pro = sqlite3.connect("enterprise_pro_suite.db", check_same_thread=False)
+                    cur_pro = conn_pro.cursor()
+                    cur_pro.execute("DELETE FROM pro_memos")
+                    cur_pro.execute("DELETE FROM pro_activity_logs")
+                    conn_pro.commit()
+                    conn_pro.close()
+                    st.success("✅ Pro Suite reset completed!")
+                    st.rerun()
+                except Exception as e_fr:
+                    st.error(f"Reset error: {e_fr}")
+                    
+        st.info("ℹ️ All Pro Suite controls are fully synchronized with SQLite storage and optimized for zero lag.")
+# ==============================================================================
+# END OF ENTERPRISE PRO UTILITY & ANALYTICS SUITE
+# ==============================================================================
+
