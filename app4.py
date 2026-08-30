@@ -189,7 +189,7 @@ with st.sidebar:
                 upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
                 
                 if save_mode == "Append & Merge with Current (Only New Data)" and st.session_state.active_df is not None:
-                    # Strict deduplication: combine current df and temp_df, drop exact duplicate rows so old data stays untouched
+                    # Append strictly new unique records, leaving old historical records untouched
                     merged_df = pd.concat([st.session_state.active_df, temp_df], ignore_index=True).drop_duplicates().reset_index(drop=True)
                     
                     output = io.BytesIO()
@@ -304,7 +304,7 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (MULTI-TRIP / MULTI-SEQUENCE SUPPORT)
+    # VEHICLE TONNAGE CALCULATOR (MULTI-TRIP & DELAYED BILLING SEQUENCES)
     # ==========================================================================
     with st.expander("🚚 Vehicle Tonnage Calculator (Multi-Trip & Delayed Billing Sequences Support)", expanded=True):
         st.markdown("Select Vehicle Number, Billing Date, and specific Billing Sequences/Trips (handles multiple trips and delayed billing sequences independently).")
@@ -383,7 +383,8 @@ if st.session_state.active_df is not None:
                 
                 if unique_bills:
                     st.markdown("🧾 **Trip / Billing Sequence Selection (Select separate trips or delayed bill sequences):**")
-                    sel_bills = st.multiselect("Select Billing Sequences / Trips for audit:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
+                    # Default to selecting the first trip/bill to avoid auto-combining all trips together
+                    sel_bills = st.multiselect("Select Billing Sequences / Trips for audit:", options=unique_bills, default=unique_bills[:1] if unique_bills else [], key="calc_multibill_select")
                 else:
                     sel_bills = []
                 
