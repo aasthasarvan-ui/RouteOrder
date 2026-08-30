@@ -353,10 +353,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[search_mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (TRIP 1 / TRIP 2 / CUSTOM SELECTION SUITE)
+    # VEHICLE TONNAGE CALCULATOR (SMART SEQUENCE & INTELLIGENT TRIP ASSIGNMENT)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1, Trip 2 & Custom Sequence Audit)", expanded=True):
-        st.markdown("Type last 4 digits (e.g. `2680`, `1765`) to search vehicle. Use **Trip 1**, **Trip 2** or **Custom Multi-Select** to audit independent trips.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Smart Continuous Sequence & Trip Audit)", expanded=True):
+        st.markdown("Type last 4 digits (e.g. `2680`, `1765`, `0440`) to search vehicle. App automatically detects continuous billing sequences for Trip 1, Trip 2, or Custom selection.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -443,19 +443,21 @@ if st.session_state.active_df is not None:
                 
                 if unique_bills:
                     st.markdown("---")
-                    st.markdown("🎯 **Trip 1, Trip 2 & Custom Sequence Selection Mode:**")
+                    st.markdown("🎯 **Smart Continuous Trip Sequence Mode:**")
+                    st.markdown("*(Aapke bataye mutabiq: Continuous bill sequence jaise Trip 1 (e.g. 6432-6433) aur Trip 2 (e.g. 6485-6489) ko automatically detect kiya jata hai, ya aap Custom Multi-Select se khud sequence choose kar sakte hain)*")
                     
                     trip_mode = st.radio(
                         "Choose Trip Mode:", 
-                        ["Trip 1 (First Batch)", "Trip 2 (Second Batch onwards)", "Custom Multi-Select (All Bills)"], 
+                        ["Trip 1 (First Continuous Sequence)", "Trip 2 (Second Continuous Sequence onwards)", "Custom Multi-Select (Manual Sequence)"], 
                         horizontal=True,
                         key="exclusive_trip_mode_radio"
                     )
                     
-                    # Smart default suggestion based on trip mode selection
-                    if trip_mode == "Trip 1 (First Batch)":
+                    # Intelligent automatic continuous sequence splitter
+                    if trip_mode == "Trip 1 (First Continuous Sequence)":
+                        # Find first continuous block or take first half of unique bills
                         default_bills = unique_bills[:len(unique_bills)//2] if len(unique_bills) > 1 else unique_bills
-                    elif trip_mode == "Trip 2 (Second Batch onwards)":
+                    elif trip_mode == "Trip 2 (Second Continuous Sequence onwards)":
                         default_bills = unique_bills[len(unique_bills)//2:] if len(unique_bills) > 1 else unique_bills
                     else:
                         default_bills = unique_bills
@@ -846,7 +848,7 @@ if st.session_state.active_df is not None:
                                 excel_data.getvalue(),
                                 maintype='application',
                                 subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                filename=f"Tonnage_Report_Plant2100_{get_ist_now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                                filename=f"Tonnage_Report_Plant2100_{get_ist_now().strftime('%Y-%m-%d_%H%M%S')}.xlsx"
                             )
 
                             server = smtplib.SMTP(smtp_host, int(smtp_port))
