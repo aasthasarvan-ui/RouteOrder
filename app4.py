@@ -353,10 +353,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[search_mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (CONTINUOUS TRIP SEQUENCE AUDIT)
+    # VEHICLE TONNAGE CALCULATOR (TRIP 1 / TRIP 2 / CUSTOM SELECTION SUITE)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Continuous Trip Sequence Audit)", expanded=True):
-        st.markdown("Type last 4 digits (e.g. `2680`, `1765`) to search vehicle. Select exact continuous billing sequence for Trip 1, Trip 2, etc.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1, Trip 2 & Custom Sequence Audit)", expanded=True):
+        st.markdown("Type last 4 digits (e.g. `2680`, `1765`) to search vehicle. Use **Trip 1**, **Trip 2** or **Custom Multi-Select** to audit independent trips.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -443,10 +443,24 @@ if st.session_state.active_df is not None:
                 
                 if unique_bills:
                     st.markdown("---")
-                    st.markdown("🎯 **Continuous Trip Sequence Selection (Select exact bills for Trip 1, Trip 2, etc.):**")
-                    st.markdown("*(Aapke bataye mutabiq: Bill 1 se jahan tak pehla trip khatam ho wahan tak tick karein, fir doosre trip ke liye alag sequence select karein)*")
+                    st.markdown("🎯 **Trip 1, Trip 2 & Custom Sequence Selection Mode:**")
                     
-                    sel_bills = st.multiselect("🧾 Select Continuous Billing Sequence for this Trip:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
+                    trip_mode = st.radio(
+                        "Choose Trip Mode:", 
+                        ["Trip 1 (First Batch)", "Trip 2 (Second Batch onwards)", "Custom Multi-Select (All Bills)"], 
+                        horizontal=True,
+                        key="exclusive_trip_mode_radio"
+                    )
+                    
+                    # Smart default suggestion based on trip mode selection
+                    if trip_mode == "Trip 1 (First Batch)":
+                        default_bills = unique_bills[:len(unique_bills)//2] if len(unique_bills) > 1 else unique_bills
+                    elif trip_mode == "Trip 2 (Second Batch onwards)":
+                        default_bills = unique_bills[len(unique_bills)//2:] if len(unique_bills) > 1 else unique_bills
+                    else:
+                        default_bills = unique_bills
+
+                    sel_bills = st.multiselect("🧾 Select Exact Billing Sequence / Documents for this Trip:", options=unique_bills, default=default_bills, key="calc_multibill_select")
                 else:
                     sel_bills = []
                 
@@ -511,7 +525,7 @@ if st.session_state.active_df is not None:
                 grand_total_opt2 = bags_wt_opt2 + ea_weight_kgs
                 grand_mt_opt2 = grand_total_opt2 / 1000.0
 
-                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` (Selected Trip Sequence)")
+                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` ({trip_mode})")
                 
                 vb1, vb2, vb3, vb4 = st.columns(4)
                 vb1.metric("📦 50 Kg Bags", f"{int(bag_50_count):,} Bags")
