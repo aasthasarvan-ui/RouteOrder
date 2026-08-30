@@ -28,7 +28,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==============================================================================
-# DATABASE INITIALIZATION (PERSISTENT VAULT FOR FILES)
+# DATABASE INITIALIZATION (PERSISTENT VAULT FOR FILES & REFRESH PERSISTENCE)
 # ==============================================================================
 def init_db():
     try:
@@ -50,7 +50,7 @@ def init_db():
 init_db()
 
 # ==============================================================================
-# SESSION STATE MANAGEMENT
+# SESSION STATE & PERSISTENT AUTO-LOAD ON REFRESH
 # ==============================================================================
 if "active_df" not in st.session_state:
     st.session_state.active_df = None
@@ -58,6 +58,37 @@ if "calc_theme_choice" not in st.session_state:
     st.session_state.calc_theme_choice = "⚡ Cyber Neon Glass"
 if "ng_reset_token" not in st.session_state:
     st.session_state.ng_reset_token = 0
+
+# Auto-load latest vault file on initial load or refresh so user never loses data
+if st.session_state.active_df is None:
+    try:
+        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
+        saved_records = pd.read_sql("SELECT id, file_blob, file_name FROM saved_files ORDER BY id DESC LIMIT 1", conn)
+        conn.close()
+        if not saved_records.empty:
+            blob_data = saved_records.iloc[0]['file_blob']
+            fname = saved_records.iloc[0]['file_name']
+            
+            # Helper load function
+            if fname.endswith('.csv'):
+                st.session_state.active_df = pd.read_csv(io.BytesIO(blob_data))
+            else:
+                excel_obj = pd.ExcelFile(io.BytesIO(blob_data))
+                sheet_target = 'Sheet1' if 'Sheet1' in excel_obj.sheet_names else excel_obj.sheet_names[0]
+                st.session_state.active_df = pd.read_excel(excel_obj, sheet_name=sheet_target)
+            
+            # Clean columns if needed
+            df_temp = st.session_state.active_df
+            if any(str(c).startswith("Unnamed") for c in df_temp.columns):
+                for idx, row in df_temp.head(10).iterrows():
+                    row_str = str(row.values).lower()
+                    if "vehicle" in row_str or "quantity" in row_str or "billing type" in row_str:
+                        df_temp.columns = df_temp.iloc[idx]
+                        df_temp = df_temp.iloc[idx+1:].reset_index(drop=True)
+                        break
+            st.session_state.active_df = df_temp.dropna(how='all').reset_index(drop=True)
+    except:
+        pass
 
 # ==============================================================================
 # SMART DATAFRAME CLEANING
@@ -269,24 +300,6 @@ with st.sidebar:
         st.info("No saved files in vault. Upload a file above.")
 
 # ==============================================================================
-# AUTO-LOAD LATEST FILE FROM VAULT IF SESSION IS EMPTY
-# ==============================================================================
-if st.session_state.active_df is None and not saved_records.empty:
-    try:
-        latest_id = saved_records.iloc[0]['id']
-        conn = sqlite3.connect("tonnage_master_hub.db", check_same_thread=False)
-        cursor = conn.cursor()
-        cursor.execute("SELECT file_blob, file_name FROM saved_files WHERE id = ?", (latest_id,))
-        row_data = cursor.fetchone()
-        conn.close()
-        if row_data:
-            blob_data, fname = row_data
-            df_from_db = load_and_clean_dataframe(blob_data, fname)
-            st.session_state.active_df = df_from_db
-    except:
-        pass
-
-# ==============================================================================
 # MAIN DASHBOARD & TONNAGE CALCULATORS
 # ==============================================================================
 if st.session_state.active_df is not None:
@@ -295,11 +308,12 @@ if st.session_state.active_df is not None:
     working_df = st.session_state.active_df.copy()
 
     # ==========================================================================
-    # ROBUST GLOBAL SEARCH (FULLY FUNCTIONAL FOR VEHICLE NO & KEYWORDS)
+    # ROBUST GLOBAL SEARCH (FIXED FOR VEHICLE NO & PARTIAL MATCHING)
     # ==========================================================================
     global_search = st.text_input("🔍 Global Keyword Search (Vehicle No, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
         term = str(global_search).strip().lower()
+        # Clean search term and search across all columns
         mask = working_df.astype(str).apply(lambda row: row.str.lower().str.contains(term, na=False).any(), axis=1)
         working_df = working_df[mask]
 
