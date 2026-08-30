@@ -294,12 +294,14 @@ if st.session_state.active_df is not None:
 
     working_df = st.session_state.active_df.copy()
 
-    global_search = st.text_input("🔍 Global Keyword Search (Vehicle, Customer, Material, Document):", "", key="global_search_input")
+    # ==========================================================================
+    # ROBUST GLOBAL SEARCH (FIXED FOR VEHICLE & ANY KEYWORD)
+    # ==========================================================================
+    global_search = st.text_input("🔍 Global Keyword Search (Vehicle No, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
         term = str(global_search).strip().lower()
-        mask = pd.Series(False, index=working_df.index)
-        for c in working_df.columns:
-            mask = mask | working_df[c].astype(str).str.lower().str.contains(term, na=False)
+        # Combine all columns into a single string series for extremely robust partial matching
+        mask = working_df.astype(str).apply(lambda row: row.str.lower().str.contains(term, na=False).any(), axis=1)
         working_df = working_df[mask]
 
     # ==========================================================================
@@ -383,7 +385,6 @@ if st.session_state.active_df is not None:
                 if unique_bills:
                     st.markdown("---")
                     st.markdown("🧾 **Billing Documents / Trip Sequence Selection (By default, all bills of this vehicle are selected together):**")
-                    # Default is all bills selected so a single trip with multiple bills is never split automatically
                     sel_bills = st.multiselect("Select Billing Documents / Sequences:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
                 else:
                     sel_bills = []
