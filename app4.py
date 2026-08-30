@@ -1173,7 +1173,7 @@ if st.session_state.active_df is not None:
                             server.send_message(msg)
                             server.quit()
 
-                            st.success(f"✅ Professional email with Excel attachment successfully dispatched to: **{', '.join(recipients)}**!")
+                            st.success(f"✅ Professional email with Excel attachment successfully dispatched to: **{', '.join(recipient)}**!")
                         except Exception as mail_err:
                             st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
