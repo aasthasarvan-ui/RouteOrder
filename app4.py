@@ -28,7 +28,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 # ==============================================================================
-# DATABASE INITIALIZATION (PERSISTENT VAULT FOR FILES & REFRESH PERSISTENCE)
+# DATABASE INITIALIZATION (PERSISTENT VAULT FOR FILES)
 # ==============================================================================
 def init_db():
     try:
@@ -69,7 +69,6 @@ if st.session_state.active_df is None:
             blob_data = saved_records.iloc[0]['file_blob']
             fname = saved_records.iloc[0]['file_name']
             
-            # Helper load function
             if fname.endswith('.csv'):
                 st.session_state.active_df = pd.read_csv(io.BytesIO(blob_data))
             else:
@@ -77,7 +76,6 @@ if st.session_state.active_df is None:
                 sheet_target = 'Sheet1' if 'Sheet1' in excel_obj.sheet_names else excel_obj.sheet_names[0]
                 st.session_state.active_df = pd.read_excel(excel_obj, sheet_name=sheet_target)
             
-            # Clean columns if needed
             df_temp = st.session_state.active_df
             if any(str(c).startswith("Unnamed") for c in df_temp.columns):
                 for idx, row in df_temp.head(10).iterrows():
@@ -91,7 +89,7 @@ if st.session_state.active_df is None:
         pass
 
 # ==============================================================================
-# SMART DATAFRAME CLEANING
+# SMART DATAFRAME CLEANING & PLANT 2100 FILTER
 # ==============================================================================
 def load_and_clean_dataframe(file_bytes, file_name):
     if file_name.endswith('.csv'):
@@ -110,6 +108,18 @@ def load_and_clean_dataframe(file_bytes, file_name):
                 break
     
     df = df.dropna(how='all').reset_index(drop=True)
+
+    # Automatically filter Plant "2100" if Plant column exists
+    plant_col = None
+    for c in df.columns:
+        if str(c).strip().lower() in ["plant", "plant code"]:
+            plant_col = c
+            break
+    
+    if plant_col:
+        # Keep rows where plant matches 2100 (string or numeric conversion)
+        df = df[df[plant_col].astype(str).str.contains("2100", na=False)].reset_index(drop=True)
+
     return df
 
 # ==============================================================================
@@ -276,6 +286,7 @@ with st.sidebar:
                     conn.close()
                     if row_data:
                         blob_data, fname = row_data
+                        # Load and filter Plant 2100
                         df_from_db = load_and_clean_dataframe(blob_data, fname)
                         st.session_state.active_df = df_from_db
                         st.success(f"✅ Loaded '{fname}' successfully!")
@@ -303,17 +314,17 @@ with st.sidebar:
 # MAIN DASHBOARD & TONNAGE CALCULATORS
 # ==============================================================================
 if st.session_state.active_df is not None:
-    st.markdown("### 📊 Billing & Tonnage Data Dashboard")
+    st.markdown("### 📊 Billing & Tonnage Data Dashboard (Plant 2100 Filtered)")
 
     working_df = st.session_state.active_df.copy()
 
     # ==========================================================================
-    # ROBUST GLOBAL SEARCH (FIXED FOR VEHICLE NO & PARTIAL MATCHING)
+    # SUPER-ROBUST GLOBAL SEARCH (FIXED FOR 4-DIGIT VEHICLE NO LIKE '2680')
     # ==========================================================================
-    global_search = st.text_input("🔍 Global Keyword Search (Vehicle No, Customer, Material, Document):", "", key="global_search_input")
+    global_search = st.text_input("🔍 Global Keyword Search (Vehicle No e.g. 2680, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
         term = str(global_search).strip().lower()
-        # Clean search term and search across all columns
+        # Search specifically across vehicle columns first, or across all columns using exact substring
         mask = working_df.astype(str).apply(lambda row: row.str.lower().str.contains(term, na=False).any(), axis=1)
         working_df = working_df[mask]
 
@@ -649,7 +660,7 @@ if st.session_state.active_df is not None:
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    with st.expander("📋 View Master Cleaned Dataframe Table", expanded=False):
+    with st.expander("📋 View Master Cleaned Dataframe Table (Plant 2100)", expanded=False):
         st.dataframe(working_df, use_container_width=True)
 
     # ==========================================================================
@@ -682,7 +693,7 @@ if st.session_state.active_df is not None:
                     </style>
                 </head>
                 <body>
-                    <h2>Enterprise Vehicle Tonnage Summary Report</h2>
+                    <h2>Enterprise Vehicle Tonnage Summary Report (Plant 2100)</h2>
                     <p><b>Generated on:</b> {get_ist_now().strftime('%d-%m-%Y %H:%M:%S IST')}</p>
                     {html_table_string}
                     <script>
@@ -708,7 +719,7 @@ if st.session_state.active_df is not None:
         st.download_button(
             "📥 Download Filtered Excel (.xlsx)",
             data=excel_buffer.getvalue(),
-            file_name=f"Tonnage_Report_{get_ist_now().strftime('%Y-%m-%d_%H%M%S')}.xlsx",
+            file_name=f"Tonnage_Report_Plant2100_{get_ist_now().strftime('%Y-%m-%d_%H%M%S')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary"
         )
@@ -724,11 +735,11 @@ if st.session_state.active_df is not None:
                 
                 st.markdown("---")
                 email_to = st.text_input("Recipient Email(s) separated by comma (,):", "recipient@example.com")
-                email_sub = st.text_input("Email Subject", "🚨 Executive Vehicle Tonnage Summary Report")
+                email_sub = st.text_input("Email Subject", "🚨 Executive Vehicle Tonnage Summary Report (Plant 2100)")
                 
                 default_mail_body = (
                     "Dear Leadership / Management Team,\n\n"
-                    "Please find below the summary table and attached Excel report containing vehicle tonnage details.\n\n"
+                    "Please find below the summary table and attached Excel report containing vehicle tonnage details for Plant 2100.\n\n"
                     "Best Regards,\n"
                     "Logistics Hub"
                 )
@@ -753,7 +764,7 @@ if st.session_state.active_df is not None:
                             <html>
                             <body style="font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; line-height: 1.6; padding: 15px;">
                                 <div style="background: #1e293b; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                                    <h2 style="margin: 0; color: #38bdf8;">🚚 Vehicle Tonnage Summary Report</h2>
+                                    <h2 style="margin: 0; color: #38bdf8;">🚚 Vehicle Tonnage Summary Report (Plant 2100)</h2>
                                     <p style="margin: 5px 0 0 0; font-size: 13px; color: #94a3b8;">Automated Report | Generated on {get_ist_now().strftime('%d-%m-%Y %H:%M:%S IST')}</p>
                                 </div>
                                 <p style="font-size: 14px; white-space: pre-wrap;">{email_body}</p>
@@ -782,7 +793,7 @@ if st.session_state.active_df is not None:
                                 excel_data.getvalue(),
                                 maintype='application',
                                 subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                filename=f"Tonnage_Report_{get_ist_now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                                filename=f"Tonnage_Report_Plant2100_{get_ist_now().strftime('%Y%m%d_%H%M%S')}.xlsx"
                             )
 
                             server = smtplib.SMTP(smtp_host, int(smtp_port))
