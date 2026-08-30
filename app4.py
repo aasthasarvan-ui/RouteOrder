@@ -118,13 +118,12 @@ def save_vehicle_capacity_auto(veh_no, capacity_mt):
                 """, (v_clean, float(capacity_mt), float(capacity_mt), now_str))
             else:
                 existing_cap = row[0]
-                max_cap = max(float(existing_cap), float(capacity_mt))
-                if float(existing_cap) != max_cap:
-                    cursor.execute("""
-                        UPDATE vehicle_capacity_master 
-                        SET old_capacity_mt = ?, actual_capacity_mt = ?, last_updated = ?
-                        WHERE vehicle_no = ?
-                    """, (existing_cap, max_cap, now_str, v_clean))
+                # Direct overwrite with latest calculated max trip capacity
+                cursor.execute("""
+                    UPDATE vehicle_capacity_master 
+                    SET old_capacity_mt = ?, actual_capacity_mt = ?, last_updated = ?
+                    WHERE vehicle_no = ?
+                """, (existing_cap, float(capacity_mt), now_str, v_clean))
             conn.commit()
         conn.close()
     except:
@@ -290,7 +289,6 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
                     qty_col_found = col
 
     if veh_col_found and qty_col_found:
-        existing_master = get_all_master_vehicles()
         ignored_set = get_ignored_vehicles()
         typo_queue = []
         count = 0
@@ -307,6 +305,8 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
             if not btype_col_local and any(k in tc_l for k in ["billing type", "btype", "type"]):
                 btype_col_local = tc
 
+        existing_master = get_all_master_vehicles()
+
         for v_num, group in df.groupby(veh_col_found):
             v_clean = str(v_num).strip().upper()
             if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
@@ -317,7 +317,6 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
                         typo_queue.append({"new": v_clean, "existing": similar_match})
                     continue
                 
-                # Filter matching calculator rules (F2 & BAG/EA if present)
                 sub_calc_group = group.copy()
                 if btype_col_local:
                     sub_calc_group = sub_calc_group[sub_calc_group[btype_col_local].astype(str).str.upper().str.contains("F2", na=False)]
@@ -329,7 +328,6 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
 
                 max_trip_kgs = 0.0
                 
-                # Trip/Billing Document wise complete calculation (Exact match with calculator)
                 if trip_col_local:
                     for _, sub_g in sub_calc_group.groupby(trip_col_local):
                         trip_kgs = 0.0
@@ -370,7 +368,6 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
                 if calc_mt <= 0:
                     calc_mt = 28.0
                 
-                # Save or update max capacity directly in master registry
                 save_vehicle_capacity_auto(v_clean, calc_mt)
                 if v_clean not in existing_master:
                     existing_master.append(v_clean)
