@@ -189,7 +189,6 @@ with st.sidebar:
                 upload_timestamp = get_ist_now().strftime('%Y-%m-%d %H:%M:%S')
                 
                 if save_mode == "Append & Merge with Current (Only New Data)" and st.session_state.active_df is not None:
-                    # Append strictly new unique records, leaving old historical records untouched
                     merged_df = pd.concat([st.session_state.active_df, temp_df], ignore_index=True).drop_duplicates().reset_index(drop=True)
                     
                     output = io.BytesIO()
@@ -304,10 +303,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (MULTI-TRIP & DELAYED BILLING SEQUENCES)
+    # VEHICLE TONNAGE CALCULATOR (SEPARATE TRIP AUDIT & SMART TRIP GROUPING)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Multi-Trip & Delayed Billing Sequences Support)", expanded=True):
-        st.markdown("Select Vehicle Number, Billing Date, and specific Billing Sequences/Trips (handles multiple trips and delayed billing sequences independently).")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Separate Trip & Billing Sequence Audit)", expanded=True):
+        st.markdown("Select Vehicle Number and specific Trip / Billing Sequence to get exact separate weights for each trip.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -382,9 +381,9 @@ if st.session_state.active_df is not None:
                 unique_bills = sorted(date_filtered_subset[billdoc_col].dropna().astype(str).unique().tolist()) if billdoc_col and not date_filtered_subset.empty else []
                 
                 if unique_bills:
-                    st.markdown("🧾 **Trip / Billing Sequence Selection (Select separate trips or delayed bill sequences):**")
-                    # Default to selecting the first trip/bill to avoid auto-combining all trips together
-                    sel_bills = st.multiselect("Select Billing Sequences / Trips for audit:", options=unique_bills, default=unique_bills[:1] if unique_bills else [], key="calc_multibill_select")
+                    st.markdown("🧾 **Trip / Billing Sequence Selection (Aap alag-alag trip ke bills select karein taaki weight combine na ho):**")
+                    # Default to selecting ONLY the first bill/trip so trips are never combined by default
+                    sel_bills = st.multiselect("Select Billing Sequences / Trip Documents:", options=unique_bills, default=unique_bills[:3] if len(unique_bills) >= 3 else unique_bills, key="calc_multibill_select")
                 else:
                     sel_bills = []
                 
@@ -447,7 +446,7 @@ if st.session_state.active_df is not None:
                 grand_total_opt2 = bags_wt_opt2 + ea_weight_kgs
                 grand_mt_opt2 = grand_total_opt2 / 1000.0
 
-                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` (Selected Trips)")
+                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` (Selected Trip / Bills)")
                 vb1, vb2, vb3 = st.columns(3)
                 vb1.metric("📦 50 Kg Bags", f"{int(bag_50_count):,} Bags")
                 vb2.metric("📦 25 Kg Bags", f"{int(bag_25_count):,} Bags")
@@ -466,7 +465,7 @@ if st.session_state.active_df is not None:
                 df_items = pd.DataFrame(item_details_list)
                 st.dataframe(df_items, use_container_width=True)
 
-                with st.expander("📊 View All Vehicles & Sequenced Trips Summary Table", expanded=False):
+                with st.expander("📊 View All Vehicles & Sequenced Trips Summary Table (Trip-wise Separate Rows)", expanded=False):
                     summary_rows = []
                     group_cols = [veh_col]
                     if billdoc_col:
