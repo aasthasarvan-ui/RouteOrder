@@ -234,8 +234,7 @@ def load_and_clean_dataframe(file_bytes, file_name):
     
     df = df.dropna(how='all').reset_index(drop=True)
     return df
-
-def auto_seed_master_from_df(df, force=False):
+    def auto_seed_master_from_df(df, force=False):
     if df is None or df.empty:
         return 0
     
@@ -267,51 +266,79 @@ def auto_seed_master_from_df(df, force=False):
         typo_queue = []
         count = 0
         
+        # Unit aur Billing Document columns dhundhein
+        unit_col_local = None
+        trip_col_local = None
+        for tc in df.columns:
+            tc_l = str(tc).lower()
+            if not trip_col_local and any(k in tc_l for k in ['billing document', 'bill no', 'invoice', 'trip']):
+                trip_col_local = tc
+            if not unit_col_local and any(k in tc_l for k in ['sale unit', 'unit', 'uom']):
+                unit_col_local = tc
+
         for v_num, group in df.groupby(veh_col_found):
             v_clean = str(v_num).strip().upper()
             if v_clean and "TOTAL" not in v_clean and v_clean != "NAN" and v_clean != "NONE":
-                if v_clean in existing_master or v_clean in ignored_set:
-                    continue
-                    
+                
+                # Similar / Typo check
                 similar_match = check_similar_vehicle(v_clean, existing_master, threshold=0.82)
-                if similar_match and similar_match != v_clean:
+                if similar_match and similar_match != v_clean and v_clean not in existing_master and v_clean not in ignored_set:
                     if {"new": v_clean, "existing": similar_match} not in st.session_state.pending_typo_review:
                         typo_queue.append({"new": v_clean, "existing": similar_match})
                     continue
                 
                 max_trip_kgs = 0.0
-                trip_col = None
-                for tc in df.columns:
-                    if any(k in str(tc).lower() for k in ['billing document', 'bill no', 'invoice', 'trip']):
-                        trip_col = tc
-                        break
                 
-                if trip_col:
-                    for _, sub_g in group.groupby(trip_col):
+                # Agar Billing Document / Trip column milta hai, toh har trip ka alag sum nikalo
+                if trip_col_local:
+                    for _, sub_g in group.groupby(trip_col_local):
                         trip_kgs = 0.0
                         for _, r in sub_g.iterrows():
                             q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
                             d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
-                            if "25" in d_txt:
-                                trip_kgs += q * 25.0
+                            u_txt = str(r[unit_col_local]).upper() if unit_col_local and pd.notna(r[unit_col_local]) else ""
+                            
+                            # Weight calculation logic (Bags vs EA)
+                            if "EA" in u_txt:
+                                # EA ke liye parse function ya default weight
+                                match_kg = re.search(r'\b(\d+(?:\.\d+)?)\s*KG\b', d_txt)
+                                if match_kg:
+                                    trip_kgs += q * float(match_kg.group(1))
+                                else:
+                                    trip_kgs += q * 1.0 # Default fallback
                             else:
-                                trip_kgs += q * 50.0
+                                if "25" in d_txt:
+                                    trip_kgs += q * 25.120
+                                else:
+                                    trip_kgs += q * 50.120
+                                    
                         if trip_kgs > max_trip_kgs:
                             max_trip_kgs = trip_kgs
                 else:
+                    # Agar trip column nahi hai, toh saare rows ka total ya max calculate karo
+                    total_veh_kgs = 0.0
                     for _, r in group.iterrows():
                         q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
                         d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
-                        if "25" in d_txt:
-                            max_trip_kgs += q * 25.0
+                        u_txt = str(r[unit_col_local]).upper() if unit_col_local and pd.notna(r[unit_col_local]) else ""
+                        
+                        if "EA" in u_txt:
+                            total_veh_kgs += q * 1.0
                         else:
-                            max_trip_kgs += q * 50.0
-                
+                            if "25" in d_txt:
+                                total_veh_kgs += q * 25.120
+                            else:
+                                total_veh_kgs += q * 50.120
+                    max_trip_kgs = total_veh_kgs
+
                 calc_mt = round(max_trip_kgs / 1000.0, 2)
                 if calc_mt <= 0:
                     calc_mt = 28.0
+                
+                # Master table me save ya update karein (Agar pehle se kam hai toh max wala update hoga)
                 save_vehicle_capacity_auto(v_clean, calc_mt)
-                existing_master.append(v_clean)
+                if v_clean not in existing_master:
+                    existing_master.append(v_clean)
                 count += 1
                 
         if typo_queue:
@@ -320,7 +347,6 @@ def auto_seed_master_from_df(df, force=False):
         st.session_state.file_just_loaded = False
         return count
     return 0
-
 # ==============================================================================
 # ADVANCED KG / GM / LTR PARSER FOR EA
 # ==============================================================================
