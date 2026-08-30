@@ -54,6 +54,8 @@ init_db()
 # ==============================================================================
 if "active_df" not in st.session_state:
     st.session_state.active_df = None
+if "active_filename" not in st.session_state:
+    st.session_state.active_filename = "None"
 if "calc_theme_choice" not in st.session_state:
     st.session_state.calc_theme_choice = "⚡ Cyber Neon Glass"
 if "ng_reset_token" not in st.session_state:
@@ -102,6 +104,7 @@ if st.session_state.active_df is None:
             blob_data = saved_records.iloc[0]['file_blob']
             fname = saved_records.iloc[0]['file_name']
             st.session_state.active_df = load_and_clean_dataframe(blob_data, fname)
+            st.session_state.active_filename = fname
     except:
         pass
 
@@ -157,6 +160,15 @@ st.markdown("""
             text-align: center;
             box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);
             width: 100%;
+        }
+        .file-info-banner {
+            background: rgba(30, 41, 59, 0.85);
+            border-left: 5px solid #38bdf8;
+            padding: 12px 18px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #e2e8f0;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -227,6 +239,7 @@ with st.sidebar:
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = merged_df
+                    st.session_state.active_filename = f"Merged_{uploaded_file.name}"
                     st.success("✅ Only new unique data appended successfully! Existing history untouched.")
                     st.rerun()
                 else:
@@ -238,6 +251,7 @@ with st.sidebar:
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = temp_df
+                    st.session_state.active_filename = uploaded_file.name
                     st.success(f"✅ '{uploaded_file.name}' saved to vault!")
                     st.rerun()
         except Exception as err_file:
@@ -270,6 +284,7 @@ with st.sidebar:
                     if row_data:
                         blob_data, fname = row_data
                         st.session_state.active_df = load_and_clean_dataframe(blob_data, fname)
+                        st.session_state.active_filename = fname
                         st.success(f"✅ Loaded '{fname}' successfully!")
                         st.rerun()
                 except Exception as load_err:
@@ -284,6 +299,7 @@ with st.sidebar:
                     conn.commit()
                     conn.close()
                     st.session_state.active_df = None
+                    st.session_state.active_filename = "None"
                     st.success("🗑️ File deleted from vault!")
                     st.rerun()
                 except Exception as del_err:
@@ -295,9 +311,31 @@ with st.sidebar:
 # MAIN DASHBOARD & TONNAGE CALCULATORS
 # ==============================================================================
 if st.session_state.active_df is not None:
-    st.markdown("### 📊 Billing & Tonnage Data Dashboard")
-
     working_df = st.session_state.active_df.copy()
+
+    # Detect Dispatch / Billing Date column for summary banner
+    dispatch_date_col = None
+    for c in working_df.columns:
+        if "billing date" in str(c).lower() or "date" in str(c).lower():
+            dispatch_date_col = c
+            break
+    
+    date_info_str = "N/A"
+    if dispatch_date_col and not working_df.empty:
+        valid_dates = working_df[dispatch_date_col].dropna().astype(str).unique()
+        if len(valid_dates) > 0:
+            date_info_str = f"{valid_dates[0]} (Total Unique Dates: {len(valid_dates)})"
+
+    # Display Active File & Dispatch Date Banner
+    st.markdown(f"""
+        <div class="file-info-banner">
+            📂 <b>Active File Loaded:</b> <code>{st.session_state.active_filename}</code> &nbsp;|&nbsp; 
+            📅 <b>Dispatch / Billing Date(s):</b> <code>{date_info_str}</code> &nbsp;|&nbsp; 
+            🏭 <b>Plant Filter:</b> <code>2100 Active</code>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("### 📊 Billing & Tonnage Data Dashboard")
 
     # ==========================================================================
     # ROBUST GLOBAL SEARCH (FIXED FOR 4-DIGIT VEHICLE NO LIKE '2680')
@@ -309,10 +347,10 @@ if st.session_state.active_df is not None:
         working_df = working_df[mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (TRIP 1 & TRIP 2 SELECTION + TOTAL BAGS)
+    # VEHICLE TONNAGE CALCULATOR (ALL BILLS SELECTED BY DEFAULT = 1 TRIP)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1 & Trip 2 Separate Selection Suite)", expanded=True):
-        st.markdown("Select Vehicle Number and choose Trip Mode to get exact non-combined results instantly.")
+    with st.expander("🚚 Vehicle Tonnage Calculator (Smart Trip & Billing Sequence Audit)", expanded=True):
+        st.markdown("Select Vehicle Number and Billing Documents. By default, all bills for the selected vehicle load together as a complete single trip.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -388,23 +426,9 @@ if st.session_state.active_df is not None:
                 
                 if unique_bills:
                     st.markdown("---")
-                    st.markdown("🎯 **Exclusive Trip Mode (Select Trip 1 or Trip 2 to isolate results completely):**")
-                    
-                    trip_mode = st.radio(
-                        "Choose Trip Selection Mode:", 
-                        ["Trip 1 (First Batch)", "Trip 2 (Second Batch onwards)", "Full Trip / Custom Multi-Select"], 
-                        horizontal=True,
-                        key="exclusive_trip_mode_radio"
-                    )
-                    
-                    if trip_mode == "Trip 1 (First Batch)":
-                        sel_bills = unique_bills[:3] if len(unique_bills) >= 3 else unique_bills
-                        st.info(f"📍 **Trip 1 Auto-Selected Bills:** {', '.join(sel_bills)}")
-                    elif trip_mode == "Trip 2 (Second Batch onwards)":
-                        sel_bills = unique_bills[3:] if len(unique_bills) > 3 else unique_bills
-                        st.info(f"📍 **Trip 2 Auto-Selected Bills:** {', '.join(sel_bills)}")
-                    else:
-                        sel_bills = st.multiselect("🧾 Custom Select Billing Documents:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
+                    st.markdown("🧾 **Billing Documents / Trip Sequence Selection (By default, ALL bills are selected together for a single complete trip):**")
+                    # NO LIMIT OR SPLICING: All bills are selected by default
+                    sel_bills = st.multiselect("Select Billing Documents / Sequences:", options=unique_bills, default=unique_bills, key="calc_multibill_select")
                 else:
                     sel_bills = []
                 
@@ -469,7 +493,7 @@ if st.session_state.active_df is not None:
                 grand_total_opt2 = bags_wt_opt2 + ea_weight_kgs
                 grand_mt_opt2 = grand_total_opt2 / 1000.0
 
-                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}` ({trip_mode})")
+                st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}`")
                 
                 vb1, vb2, vb3, vb4 = st.columns(4)
                 vb1.metric("📦 50 Kg Bags", f"{int(bag_50_count):,} Bags")
@@ -689,6 +713,7 @@ if st.session_state.active_df is not None:
                 </head>
                 <body>
                     <h2>Enterprise Vehicle Tonnage Summary Report (Plant 2100)</h2>
+                    <p><b>File:</b> {st.session_state.active_filename} | <b>Dispatch Date(s):</b> {date_info_str}</p>
                     <p><b>Generated on:</b> {get_ist_now().strftime('%d-%m-%Y %H:%M:%S IST')}</p>
                     {html_table_string}
                     <script>
@@ -730,11 +755,11 @@ if st.session_state.active_df is not None:
                 
                 st.markdown("---")
                 email_to = st.text_input("Recipient Email(s) separated by comma (,):", "recipient@example.com")
-                email_sub = st.text_input("Email Subject", "🚨 Executive Vehicle Tonnage Summary Report (Plant 2100)")
+                email_sub = st.text_input("Email Subject", f"🚨 Executive Vehicle Tonnage Summary Report ({st.session_state.active_filename})")
                 
                 default_mail_body = (
                     "Dear Leadership / Management Team,\n\n"
-                    "Please find below the summary table and attached Excel report containing vehicle tonnage details for Plant 2100.\n\n"
+                    f"Please find below the summary table and attached Excel report containing vehicle tonnage details for Plant 2100 (File: {st.session_state.active_filename}, Dispatch Date: {date_info_str}).\n\n"
                     "Best Regards,\n"
                     "Logistics Hub"
                 )
@@ -760,7 +785,8 @@ if st.session_state.active_df is not None:
                             <body style="font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; line-height: 1.6; padding: 15px;">
                                 <div style="background: #1e293b; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
                                     <h2 style="margin: 0; color: #38bdf8;">🚚 Vehicle Tonnage Summary Report (Plant 2100)</h2>
-                                    <p style="margin: 5px 0 0 0; font-size: 13px; color: #94a3b8;">Automated Report | Generated on {get_ist_now().strftime('%d-%m-%Y %H:%M:%S IST')}</p>
+                                    <p style="margin: 5px 0 0 0; font-size: 13px; color: #94a3b8;">File: {st.session_state.active_filename} | Dispatch Date(s): {date_info_str}</p>
+                                    <p style="margin: 3px 0 0 0; font-size: 12px; color: #cbd5e1;">Generated on {get_ist_now().strftime('%d-%m-%Y %H:%M:%S IST')}</p>
                                 </div>
                                 <p style="font-size: 14px; white-space: pre-wrap;">{email_body}</p>
                                 <h3 style="color: #0f172a; border-bottom: 2px solid #cbd5e1; padding-bottom: 5px;">📋 Data Snapshot Preview (Top 50 Rows)</h3>
