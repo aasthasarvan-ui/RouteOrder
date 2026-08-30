@@ -342,21 +342,10 @@ if st.session_state.active_df is not None:
     st.markdown("### 📊 Billing & Tonnage Data Dashboard")
 
     # ==========================================================================
-    # SUPER-ROBUST SAFE GLOBAL SEARCH (EXACT VEHICLE / KEYWORD FILTER)
+    # VEHICLE TONNAGE CALCULATOR WITH SMART LAST-4-DIGIT VEHICLE SEARCH & SUGGESTIONS
     # ==========================================================================
-    global_search = st.text_input("🔍 Global Keyword Search (Vehicle No e.g. 2680, 1765, Customer, Material, Document):", "", key="global_search_input")
-    if str(global_search).strip() != "":
-        term = str(global_search).strip().lower()
-        search_mask = pd.Series(False, index=working_df.index)
-        for col in working_df.columns:
-            search_mask = search_mask | working_df[col].astype(str).str.lower().str.contains(term, na=False)
-        working_df = working_df[search_mask]
-
-    # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (PRECISE VEHICLE DROPDOWN & SEQUENCE AUDIT)
-    # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Trip 1 & Trip 2 Billing Sequence Audit)", expanded=True):
-        st.markdown("Select Vehicle Number and choose Trip Mode or Custom Billing Sequence to audit separate trip weights.")
+    with st.expander("🚚 Vehicle Tonnage Calculator & Smart Vehicle Search (Last 4 Digits)", expanded=True):
+        st.markdown("Type last 4 digits (e.g. `2680`, `1765`) to filter or select vehicles instantly with suggestion dropdowns.")
         
         all_cols_list = [str(c) for c in working_df.columns]
         
@@ -404,13 +393,30 @@ if st.session_state.active_df is not None:
             if not calc_df.empty:
                 calc_df = calc_df[~calc_df[veh_col].astype(str).str.lower().str.contains("total", na=False)]
 
-            # Clean and get strictly unique vehicle numbers without duplicates/whitespace
-            unique_vehicles = sorted([str(v).strip() for v in calc_df[veh_col].dropna().unique() if str(v).strip() != '' and str(v) != '#'])
+            # Get strictly unique vehicle list
+            all_vehicles_list = sorted([str(v).strip() for v in calc_df[veh_col].dropna().unique() if str(v).strip() != '' and str(v) != '#'])
             
-            if unique_vehicles:
-                sel_vehicle = st.selectbox("🚛 Select Vehicle Number:", options=unique_vehicles, key="calc_veh_select")
+            if all_vehicles_list:
+                st.markdown("<br>", unsafe_allow_html=True)
+                # Smart Vehicle Search Box (Supports last 4 digits or full vehicle number)
+                veh_search_query = st.text_input("🔎 Quick Search Vehicle (Type Last 4 Digits e.g. 2680, 1765):", "", key="quick_veh_search_box")
+                
+                filtered_vehicles = all_vehicles_list
+                if str(veh_search_query).strip() != "":
+                    query_term = str(veh_search_query).strip().lower()
+                    # Filter vehicles matching either full name or ending with query term / containing query term
+                    filtered_vehicles = [v for v in all_vehicles_list if query_term in v.lower() or v.lower().endswith(query_term)]
+                    
+                    if not filtered_vehicles:
+                        # Fallback: check if matches anywhere
+                        filtered_vehicles = [v for v in all_vehicles_list if query_term in v.lower()]
+                
+                if not filtered_vehicles:
+                    st.warning(f"⚠️ No vehicle found matching '{veh_search_query}'. Showing all vehicles.")
+                    filtered_vehicles = all_vehicles_list
 
-                # Filter subset strictly for selected vehicle (cleaning whitespace)
+                sel_vehicle = st.selectbox("🚛 Select Vehicle from Suggestions:", options=filtered_vehicles, key="calc_veh_select")
+
                 veh_subset = calc_df[calc_df[veh_col].astype(str).str.strip() == sel_vehicle]
                 
                 unique_dates = sorted(veh_subset[date_col].dropna().astype(str).unique().tolist()) if date_col and not veh_subset.empty else ["All Dates"]
