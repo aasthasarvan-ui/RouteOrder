@@ -60,8 +60,8 @@ if "calc_theme_choice" not in st.session_state:
     st.session_state.calc_theme_choice = "⚡ Cyber Neon Glass"
 if "ng_reset_token" not in st.session_state:
     st.session_state.ng_reset_token = 0
-if "selected_trip_bills" not in st.session_state:
-    st.session_state.selected_trip_bills = []
+if "trip_mode_choice" not in st.session_state:
+    st.session_state.trip_mode_choice = 0
 
 # ==============================================================================
 # FAST CACHED DATAFRAME CLEANING & PLANT 2100 FILTER
@@ -85,7 +85,6 @@ def load_and_clean_dataframe_cached(file_bytes, file_name):
     
     df = df.dropna(how='all').reset_index(drop=True)
 
-    # Automatically filter Plant 2100 if Plant column exists
     plant_col = None
     for c in df.columns:
         if str(c).strip().lower() in ["plant", "plant code"]:
@@ -319,7 +318,6 @@ with st.sidebar:
 if st.session_state.active_df is not None:
     working_df = st.session_state.active_df.copy()
 
-    # Detect Dispatch / Billing Date column dynamically
     dispatch_date_col = None
     for c in working_df.columns:
         if "billing date" in str(c).lower() or "date" in str(c).lower():
@@ -333,7 +331,6 @@ if st.session_state.active_df is not None:
         if len(formatted_dates) > 0:
             date_info_str = ", ".join(formatted_dates)
 
-    # Display Active File & Dispatch Date Banner
     st.markdown(f"""
         <div class="file-info-banner">
             📂 <b>Active File Loaded:</b> <code>{st.session_state.active_filename}</code><br>
@@ -344,9 +341,6 @@ if st.session_state.active_df is not None:
 
     st.markdown("### 📊 Billing & Tonnage Data Dashboard")
 
-    # ==========================================================================
-    # ROBUST GLOBAL KEYWORD SEARCH
-    # ==========================================================================
     global_search = st.text_input("🔍 Global Keyword Search (Vehicle No, Customer, Material, Document):", "", key="global_search_input")
     if str(global_search).strip() != "":
         term = str(global_search).strip().lower()
@@ -356,9 +350,9 @@ if st.session_state.active_df is not None:
         working_df = working_df[search_mask]
 
     # ==========================================================================
-    # VEHICLE TONNAGE CALCULATOR (ACCURATE STATE-MANAGED TRIP AUDIT)
+    # VEHICLE TONNAGE CALCULATOR (SYNCHRONIZED STATE-MANAGED TRIP AUDIT)
     # ==========================================================================
-    with st.expander("🚚 Vehicle Tonnage Calculator (Gap-Detected Trip Sequence Audit)", expanded=True):
+    with st.expander("🚚 Vehicle Tonnage Calculator (Gap-Detected Synchronized Trip Audit)", expanded=True):
         st.markdown("Type last 4 digits (e.g. `2680`, `1765`, `0440`) to search vehicle. Select Trip 1, Trip 2, or Custom sequence for precise calculations.")
         
         all_cols_list = [str(c) for c in working_df.columns]
@@ -479,17 +473,22 @@ if st.session_state.active_df is not None:
 
                     trip_mode = st.radio("Choose Trip Mode:", options=trip_options, horizontal=True, key="exclusive_trip_mode_radio")
                     
-                    # STATE-MANAGED DYNAMIC BILL ASSIGNMENT
+                    # DYNAMICALLY MAP DEFAULT BILLS TO SELECTED TRIP MODE
                     if "Trip 1" in trip_mode and len(trips_groups) > 0:
-                        target_default = trips_groups[0]
+                        default_selection = trips_groups[0]
                     elif "Trip 2" in trip_mode and len(trips_groups) > 1:
-                        target_default = trips_groups[1]
+                        default_selection = trips_groups[1]
                     elif "Trip 3" in trip_mode and len(trips_groups) > 2:
-                        target_default = trips_groups[2]
+                        default_selection = trips_groups[2]
                     else:
-                        target_default = unique_bills
+                        default_selection = unique_bills
 
-                    sel_bills = st.multiselect("🧾 Select Exact Billing Sequence / Documents for this Trip:", options=unique_bills, default=target_default, key="calc_multibill_select")
+                    sel_bills = st.multiselect(
+                        "🧾 Select Exact Billing Sequence / Documents for this Trip:", 
+                        options=unique_bills, 
+                        default=default_selection, 
+                        key=f"multibill_select_{sel_vehicle}_{trip_mode}"
+                    )
                 else:
                     sel_bills = []
                 
