@@ -118,7 +118,6 @@ def save_vehicle_capacity_auto(veh_no, capacity_mt):
                 """, (v_clean, float(capacity_mt), float(capacity_mt), now_str))
             else:
                 existing_cap = row[0]
-                # Keep the maximum capacity found across uploads/trips
                 max_cap = max(float(existing_cap), float(capacity_mt))
                 if float(existing_cap) != max_cap:
                     cursor.execute("""
@@ -199,6 +198,28 @@ def check_similar_vehicle(new_veh, existing_list, threshold=0.8):
     return None
 
 # ==============================================================================
+# ADVANCED KG / GM / LTR PARSER FOR EA
+# ==============================================================================
+def parse_description_weight(desc_text, qty):
+    d = str(desc_text).upper()
+    q = float(qty) if pd.notna(qty) else 0.0
+    
+    match_kg = re.search(r'\b(\d+(?:\.\d+)?)\s*KG\b', d)
+    if match_kg:
+        return q * float(match_kg.group(1)), f"EA ({match_kg.group(1)} Kg/unit)"
+        
+    match_gm = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:GM|GRAM)\b', d)
+    if match_gm:
+        wt_kg = float(match_gm.group(1)) / 1000.0
+        return q * wt_kg, f"EA ({match_gm.group(1)} Gm/unit)"
+        
+    match_ltr = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:LTR|LITRE)\b', d)
+    if match_ltr:
+        return q * float(match_ltr.group(1)), f"EA ({match_ltr.group(1)} Ltr/unit)"
+        
+    return 0.0, "EA (No Weight Found)"
+
+# ==============================================================================
 # SESSION STATE MANAGEMENT
 # ==============================================================================
 if "active_df" not in st.session_state:
@@ -215,7 +236,7 @@ if "file_just_loaded" not in st.session_state:
     st.session_state.file_just_loaded = False
 
 # ==============================================================================
-# SMART CACHED DATAFRAME CLEANING & FIXED MASTER SEEDING
+# SMART CACHED DATAFRAME CLEANING & FULLY FIXED MASTER SEEDING
 # ==============================================================================
 @st.cache_data
 def load_and_clean_dataframe(file_bytes, file_name):
@@ -269,6 +290,7 @@ def auto_seed_master_from_df(df, force=False):
         typo_queue = []
         count = 0
         
+        # Unit aur Trip columns identify karna
         unit_col_local = None
         trip_col_local = None
         for tc in df.columns:
@@ -290,20 +312,18 @@ def auto_seed_master_from_df(df, force=False):
                 
                 max_trip_kgs = 0.0
                 
+                # Agar Billing Document / Trip column maujud hai, toh har trip ke line items ka sum nikalo
                 if trip_col_local:
                     for _, sub_g in group.groupby(trip_col_local):
                         trip_kgs = 0.0
                         for _, r in sub_g.iterrows():
                             q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
                             d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
-                            u_txt = str(r[unit_col_local]).upper() if unit_col_local and pd.notna(r[unit_col_local]) else ""
+                            u_txt = str(r[unit_col_local]).upper() if unit_col_local and pd.notna(r[unit_col_local]) else "BAG"
                             
                             if "EA" in u_txt:
-                                match_kg = re.search(r'\b(\d+(?:\.\d+)?)\s*KG\b', d_txt)
-                                if match_kg:
-                                    trip_kgs += q * float(match_kg.group(1))
-                                else:
-                                    trip_kgs += q * 1.0
+                                r_wt, _ = parse_description_weight(d_txt, q)
+                                trip_kgs += r_wt
                             else:
                                 if "25" in d_txt:
                                     trip_kgs += q * 25.120
@@ -313,14 +333,16 @@ def auto_seed_master_from_df(df, force=False):
                         if trip_kgs > max_trip_kgs:
                             max_trip_kgs = trip_kgs
                 else:
+                    # Agar trip column nahi hai, toh vehicle ke saare line items ka total sum kar lo
                     total_veh_kgs = 0.0
                     for _, r in group.iterrows():
                         q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
                         d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
-                        u_txt = str(r[unit_col_local]).upper() if unit_col_local and pd.notna(r[unit_col_local]) else ""
+                        u_txt = str(r[unit_col_local]).upper() if unit_col_local and pd.notna(r[unit_col_local]) else "BAG"
                         
                         if "EA" in u_txt:
-                            total_veh_kgs += q * 1.0
+                            r_wt, _ = parse_description_weight(d_txt, q)
+                            total_veh_kgs += r_wt
                         else:
                             if "25" in d_txt:
                                 total_veh_kgs += q * 25.120
@@ -343,28 +365,6 @@ def auto_seed_master_from_df(df, force=False):
         st.session_state.file_just_loaded = False
         return count
     return 0
-
-# ==============================================================================
-# ADVANCED KG / GM / LTR PARSER FOR EA
-# ==============================================================================
-def parse_description_weight(desc_text, qty):
-    d = str(desc_text).upper()
-    q = float(qty) if pd.notna(qty) else 0.0
-    
-    match_kg = re.search(r'\b(\d+(?:\.\d+)?)\s*KG\b', d)
-    if match_kg:
-        return q * float(match_kg.group(1)), f"EA ({match_kg.group(1)} Kg/unit)"
-        
-    match_gm = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:GM|GRAM)\b', d)
-    if match_gm:
-        wt_kg = float(match_gm.group(1)) / 1000.0
-        return q * wt_kg, f"EA ({match_gm.group(1)} Gm/unit)"
-        
-    match_ltr = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:LTR|LITRE)\b', d)
-    if match_ltr:
-        return q * float(match_ltr.group(1)), f"EA ({match_ltr.group(1)} Ltr/unit)"
-        
-    return 0.0, "EA (No Weight Found)"
 
 # ==============================================================================
 # UI STYLING & HIGH-CONTRAST WHITE TEXT LIVE CLOCK HEADER
@@ -859,7 +859,6 @@ if st.session_state.active_df is not None:
                 grand_total_opt2 = bags_wt_opt2 + ea_weight_kgs
                 grand_mt_opt2 = grand_total_opt2 / 1000.0
 
-                # LIVE POPULATED HEADER TOTALS
                 st.markdown(f"### 📈 Live Populated Totals for `{sel_vehicle}`")
                 vb1, vb2, vb3, vb4 = st.columns(4)
                 vb1.metric("📦 50 Kg Bags", f"{int(bag_50_count):,} Bags")
@@ -881,7 +880,6 @@ if st.session_state.active_df is not None:
                 else:
                     st.success(f"✅ **Actual VAHAN Compliance Audit:** Vehicle `{sel_vehicle}` load (**{grand_mt_opt1:,.3f} MT**) is strictly within its actual registered capacity limit ({actual_vahan_limit} MT).")
 
-                # ITEMIZED SEPARATE BREAKDOWN TABLE
                 st.markdown("#### 📋 Item-wise Detailed Breakdown (Separate BAGS & EA Weights)")
                 df_items = pd.DataFrame(item_details_list)
                 st.dataframe(df_items, use_container_width=True)
