@@ -118,7 +118,6 @@ def save_vehicle_capacity_auto(veh_no, capacity_mt):
                 """, (v_clean, float(capacity_mt), float(capacity_mt), now_str))
             else:
                 existing_cap = row[0]
-                # Ensure we keep the maximum capacity across multiple files/uploads without compounding
                 max_cap = max(float(existing_cap), float(capacity_mt))
                 if float(existing_cap) != max_cap:
                     cursor.execute("""
@@ -239,7 +238,7 @@ if "processed_file_signatures" not in st.session_state:
     st.session_state.processed_file_signatures = set()
 
 # ==============================================================================
-# SMART CACHED DATAFRAME CLEANING & STRICT UNIQUE SEEDING
+# SMART CACHED DATAFRAME CLEANING & EXACT MATCH MASTER SEEDING
 # ==============================================================================
 @st.cache_data
 def load_and_clean_dataframe(file_bytes, file_name):
@@ -265,7 +264,6 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
     if df is None or df.empty:
         return 0
     
-    # Check if this exact file signature was already processed to avoid duplicate additions
     file_sig = str(file_identifier) + "_" + str(len(df))
     if not force and file_sig in st.session_state.processed_file_signatures:
         return 0
@@ -297,12 +295,15 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
         
         unit_col_local = None
         trip_col_local = None
+        btype_col_local = None
         for tc in df.columns:
             tc_l = str(tc).lower()
             if not trip_col_local and any(k in tc_l for k in ['billing document', 'bill no', 'invoice', 'trip']):
                 trip_col_local = tc
             if not unit_col_local and any(k in tc_l for k in ['sale unit', 'unit', 'uom']):
                 unit_col_local = tc
+            if not btype_col_local and any(k in tc_l for k in ["billing type", "btype", "type"]):
+                btype_col_local = tc
 
         for v_num, group in df.groupby(veh_col_found):
             v_clean = str(v_num).strip().upper()
@@ -316,9 +317,17 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
                 
                 max_trip_kgs = 0.0
                 
-                # Ek vehicle ke saare trips / invoices ko properly group karke max single-trip weight nikalna
+                sub_calc_group = group.copy()
+                if btype_col_local:
+                    sub_calc_group = sub_calc_group[sub_calc_group[btype_col_local].astype(str).str.upper().str.contains("F2", na=False)]
+                if unit_col_local:
+                    sub_calc_group = sub_calc_group[sub_calc_group[unit_col_local].astype(str).str.upper().str.contains("BAG|EA", na=False, regex=True)]
+
+                if sub_calc_group.empty:
+                    sub_calc_group = group
+
                 if trip_col_local:
-                    for _, sub_g in group.groupby(trip_col_local):
+                    for _, sub_g in sub_calc_group.groupby(trip_col_local):
                         trip_kgs = 0.0
                         for _, r in sub_g.iterrows():
                             q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
@@ -338,7 +347,7 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
                             max_trip_kgs = trip_kgs
                 else:
                     total_veh_kgs = 0.0
-                    for _, r in group.iterrows():
+                    for _, r in sub_calc_group.iterrows():
                         q = float(r[qty_col_found]) if pd.notna(r[qty_col_found]) else 0.0
                         d_txt = str(r[desc_col_found]).upper() if desc_col_found and pd.notna(r[desc_col_found]) else ""
                         u_txt = str(r[unit_col_local]).upper() if unit_col_local and pd.notna(r[unit_col_local]) else "BAG"
@@ -353,7 +362,7 @@ def auto_seed_master_from_df(df, file_identifier="default_file", force=False):
                                 total_veh_kgs += q * 50.120
                     max_trip_kgs = total_veh_kgs
 
-                calc_mt = round(max_trip_kgs / 1000.0, 2)
+                calc_mt = round(max_trip_kgs / 1000.0, 3)
                 if calc_mt <= 0:
                     calc_mt = 28.0
                 
