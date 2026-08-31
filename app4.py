@@ -890,182 +890,208 @@ else:
     st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya vault me se file load karein.")
 
 # ==============================================================================
-# ADD-ON MODULE: TRIPLE-MODE TRIP SELECTOR (RADIO + CHECKBOXES + MULTI-SELECT)
+# 🚀 FINAL BULLETPROOF ADD-ON MODULE: TRIPLE-MODE TRIP MERGE ENGINE
 # (Paste this at the very end of your main Streamlit application file)
 # ==============================================================================
+import streamlit as st
+import pandas as pd
+import re
 
-def render_triple_mode_trip_addon(working_df):
+def render_triple_mode_trip_addon(df_input):
     st.markdown("---")
-    st.markdown("### 🎛️ Advanced Triple-Mode Trip Selector Add-on")
-    st.markdown("*(Independent Add-on: Automatically detects trips based on billing gaps and provides Radio, Checkboxes, and Multi-Select Dropdown with 'Select All' for full merging flexibility).*")
+    st.markdown("## 🎛️ Advanced Multi-Trip Merge Engine (Final Add-on)")
+    st.markdown("*(Independent Module: Automatically detects trips and gives you Radio, Checkboxes, and Dropdown with Select-All options).*")
 
-    if working_df is None or working_df.empty:
-        st.info("ℹ️ No active dataset available for add-on module.")
+    if df_input is None or df_input.empty:
+        st.warning("⚠️ Active dataset empty ya not found. Kripya pehle file load karein.")
         return
 
-    # Dynamic column detectors inside add-on
+    # Dynamically find required columns
     v_col, q_col, b_col, d_col, u_col = None, None, None, None, None
-    for c in working_df.columns:
+    for c in df_input.columns:
         cl = str(c).lower()
-        if not v_col and ("vehicle" in cl or "veh" in cl or "truck" in cl):
-            v_col = c
-        if not q_col and ("quantity" in cl or "qty" in cl):
-            q_col = c
-        if not b_col and ("billing document" in cl or "bill no" in cl or "invoice" in cl):
-            b_col = c
-        if not d_col and ("description" in cl or "desc" in cl or "material" in cl):
-            d_col = c
-        if not u_col and ("unit" in cl or "uom" in cl):
-            u_col = c
+        if not v_col and ("vehicle" in cl or "veh" in cl or "truck" in cl): v_col = c
+        if not q_col and ("quantity" in cl or "qty" in cl): q_col = c
+        if not b_col and ("billing document" in cl or "bill no" in cl or "invoice" in cl): b_col = c
+        if not d_col and ("description" in cl or "desc" in cl or "material" in cl): d_col = c
+        if not u_col and ("unit" in cl or "uom" in cl): u_col = c
 
-    if not v_col or not b_col or not q_col:
-        st.warning("⚠️ Required columns (Vehicle, Billing Document, Quantity) not fully detected for Add-on Module.")
+    if not (v_col and b_col and q_col):
+        st.error(f"❌ Add-on Error: Required columns detect nahi ho paye. Detected columns: {list(df_input.columns)}")
         return
 
-    # Select Vehicle
-    all_veh = sorted([str(v).strip() for v in working_df[v_col].dropna().unique() if str(v).strip() != '' and str(v) != '#'])
-    if not all_veh:
-        st.warning("No vehicles found in dataframe.")
+    def parse_weight_local(desc, q):
+        d, q = str(desc).upper(), float(q) if pd.notna(q) else 0.0
+        m_kg = re.search(r'\b(\d+(?:\.\d+)?)\s*KG\b', d)
+        if m_kg: return q * float(m_kg.group(1)), f"EA ({m_kg.group(1)} Kg)"
+        m_gm = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:GM|GRAM)\b', d)
+        if m_gm: return q * (float(m_gm.group(1))/1000.0), f"EA ({m_gm.group(1)} Gm)"
+        m_lt = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:LTR|LITRE)\b', d)
+        if m_lt: return q * float(m_lt.group(1)), f"EA ({m_lt.group(1)} Ltr)"
+        return 0.0, "EA"
+
+    all_vehicles = sorted([str(v).strip() for v in df_input[v_col].dropna().unique() if str(v).strip() != '' and str(v) != '#'])
+    
+    if not all_vehicles:
+        st.warning("No vehicles found in dataset.")
         return
 
-    selected_veh_addon = st.selectbox("🚛 [Add-on] Select Vehicle for Trip Audit:", options=all_veh, key="addon_triple_veh_select")
-    veh_df_addon = working_df[working_df[v_col].astype(str).str.strip() == selected_veh_addon]
+    col_v1, col_v2 = st.columns([2, 1])
+    with col_v1:
+        search_v = st.text_input("🔎 [Add-on] Quick Search Vehicle (Last 4 digits e.g. 0440, 2680):", "", key="final_addon_search")
+        filtered_v = [v for v in all_vehicles if search_v.lower() in v.lower()] if search_v.strip() else all_vehicles
+        sel_v = st.selectbox("🚛 Select Vehicle:", options=filtered_v if filtered_v else all_vehicles, key="final_addon_veh_sel")
 
-    unique_bills = sorted(veh_df_addon[b_col].dropna().astype(str).unique().tolist())
-    if not unique_bills:
-        st.info("No billing documents found for this vehicle.")
+    if not sel_v:
         return
 
-    # INTELLIGENT GAP DETECTOR TO FORM TRIP BUCKETS AUTOMATICALLY
-    numeric_bills = []
-    for b in unique_bills:
+    v_df = df_input[df_input[v_col].astype(str).str.strip() == sel_v]
+    bills = sorted(v_df[b_col].dropna().astype(str).unique().tolist())
+    
+    if not bills:
+        st.info("Is gaadi ke liye koi billing documents nahi mile.")
+        return
+
+    # GAP DETECTOR FOR TRIPS
+    numeric_b = []
+    for b in bills:
         nums = re.findall(r'\d+', str(b))
-        if nums:
-            numeric_bills.append((int(nums[-1]), b))
+        numeric_b.append((int(nums[-1]) if nums else 0, b))
+    numeric_b.sort(key=lambda x: x[0])
+    
+    trips_map = {}
+    cur_trip = []
+    prev_n = None
+    t_idx = 1
+    
+    for n, orig_b in numeric_b:
+        if prev_n is None or (n - prev_n <= 3):
+            cur_trip.append(orig_b)
         else:
-            numeric_bills.append((0, b))
-    
-    numeric_bills.sort(key=lambda x: x[0])
-    
-    trips_dict = {}
-    current_trip = []
-    prev_num = None
-    trip_counter = 1
-    
-    for num, original_b in numeric_bills:
-        if prev_num is None or (num - prev_num <= 3):
-            current_trip.append(original_b)
-        else:
-            trips_dict[f"Trip {trip_counter}"] = current_trip
-            trip_counter += 1
-            current_trip = [original_b]
-        prev_num = num if num > 0 else prev_num
-    if current_trip:
-        trips_dict[f"Trip {trip_counter}"] = current_trip
+            trips_map[f"Trip {t_idx}"] = cur_trip
+            t_idx += 1
+            cur_trip = [orig_b]
+        prev_n = n if n > 0 else prev_n
+    if cur_trip:
+        trips_map[f"Trip {t_idx}"] = cur_trip
 
-    # Display detected trips info
-    trip_summary_text = " | ".join([f"**{t_name}**: `{t_bills[0]} to {t_bills[-1]}` ({len(t_bills)} bills)" if len(t_bills)>1 else f"**{t_name}**: `{t_bills[0]}` (1 bill)" for t_name, t_bills in trips_dict.items()])
-    st.info(f"🔍 **Auto-Detected Trips for `{selected_veh_addon}`:** {trip_summary_text}")
+    trip_desc = " | ".join([f"**{t}**: `{b_list[0]} to {b_list[-1]}`" if len(b_list)>1 else f"**{t}**: `{b_list[0]}`" for t, b_list in trips_map.items()])
+    st.info(f"🔍 **Auto-Detected Trips:** {trip_desc}")
 
-    all_trip_names = list(trips_dict.keys())
-
-    # Mode Selector (Radio / Checkboxes / Multi-select Dropdown)
-    selection_mode = st.radio(
+    # SELECTION STYLES
+    mode = st.radio(
         "Choose Selection Style:",
-        ["Radio (Single Trip)", "Checkboxes (Quick Merge)", "Multi-Select Dropdown (Advanced with Select All)"],
+        ["Radio (Single Trip)", "Checkboxes (Multi-Trip Merge)", "Dropdown (Multi-Select & Select All)"],
         horizontal=True,
-        key="addon_selection_mode_radio"
+        key="final_addon_mode"
     )
 
-    selected_trips_to_merge = []
+    chosen_trips = []
+    extra_bills = []
 
-    if "Radio" in selection_mode:
-        radio_options = [f"{t_name} ({t_bills[0]}...)" for t_name, t_bills in trips_dict.items()]
-        chosen_radio = st.radio("Select Trip:", options=radio_options, key=f"addon_radio_{selected_veh_addon}")
-        for t_name in trips_dict.keys():
-            if t_name in chosen_radio:
-                selected_trips_to_merge.append(t_name)
-                break
+    if "Radio" in mode:
+        r_opts = [f"{t} ({b[0]}...)" for t, b in trips_map.items()]
+        r_chosen = st.radio("Select Trip:", options=r_opts, key="final_addon_rad")
+        for t in trips_map.keys():
+            if t in r_chosen:
+                chosen_trips.append(t)
 
-    elif "Checkboxes" in selection_mode:
-        st.markdown("👉 **Tick any combination of trips to merge them instantly:**")
-        cols_chk = st.columns(min(len(trips_dict), 4) if len(trips_dict)>0 else 1)
-        for idx, (t_name, t_bills) in enumerate(trips_dict.items()):
-            with cols_chk[idx % len(cols_chk)]:
-                if st.checkbox(f"{t_name} ({t_bills[0]}...)", value=(idx == 0), key=f"addon_chk_{t_name}_{selected_veh_addon}"):
-                    selected_trips_to_merge.append(t_name)
+    elif "Checkboxes" in mode:
+        st.markdown("👉 **Tick trips to combine (e.g. Trip 1 + Trip 3):**")
+        cols = st.columns(min(len(trips_map), 4) if trips_map else 1)
+        for idx, (t_name, b_list) in enumerate(trips_map.items()):
+            with cols[idx % len(cols)]:
+                if st.checkbox(f"{t_name} ({len(b_list)} bills)", value=(idx==0), key=f"final_chk_{t_name}_{sel_v}"):
+                    chosen_trips.append(t_name)
 
     else:
-        # Multi-select Dropdown with Select All option
-        st.markdown("👉 **Select or combine trips using the dropdown:**")
+        st.markdown("👉 **Select trips via Dropdown or use Select All:**")
+        all_t_names = list(trips_map.keys())
+        select_all_flag = st.checkbox("Select All Trips", value=False, key="final_sel_all_chk")
         
-        # Helper to handle select all logic
-        select_all_key = f"addon_select_all_{selected_veh_addon}"
-        is_select_all = st.checkbox("Select All Trips", value=False, key=select_all_key)
-
-        if is_select_all:
-            selected_trips_to_merge = all_trip_names
-            st.multiselect("Select Trips:", options=all_trip_names, default=all_trip_names, key=f"addon_multiselect_{selected_veh_addon}", disabled=True)
+        if select_all_flag:
+            chosen_trips = all_t_names
+            st.multiselect("Select Trips:", options=all_t_names, default=all_t_names, disabled=True, key="final_drop_disabled")
         else:
-            selected_trips_to_merge = st.multiselect("Select Trips:", options=all_trip_names, default=[all_trip_names[0]] if all_trip_names else [], key=f"addon_multiselect_{selected_veh_addon}")
+            chosen_trips = st.multiselect("Select Trips:", options=all_t_names, default=[all_t_names[0]] if all_t_names else [], key="final_drop_active")
+        
+        with st.expander("🛠️ Manual Individual Bill Selector"):
+            extra_bills = st.multiselect("Select Specific Billing Docs:", options=bills, default=[], key="final_extra_bills")
 
-    # Gather bills from selected trips
-    merged_bills_list = []
-    for t in selected_trips_to_merge:
-        merged_bills_list.extend(trips_dict.get(t, []))
+    # Combine bills
+    active_bills = set(extra_bills)
+    for t in chosen_trips:
+        active_bills.update(trips_map[t])
+    active_bills = list(active_bills)
 
-    final_addon_rows = veh_df_addon[veh_df_addon[b_col].astype(str).isin(merged_bills_list)]
+    if not active_bills:
+        st.warning("⚠️ Kripya kam se kam ek trip ya bill select karein.")
+        return
 
     # Calculations
-    addon_50_bags, addon_25_bags, addon_ea_qty, addon_ea_wt = 0.0, 0.0, 0.0, 0.0
-    addon_item_details = []
+    target_rows = v_df[v_df[b_col].astype(str).isin(active_bills)]
+    s50, s25, eq, ewt = 0.0, 0.0, 0.0, 0.0
+    items_log = []
 
-    for _, r in final_addon_rows.iterrows():
-        try:
-            q_val = float(r[q_col]) if pd.notna(r[q_col]) else 0.0
-        except:
-            q_val = 0.0
+    for _, row in target_rows.iterrows():
+        try: q = float(row[q_col]) if pd.notna(row[q_col]) else 0.0
+        except: q = 0.0
+        
+        u = str(row[u_col]).upper() if u_col and pd.notna(row[u_col]) else "BAG"
+        desc = str(row[d_col]).upper() if d_col and pd.notna(row[d_col]) else ""
+        bdoc = str(row[b_col]) if pd.notna(row[b_col]) else "N/A"
 
-        u_val = str(r[u_col]).upper() if u_col and pd.notna(r[u_col]) else "BAG"
-        d_text = str(r[d_col]).upper() if d_col and pd.notna(r[d_col]) else ""
-        b_doc = str(r[b_col]) if pd.notna(r[b_col]) else "N/A"
-
-        if "EA" in u_val:
-            addon_ea_qty += q_val
-            r_wt, _ = parse_description_weight(d_text, q_val)
-            addon_ea_wt += r_wt
+        if "EA" in u:
+            eq += q
+            w, itype = parse_weight_local(desc, q)
+            ewt += w
         else:
-            if "25" in d_text:
-                addon_25_bags += q_val
-                r_wt = q_val * 25.120
+            if "25" in desc:
+                s25 += q
+                w = q * 25.120
+                itype = "BAG (25 Kg)"
             else:
-                addon_50_bags += q_val
-                r_wt = q_val * 50.120
+                s50 += q
+                w = q * 50.120
+                itype = "BAG (50 Kg)"
 
-        addon_item_details.append({
-            "Billing Doc": b_doc,
-            "Description": d_text,
-            "Unit": u_val,
-            "Quantity": q_val,
-            "Weight (Kgs)": round(r_wt, 3)
+        items_log.append({
+            "Billing Doc": bdoc,
+            "Item Type": itype,
+            "Quantity": q,
+            "Weight (Kgs)": round(w, 3)
         })
 
-    total_addon_bags = addon_50_bags + addon_25_bags
-    wt_opt1 = (addon_50_bags * 50.120) + (addon_25_bags * 25.120) + addon_ea_wt
-    mt_opt1 = wt_opt1 / 1000.0
+    tot_bags = s50 + s25
+    net_wt1 = (s50 * 50.120) + (s25 * 25.120) + ewt
+    net_mt1 = net_wt1 / 1000.0
+    
+    net_wt2 = (s50 * 50.0) + (s25 * 25.0) + ewt
+    net_mt2 = net_wt2 / 1000.0
 
-    merge_label = " + ".join(selected_trips_to_merge) if selected_trips_to_merge else "No Trip Selected"
-    st.markdown(f"### 📈 Merged Totals (`{merge_label}`)")
+    label_str = " + ".join(chosen_trips) if chosen_trips else "Custom Selection"
+    st.markdown(f"### 📈 Live Totals for `{sel_v}` (Selection: `{label_str}`)")
+    
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("📦 50 Kg Bags", f"{int(s50):,} Bags")
+    m2.metric("📦 25 Kg Bags", f"{int(s25):,} Bags")
+    m3.metric("📦 Total Bags", f"{int(tot_bags):,} Bags")
+    m4.metric("📦 EA Quantity", f"{int(eq):,}")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("📦 50 Kg Bags", f"{int(addon_50_bags):,} Bags")
-    c2.metric("📦 25 Kg Bags", f"{int(addon_25_bags):,} Bags")
-    c3.metric("📦 Total Bags", f"{int(total_addon_bags):,} Bags")
-    c4.metric("🚀 Net Tonnage", f"{mt_opt1:,.3f} MT", f"{wt_opt1:,.2f} Kgs")
+    st.markdown("<br>", unsafe_allow_html=True)
+    mc1, mc2, mc3 = st.columns(3)
+    mc1.metric("🔹 Precision Scale (Opt 1)", f"{net_mt1:,.3f} MT", f"{net_wt1:,.2f} Kgs")
+    mc2.metric("🔹 Standard Slabs (Opt 2)", f"{net_mt2:,.3f} MT", f"{net_wt2:,.2f} Kgs")
+    mc3.metric("🔹 EA Weight", f"{ewt/1000.0:,.3f} MT", f"{ewt:,.2f} Kgs")
 
-    if addon_item_details:
-        with st.expander("📋 View Item-wise Breakdown for Merged Selection"):
-            st.dataframe(pd.DataFrame(addon_item_details), use_container_width=True)
+    if items_log:
+        with st.expander("📋 View Detailed Item Breakdown"):
+            st.dataframe(pd.DataFrame(items_log), use_container_width=True)
 
-# To execute this add-on module independently at the bottom of your app, uncomment the line below:
-# render_triple_mode_trip_addon(st.session_state.active_df)
+# -------------------------------------------------------------------------
+# Auto-Execute Activation Check
+# -------------------------------------------------------------------------
+if 'active_df' in st.session_state and st.session_state.active_df is not None:
+    render_triple_mode_trip_addon(st.session_state.active_df)
+else:
+    st.info("ℹ️ Add-on loaded successfully. Please upload or load a file from the vault to activate the Multi-Trip Audit panel.")
