@@ -888,3 +888,162 @@ if st.session_state.active_df is not None:
                             st.error(f"❌ Email sending failed. Error details: {str(mail_err)}")
 else:
     st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya vault me se file load karein.")
+
+
+# ==============================================================================
+# ADD-ON MODULE: MULTI-TRIP RANGE BUILDER & CROSS-TRIP MERGE ENGINE
+# (Paste this at the very end of your main Streamlit application file)
+# ==============================================================================
+
+def render_multi_trip_range_engine(working_df):
+    st.markdown("---")
+    st.markdown("### 🎛️ Advanced Multi-Trip Range Builder & Cross-Trip Merger")
+    st.markdown("*(Independent Add-on: Define multiple trip ranges (Trip 1, Trip 2, Trip 3...), view unassigned overflow bills, and dynamically merge/combine any trips to view joint totals.)*")
+
+    if working_df is None or working_df.empty:
+        st.info("ℹ️ No active dataset available for trip range building.")
+        return
+
+    # Dynamic column detectors inside add-on
+    v_col, q_col, b_col, d_col, u_col = None, None, None, None, None
+    for c in working_df.columns:
+        cl = str(c).lower()
+        if not v_col and ("vehicle" in cl or "veh" in cl or "truck" in cl):
+            v_col = c
+        if not q_col and ("quantity" in cl or "qty" in cl):
+            q_col = c
+        if not b_col and ("billing document" in cl or "bill no" in cl or "invoice" in cl):
+            b_col = c
+        if not d_col and ("description" in cl or "desc" in cl or "material" in cl):
+            d_col = c
+        if not u_col and ("unit" in cl or "uom" in cl):
+            u_col = c
+
+    if not v_col or not b_col or not q_col:
+        st.warning("⚠️ Required columns (Vehicle, Billing Document, Quantity) not fully detected for Trip Range Engine.")
+        return
+
+    # Select Vehicle
+    all_veh = sorted([str(v).strip() for v in working_df[v_col].dropna().unique() if str(v).strip() != '' and str(v) != '#'])
+    if not all_veh:
+        st.warning("No vehicles found.")
+        return
+
+    selected_veh_addon = st.selectbox("🚛 [Add-on] Select Vehicle for Multi-Trip Audit:", options=all_veh, key="addon_veh_select")
+    veh_df_addon = working_df[working_df[v_col].astype(str).str.strip() == selected_veh_addon]
+
+    bills_addon = sorted(veh_df_addon[b_col].dropna().astype(str).unique().tolist())
+    if not bills_addon:
+        st.info("No billing documents found for this vehicle.")
+        return
+
+    st.markdown(f"**Available Billing Documents for `{selected_veh_addon}`:** `{', '.join(bills_addon)}`")
+
+    # Dynamic Trip Range Inputs
+    st.markdown("#### ⚙️ Define Trip Ranges (From - To Bill No)")
+    num_trips = st.number_input("Number of Trips to Configure:", min_value=1, max_value=6, value=2, step=1, key="addon_num_trips")
+
+    trip_ranges = {}
+    cols_trip = st.columns(min(int(num_trips), 3))
+    for i in range(int(num_trips)):
+        with cols_trip[i % len(cols_trip)]:
+            st.markdown(f"**Trip {i+1} Range:**")
+            start_b = st.text_input(f"Trip {i+1} Start Bill:", value=bills_addon[0] if i==0 else "", key=f"trip_{i+1}_start")
+            end_b = st.text_input(f"Trip {i+1} End Bill:", value=bills_addon[-1] if i==0 else "", key=f"trip_{i+1}_end")
+            trip_ranges[f"Trip {i+1}"] = (start_b.strip(), end_b.strip())
+
+    # Assign bills to trips based on string/numerical range matching
+    assigned_bills = set()
+    trip_buckets = {}
+
+    for trip_name, (start_val, end_val) in trip_ranges.items():
+        matched_in_range = []
+        in_capturing_mode = False
+        for b in bills_addon:
+            if b == start_val:
+                in_capturing_mode = True
+            if in_capturing_mode:
+                matched_in_range.append(b)
+                assigned_bills.add(b)
+            if b == end_val:
+                in_capturing_mode = False
+        trip_buckets[trip_name] = matched_in_range
+
+    # Overflow / Unassigned Bucket
+    unassigned_bills = [b for b in bills_addon if b not in assigned_bills]
+    trip_buckets["Unassigned / Overflow"] = unassigned_bills
+
+    st.markdown("---")
+    st.markdown("#### 📦 Trip Breakdown Summary")
+    for t_name, b_list in trip_buckets.items():
+        st.markdown(f"- **{t_name}**: {b_list if b_list else 'No bills assigned'}")
+
+    # Cross-Trip Merge / Combine Selector
+    st.markdown("---")
+    st.markdown("#### 🔀 Cross-Trip Merge & Combined View")
+    selected_trips_to_combine = st.multiselect(
+        "Select Trip(s) to Combine & View Joint Weight/Bags:", 
+        options=list(trip_buckets.keys()), 
+        default=["Trip 1"],
+        key="addon_combine_multiselect"
+    )
+
+    # Gather rows for selected combined trips
+    combined_bills_list = []
+    for t in selected_trips_to_combine:
+        combined_bills_list.extend(trip_buckets.get(t, []))
+
+    combined_rows = veh_df_addon[veh_df_addon[b_col].astype(str).isin(combined_bills_list)]
+
+    # Calculate weights & bags for combined selection
+    c_50, c_25, c_ea, c_ea_wt = 0.0, 0.0, 0.0, 0.0
+    detailed_addon_items = []
+
+    for _, r in combined_rows.iterrows():
+        try:
+            q_val = float(r[q_col]) if pd.notna(r[q_col]) else 0.0
+        except:
+            q_val = 0.0
+
+        u_val = str(r[u_col]).upper() if u_col and pd.notna(r[u_col]) else "BAG"
+        d_text = str(r[d_col]).upper() if d_col and pd.notna(r[d_col]) else ""
+        b_doc = str(r[b_col]) if pd.notna(r[b_col]) else "N/A"
+
+        if "EA" in u_val:
+            c_ea += q_val
+            r_wt, _ = parse_description_weight(d_text, q_val)
+            c_ea_wt += r_wt
+        else:
+            if "25" in d_text:
+                c_25 += q_val
+                r_wt = q_val * 25.120
+            else:
+                c_50 += q_val
+                r_wt = q_val * 50.120
+
+        detailed_addon_items.append({
+            "Billing Doc": b_doc,
+            "Description": d_text,
+            "Unit": u_val,
+            "Qty": q_val,
+            "Weight (Kgs)": round(r_wt, 3)
+        })
+
+    total_c_bags = c_50 + c_25
+    total_wt_opt1 = (c_50 * 50.120) + (c_25 * 25.120) + c_ea_wt
+    total_mt_opt1 = total_wt_opt1 / 1000.0
+
+    st.markdown(f"### 📈 Combined Results for Selected Trips: `{', '.join(selected_trips_to_combine)}`")
+    
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("📦 50 Kg Bags", f"{int(c_50):,} Bags")
+    m2.metric("📦 25 Kg Bags", f"{int(c_25):,} Bags")
+    m3.metric("📦 Total Bags", f"{int(total_c_bags):,} Bags")
+    m4.metric("🚀 Net Tonnage", f"{total_mt_opt1:,.3f} MT", f"{total_wt_opt1:,.2f} Kgs")
+
+    if detailed_addon_items:
+        with st.expander("📋 View Item-wise Breakdown for Merged Selection"):
+            st.dataframe(pd.DataFrame(detailed_addon_items), use_container_width=True)
+
+# To execute this add-on module independently at the bottom of your app, uncomment the line below:
+# render_multi_trip_range_engine(st.session_state.active_df)
