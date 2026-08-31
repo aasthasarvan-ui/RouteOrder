@@ -890,17 +890,17 @@ else:
     st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya vault me se file load karein.")
 
 # ==============================================================================
-# ADD-ON MODULE: MULTI-TRIP AUTO-DETECTOR & CROSS-TRIP MERGE ENGINE
+# ADD-ON MODULE: TRIPLE-MODE TRIP SELECTOR (RADIO + CHECKBOXES + MULTI-SELECT)
 # (Paste this at the very end of your main Streamlit application file)
 # ==============================================================================
 
-def render_multi_trip_merge_addon(working_df):
+def render_triple_mode_trip_addon(working_df):
     st.markdown("---")
-    st.markdown("### 🔀 Advanced Multi-Trip Auto-Detector & Cross-Trip Merger")
-    st.markdown("*(Independent Add-on: Automatically detects trips based on billing number gaps and allows you to select, merge, and combine any trips simultaneously (e.g. Trip 1 + Trip 3) for joint totals.)*")
+    st.markdown("### 🎛️ Advanced Triple-Mode Trip Selector Add-on")
+    st.markdown("*(Independent Add-on: Automatically detects trips based on billing gaps and provides Radio, Checkboxes, and Multi-Select Dropdown with 'Select All' for full merging flexibility).*")
 
     if working_df is None or working_df.empty:
-        st.info("ℹ️ No active dataset available for multi-trip merging.")
+        st.info("ℹ️ No active dataset available for add-on module.")
         return
 
     # Dynamic column detectors inside add-on
@@ -919,7 +919,7 @@ def render_multi_trip_merge_addon(working_df):
             u_col = c
 
     if not v_col or not b_col or not q_col:
-        st.warning("⚠️ Required columns (Vehicle, Billing Document, Quantity) not fully detected for Add-on Engine.")
+        st.warning("⚠️ Required columns (Vehicle, Billing Document, Quantity) not fully detected for Add-on Module.")
         return
 
     # Select Vehicle
@@ -928,7 +928,7 @@ def render_multi_trip_merge_addon(working_df):
         st.warning("No vehicles found in dataframe.")
         return
 
-    selected_veh_addon = st.selectbox("🚛 [Add-on] Select Vehicle for Multi-Trip Audit:", options=all_veh, key="addon_multitrip_veh_select")
+    selected_veh_addon = st.selectbox("🚛 [Add-on] Select Vehicle for Trip Audit:", options=all_veh, key="addon_triple_veh_select")
     veh_df_addon = working_df[working_df[v_col].astype(str).str.strip() == selected_veh_addon]
 
     unique_bills = sorted(veh_df_addon[b_col].dropna().astype(str).unique().tolist())
@@ -967,16 +967,49 @@ def render_multi_trip_merge_addon(working_df):
     trip_summary_text = " | ".join([f"**{t_name}**: `{t_bills[0]} to {t_bills[-1]}` ({len(t_bills)} bills)" if len(t_bills)>1 else f"**{t_name}**: `{t_bills[0]}` (1 bill)" for t_name, t_bills in trips_dict.items()])
     st.info(f"🔍 **Auto-Detected Trips for `{selected_veh_addon}`:** {trip_summary_text}")
 
-    # Cross-Trip Merge / Combine Selector
     all_trip_names = list(trips_dict.keys())
-    selected_trips_to_merge = st.multiselect(
-        "🔀 Tick Trip(s) to Merge & View Joint Totals (e.g., Trip 1 + Trip 3):",
-        options=all_trip_names,
-        default=[all_trip_names[0]] if all_trip_names else [],
-        key="addon_cross_trip_multiselect"
+
+    # Mode Selector (Radio / Checkboxes / Multi-select Dropdown)
+    selection_mode = st.radio(
+        "Choose Selection Style:",
+        ["Radio (Single Trip)", "Checkboxes (Quick Merge)", "Multi-Select Dropdown (Advanced with Select All)"],
+        horizontal=True,
+        key="addon_selection_mode_radio"
     )
 
-    # Gather bills from all selected trips
+    selected_trips_to_merge = []
+
+    if "Radio" in selection_mode:
+        radio_options = [f"{t_name} ({t_bills[0]}...)" for t_name, t_bills in trips_dict.items()]
+        chosen_radio = st.radio("Select Trip:", options=radio_options, key=f"addon_radio_{selected_veh_addon}")
+        for t_name in trips_dict.keys():
+            if t_name in chosen_radio:
+                selected_trips_to_merge.append(t_name)
+                break
+
+    elif "Checkboxes" in selection_mode:
+        st.markdown("👉 **Tick any combination of trips to merge them instantly:**")
+        cols_chk = st.columns(min(len(trips_dict), 4) if len(trips_dict)>0 else 1)
+        for idx, (t_name, t_bills) in enumerate(trips_dict.items()):
+            with cols_chk[idx % len(cols_chk)]:
+                if st.checkbox(f"{t_name} ({t_bills[0]}...)", value=(idx == 0), key=f"addon_chk_{t_name}_{selected_veh_addon}"):
+                    selected_trips_to_merge.append(t_name)
+
+    else:
+        # Multi-select Dropdown with Select All option
+        st.markdown("👉 **Select or combine trips using the dropdown:**")
+        
+        # Helper to handle select all logic
+        select_all_key = f"addon_select_all_{selected_veh_addon}"
+        is_select_all = st.checkbox("Select All Trips", value=False, key=select_all_key)
+
+        if is_select_all:
+            selected_trips_to_merge = all_trip_names
+            st.multiselect("Select Trips:", options=all_trip_names, default=all_trip_names, key=f"addon_multiselect_{selected_veh_addon}", disabled=True)
+        else:
+            selected_trips_to_merge = st.multiselect("Select Trips:", options=all_trip_names, default=[all_trip_names[0]] if all_trip_names else [], key=f"addon_multiselect_{selected_veh_addon}")
+
+    # Gather bills from selected trips
     merged_bills_list = []
     for t in selected_trips_to_merge:
         merged_bills_list.extend(trips_dict.get(t, []))
@@ -1021,7 +1054,7 @@ def render_multi_trip_merge_addon(working_df):
     wt_opt1 = (addon_50_bags * 50.120) + (addon_25_bags * 25.120) + addon_ea_wt
     mt_opt1 = wt_opt1 / 1000.0
 
-    merge_label = " + ".join(selected_trips_to_merge) if selected_trips_to_merge else "None Selected"
+    merge_label = " + ".join(selected_trips_to_merge) if selected_trips_to_merge else "No Trip Selected"
     st.markdown(f"### 📈 Merged Totals (`{merge_label}`)")
 
     c1, c2, c3, c4 = st.columns(4)
@@ -1034,6 +1067,5 @@ def render_multi_trip_merge_addon(working_df):
         with st.expander("📋 View Item-wise Breakdown for Merged Selection"):
             st.dataframe(pd.DataFrame(addon_item_details), use_container_width=True)
 
-# To render this add-on at the very end of your app, call:
-# render_multi_trip_merge_addon(st.session_state.active_df)
-
+# To execute this add-on module independently at the bottom of your app, uncomment the line below:
+# render_triple_mode_trip_addon(st.session_state.active_df)
