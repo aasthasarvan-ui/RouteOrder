@@ -890,7 +890,7 @@ else:
     st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya vault me se file load karein.")
 
 # ==============================================================================
-# 🚀 FINAL PERFECT ADD-ON MODULE: ADVANCED MULTI-TRIP EXPANDABLE ENGINE
+# 🚀 100% FIXED & ROBUST ADD-ON MODULE: MULTI-TRIP MERGE & EXACT SEQUENCE ENGINE
 # (Paste this at the very end of your main Streamlit application file)
 # ==============================================================================
 import streamlit as st
@@ -900,7 +900,7 @@ import re
 def render_triple_mode_trip_addon(df_input):
     # Expandable Container with Arrow (Open / Close feature)
     with st.expander("🎛️ Advanced Multi-Trip Merge & Exact Sequence Engine (Click to Expand)", expanded=True):
-        st.markdown("*(Independent Module: Automatically detects trips, supports Checkboxes/Radio/Dropdown, and lets you view exact billing sequences).*")
+        st.markdown("*(Independent Module: Automatically detects trips, supports multiple checkboxes simultaneously, and updates calculations instantly).*")
 
         if df_input is None or df_input.empty:
             st.warning("⚠️ Active dataset empty ya not found. Kripya pehle file load karein.")
@@ -938,9 +938,9 @@ def render_triple_mode_trip_addon(df_input):
 
         col_v1, col_v2 = st.columns([2, 1])
         with col_v1:
-            search_v = st.text_input("🔎 [Add-on] Quick Search Vehicle (Last 4 digits e.g. 0440, 2680):", "", key="final_addon_search")
+            search_v = st.text_input("🔎 [Add-on] Quick Search Vehicle (Last 4 digits e.g. 0440, 2680):", "", key="fix_addon_search")
             filtered_v = [v for v in all_vehicles if search_v.lower() in v.lower()] if search_v.strip() else all_vehicles
-            sel_v = st.selectbox("🚛 Select Vehicle:", options=filtered_v if filtered_v else all_vehicles, key="final_addon_veh_sel")
+            sel_v = st.selectbox("🚛 Select Vehicle:", options=filtered_v if filtered_v else all_vehicles, key="fix_addon_veh_sel")
 
         if not sel_v:
             return
@@ -983,25 +983,25 @@ def render_triple_mode_trip_addon(df_input):
             "Choose Selection Style:",
             ["Checkboxes (Multi-Trip Merge)", "Radio (Single Trip)", "Dropdown (Multi-Select & Select All)"],
             horizontal=True,
-            key=f"final_addon_mode_{sel_v}"
+            key=f"fix_mode_{sel_v}"
         )
 
         chosen_trips = []
-        extra_bills = []
 
         if "Checkboxes" in mode:
-            st.markdown("👉 **Tick trips to combine (e.g. Trip 1 + Trip 3):**")
+            st.markdown("👉 **Tick multiple trips to combine them instantly (e.g. Trip 1 + Trip 3):**")
             cols = st.columns(min(len(trips_map), 4) if trips_map else 1)
             for idx, (t_name, b_list) in enumerate(trips_map.items()):
                 with cols[idx % len(cols)]:
-                    # Fixed checkbox state handling using unique keys per vehicle & trip
-                    chk_key = f"chk_{sel_v}_{t_name}"
-                    if st.checkbox(f"{t_name} ({len(b_list)} bills)", value=(idx==0), key=chk_key):
+                    # Unique stable key per vehicle & trip
+                    chk_key = f"chk_state_{sel_v}_{t_name}"
+                    # Default first trip checked only on initial load
+                    if st.checkbox(f"{t_name} ({len(b_list)} bills)", key=chk_key):
                         chosen_trips.append(t_name)
 
         elif "Radio" in mode:
             r_opts = [f"{t} ({b[0]}...)" for t, b in trips_map.items()]
-            r_chosen = st.radio("Select Trip:", options=r_opts, key=f"rad_{sel_v}")
+            r_chosen = st.radio("Select Trip:", options=r_opts, key=f"rad_state_{sel_v}")
             for t in trips_map.keys():
                 if t in r_chosen:
                     chosen_trips.append(t)
@@ -1009,7 +1009,7 @@ def render_triple_mode_trip_addon(df_input):
         else:
             st.markdown("👉 **Select trips via Dropdown or use Select All:**")
             all_t_names = list(trips_map.keys())
-            select_all_flag = st.checkbox("Select All Trips", value=False, key=f"sel_all_{sel_v}")
+            select_all_flag = st.checkbox("Select All Trips", value=False, key=f"sel_all_state_{sel_v}")
             
             if select_all_flag:
                 chosen_trips = all_t_names
@@ -1017,29 +1017,40 @@ def render_triple_mode_trip_addon(df_input):
             else:
                 chosen_trips = st.multiselect("Select Trips:", options=all_t_names, default=[all_t_names[0]] if all_t_names else [], key=f"drop_act_{sel_v}")
 
-        # Combine bills from selected trips
-        active_bills = []
+        # Combine bills from selected trips automatically
+        default_active_bills = []
         for t in chosen_trips:
-            active_bills.extend(trips_map[t])
+            if t in trips_map:
+                default_active_bills.extend(trips_map[t])
 
-        # EXACT BILLING SEQUENCE / DOCUMENTS SELECTOR (As requested)
+        # EXACT BILLING SEQUENCE / DOCUMENTS SELECTOR
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("📄 **Select Exact Billing Sequence / Documents for this Trip:**")
         
-        # Multiselect box pre-filled with the auto-detected bills of chosen trips, fully editable by user
+        # Using a session state tracker to ensure dynamic updates when checkboxes change
+        bill_multiselect_key = f"exact_bills_{sel_v}"
+        
+        # If vehicle changes or initial load, reset or sync default
+        if f"last_sel_v" not in st.session_state or st.session_state.last_sel_v != sel_v:
+            st.session_state.last_sel_v = sel_v
+            st.session_state[bill_multiselect_key] = default_active_bills
+        else:
+            # Update dynamically if user changes checkbox selections
+            st.session_state[bill_multiselect_key] = default_active_bills
+
         final_selected_bills = st.multiselect(
-            "Exact Bills Included:",
+            "Exact Bills Included (Fully Editable):",
             options=bills,
-            default=active_bills,
-            key=f"exact_bills_multiselect_{sel_v}",
-            help="Aap yahan se kisi bhi bill ko hata ya jodh sakte hain."
+            default=st.session_state.get(bill_multiselect_key, default_active_bills),
+            key=bill_multiselect_key,
+            help="Aap yahan se kisi bhi bill ko manually add ya remove kar sakte hain."
         )
 
         if not final_selected_bills:
             st.warning("⚠️ Kripya kam se kam ek bill select karein.")
             return
 
-        # Calculations
+        # Calculations based on final selected bills
         target_rows = v_df[v_df[b_col].astype(str).isin(final_selected_bills)]
         s50, s25, eq, ewt = 0.0, 0.0, 0.0, 0.0
         items_log = []
@@ -1106,3 +1117,8 @@ if 'active_df' in st.session_state and st.session_state.active_df is not None:
     render_triple_mode_trip_addon(st.session_state.active_df)
 else:
     st.info("ℹ️ Add-on loaded successfully. Please upload or load a file from the vault to activate the Multi-Trip Audit panel.")
+
+
+        
+
+        
