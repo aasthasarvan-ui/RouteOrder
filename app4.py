@@ -889,8 +889,8 @@ if st.session_state.active_df is not None:
 else:
     st.info("ℹ️ Kripya left sidebar se apni billing export file upload karein ya vault me se file load karein.")
 
-# ==============================================================================
-# 🚀 100% DESKTOP & MOBILE SMOOTH ADD-ON MODULE: MULTI-TRIP CHECKBOX & EXACT SEQUENCE
+ # ==============================================================================
+# 🚀 ULTIMATE DESKTOP & MOBILE ADD-ON: CHECKBOXES + DROPDOWN + CUSTOM BILLS
 # (Paste this at the very end of your main Streamlit application file)
 # ==============================================================================
 import streamlit as st
@@ -899,7 +899,7 @@ import re
 
 def render_triple_mode_trip_addon(df_input):
     with st.expander("🎛️ Advanced Multi-Trip Merge & Exact Sequence Engine (Click to Expand)", expanded=True):
-        st.markdown("*(Independent Module: Optimized for instant desktop and mobile responsiveness without lag).*")
+        st.markdown("*(Independent Module: Smooth desktop/mobile performance with Checkboxes, Dropdown, and Custom Billing Options).*")
 
         if df_input is None or df_input.empty:
             st.warning("⚠️ Active dataset empty ya not found. Kripya pehle file load karein.")
@@ -937,9 +937,9 @@ def render_triple_mode_trip_addon(df_input):
 
         col_v1, col_v2 = st.columns([2, 1])
         with col_v1:
-            search_v = st.text_input("🔎 [Add-on] Quick Search Vehicle (Last 4 digits e.g. 0440, 2680):", "", key="desk_addon_search")
+            search_v = st.text_input("🔎 [Add-on] Quick Search Vehicle (Last 4 digits e.g. 0440, 2680):", "", key="custom_addon_search")
             filtered_v = [v for v in all_vehicles if search_v.lower() in v.lower()] if search_v.strip() else all_vehicles
-            sel_v = st.selectbox("🚛 Select Vehicle:", options=filtered_v if filtered_v else all_vehicles, key="desk_addon_veh_sel")
+            sel_v = st.selectbox("🚛 Select Vehicle:", options=filtered_v if filtered_v else all_vehicles, key="custom_addon_veh_sel")
 
         if not sel_v:
             return
@@ -978,48 +978,61 @@ def render_triple_mode_trip_addon(df_input):
         st.info(f"🔍 **Auto-Detected Trips:** {trip_desc}")
 
         # ---------------------------------------------------------------------
-        # DESKTOP-OPTIMIZED STABLE CHECKBOXES FOR MULTI-TRIP MERGE
+        # SELECTION STYLE (Checkboxes OR Dropdown Multi-Select)
         # ---------------------------------------------------------------------
-        st.markdown("👉 **Tick multiple trips to combine them instantly (Desktop & Mobile Smooth):**")
-        chosen_trips = []
-        
-        cols = st.columns(min(len(trips_map), 4) if trips_map else 1)
-        for idx, (t_name, b_list) in enumerate(trips_map.items()):
-            with cols[idx % len(cols)]:
-                # Stable unique key bound strictly to vehicle and trip
-                chk_key = f"stable_chk_{sel_v}_{t_name}"
-                # Initialize session state if not present (Trip 1 checked by default on vehicle change)
-                if chk_key not in st.session_state:
-                    st.session_state[chk_key] = (idx == 0)
-                
-                if st.checkbox(f"{t_name} ({len(b_list)} bills)", key=chk_key):
-                    chosen_trips.append(t_name)
+        mode = st.radio(
+            "Choose Selection Style:",
+            ["Checkboxes (Multi-Trip)", "Dropdown (Multi-Select)"],
+            horizontal=True,
+            key=f"custom_mode_{sel_v}"
+        )
 
-        # Automatically collect bills from checked trips
+        chosen_trips = []
+        all_t_names = list(trips_map.keys())
+
+        if "Checkboxes" in mode:
+            st.markdown("👉 **Tick multiple trips to combine them instantly:**")
+            cols = st.columns(min(len(trips_map), 4) if trips_map else 1)
+            for idx, (t_name, b_list) in enumerate(trips_map.items()):
+                with cols[idx % len(cols)]:
+                    chk_key = f"custom_chk_{sel_v}_{t_name}"
+                    if chk_key not in st.session_state:
+                        st.session_state[chk_key] = (idx == 0)
+                    if st.checkbox(f"{t_name} ({len(b_list)} bills)", key=chk_key):
+                        chosen_trips.append(t_name)
+        else:
+            st.markdown("👉 **Select one or multiple trips from Dropdown:**")
+            chosen_trips = st.multiselect(
+                "Choose Trips to Merge:",
+                options=all_t_names,
+                default=[all_t_names[0]] if all_t_names else [],
+                key=f"custom_drop_{sel_v}"
+            )
+
+        # Automatically collect bills from selected trips
         default_active_bills = []
         for t in chosen_trips:
             if t in trips_map:
                 default_active_bills.extend(trips_map[t])
 
-        # EXACT BILLING SEQUENCE / DOCUMENTS SELECTOR
+        # EXACT BILLING SEQUENCE / DOCUMENTS SELECTOR WITH CUSTOM OPTION
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("📄 **Select Exact Billing Sequence / Documents for this Trip:**")
+        st.markdown("📄 **Select Exact Billing Sequence / Documents (Custom Editable Option):**")
         
-        bill_multiselect_key = f"stable_exact_bills_{sel_v}"
+        bill_multiselect_key = f"custom_exact_bills_{sel_v}"
         
-        # Sync state instantly without lag
-        if f"desk_last_veh" not in st.session_state or st.session_state.desk_last_veh != sel_v:
-            st.session_state.desk_last_veh = sel_v
+        if f"cust_last_veh" not in st.session_state or st.session_state.cust_last_veh != sel_v:
+            st.session_state.cust_last_veh = sel_v
             st.session_state[bill_multiselect_key] = default_active_bills
         else:
             st.session_state[bill_multiselect_key] = default_active_bills
 
         final_selected_bills = st.multiselect(
-            "Exact Bills Included (Fully Editable):",
+            "Exact Bills Included (Custom Add/Remove Allowed):",
             options=bills,
             default=st.session_state.get(bill_multiselect_key, default_active_bills),
             key=bill_multiselect_key,
-            help="Aap yahan se kisi bhi bill ko manually add ya remove kar sakte hain."
+            help="Aap yahan se kisi bhi bill ko dropdown se select karke ya hata kar custom calculation kar sakte hain."
         )
 
         if not final_selected_bills:
@@ -1073,7 +1086,7 @@ def render_triple_mode_trip_addon(df_input):
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("📦 50 Kg Bags", f"{int(s50):,} Bags")
         m2.metric("📦 25 Kg Bags", f"{int(s25):,} Bags")
-        m3.metric("📦 Total Bags", f"{int(tot_bags):,} Bags")
+        m3.metric("📦 Total Bags", f"{int(total_bags):,} Bags")
         m4.metric("📦 EA Quantity", f"{int(eq):,}")
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1093,6 +1106,21 @@ if 'active_df' in st.session_state and st.session_state.active_df is not None:
     render_triple_mode_trip_addon(st.session_state.active_df)
 else:
     st.info("ℹ️ Add-on loaded successfully. Please upload or load a file from the vault to activate the Multi-Trip Audit panel.")
+
+        
+
+      
+
+        
+       
+       
+            
+            
+
+        
+
+        
+
 
         
 
