@@ -1,0 +1,26 @@
+name: Ping All Streamlit Apps
+
+on:
+  schedule:
+    # Yeh har 30 minute mein automatically run hoga
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Route Ledger App
+        run: curl -I "https://routeorder-tvmbvfwf2zuazqef4kscwt.streamlit.app"
+
+      - name: Ping Demand App Test
+        run: curl -I "https://demandapptest.streamlit.app"
+
+      - name: Ping App Test In
+        run: curl -I "https://apptestin.streamlit.app"
+
+      - name: Ping Dispatch Plan App
+        run: curl -I "https://dispatchplan.streamlit.app"
+
+      - name: Ping Sale Order App
+        run: curl -I "https://saleorder1.streamlit.app"
