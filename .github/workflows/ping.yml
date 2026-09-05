@@ -24,4 +24,3 @@ jobs:
 
       - name: Ping Sale Order App
         run: curl -I "https://saleorder1.streamlit.app"
-
