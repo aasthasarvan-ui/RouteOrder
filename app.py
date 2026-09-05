@@ -697,26 +697,43 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             total_skipped_rows += 1
                             continue
 
-                        # DR Code Detection
+                       # --- STRICT DR CODE DETECTION (DR + Number Mandatory) ---
                         has_dr_code = False
                         clean_dr = ""
-                        if dr_code_col >= 0 and dr_code_col < df_input.shape[1]:
-                            raw_dr = df_input.iloc[r, dr_code_col]
-                            if pd.notna(raw_dr):
-                                val_str = str(raw_dr).replace('.0', '').strip()
-                                if "DR" in val_str.upper() and val_str.upper() != "0":
-                                    has_dr_code = True
-                                    clean_dr = val_str
 
+                        def validate_strict_dr(val):
+                            """
+                            STRICT RULE: DR ke sath number hona mandatory hai (e.g., DR10520, DR10521).
+                            Sirf 'DR', 'RT DR', 'DR GREWAL' ya plain numbers reject ho jayenge.
+                            """
+                            if pd.isna(val):
+                                return None
+                            s = str(val).strip().replace('.0', '').upper()
+                            if not s or s in ["0", "NAN", "NONE"]:
+                                return None
+                            
+                            match = re.search(r'\bDR\d+\b', s) or re.search(r'DR\d+', s)
+                            if match:
+                                return match.group(0)
+                            return None
+
+                        # Step 1: Check in detected DR column using strict validation
+                        if dr_code_col >= 0 and dr_code_col < df_input.shape[1]:
+                            res_dr = validate_strict_dr(df_input.iloc[r, dr_code_col])
+                            if res_dr:
+                                has_dr_code = True
+                                clean_dr = res_dr
+
+                        # Step 2: Scan other columns before FG if not found
                         if not has_dr_code:
                             for c_scan in range(fg_col):
-                                cell_val = df_input.iloc[r, c_scan]
-                                if pd.notna(cell_val):
-                                    val_str = str(cell_val).replace('.0', '').strip()
-                                    if "DR" in val_str.upper() and val_str.upper() != "0":
-                                        has_dr_code = True
-                                        clean_dr = val_str
-                                        break
+                                if c_scan == agency_col:
+                                    continue
+                                res_dr = validate_strict_dr(df_input.iloc[r, c_scan])
+                                if res_dr:
+                                    has_dr_code = True
+                                    clean_dr = res_dr
+                                    break
 
                         # --- AUTO-LOOKUP MISSING DR FROM DATABASE MASTER ---
                         if not has_dr_code:
