@@ -294,7 +294,8 @@ if uploaded_file is not None:
             if existing_drcode_col:
                 target_col_idx = existing_drcode_col
             else:
-                ws.insert_cols(excel_fg_col)
+                # 🌟 translate=True ensures native Excel formula shifting (e.g. G6 becomes H6 automatically)
+                ws.insert_cols(excel_fg_col, amount=1, translate=True)
                 target_col_idx = excel_fg_col
                 ws.cell(row=excel_fg_row, column=target_col_idx, value="DRCODE")
 
@@ -307,7 +308,7 @@ if uploaded_file is not None:
                     assigned_dr = mapping_dict.get(lookup_key, f"NEW_CUST_{agency_str}")
                     ws.cell(row=row_idx, column=target_col_idx, value=assigned_dr)
 
-            st.success(f"✅ Route ({route_num}) & Agency detected successfully! DRCODE mapped and inserted right before FGCODE while keeping original file formatting intact.")
+            st.success(f"✅ Route ({route_num}) & Agency detected successfully! DRCODE mapped and inserted safely with native Excel formula translation.")
 
             output_buffer = io.BytesIO()
             wb.save(output_buffer)
