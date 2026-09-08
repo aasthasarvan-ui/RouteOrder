@@ -11,7 +11,7 @@ st.title("💼 Smart Input & Master DRCODE Mapping Hub (Format Preserved)")
 
 master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
 
-# --- SIDEBAR: MANAGE MASTER DATA (WITH NUMBER TYPE FIX & AUTO-KEY UPDATE) ---
+# --- SIDEBAR: MANAGE MASTER DATA (WITH EXACT COUNTIFS FORMULA PRESERVATION) ---
 st.sidebar.header("🛠️ Manage Master Data")
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
 
@@ -39,16 +39,16 @@ if action_choice == "Add New Entry":
                     bp_clean = str(new_bp).strip()
                     dr_clean = str(new_drcode).strip()
                     
-                    # Convert to integer if they are numbers so Excel treats them as numbers (fixing text/number mismatch)
                     r_val = int(r_raw) if r_raw.isdigit() else r_raw
                     a_val = int(a_raw) if a_raw.isdigit() else a_raw
                     ag2_val = int(ag2_raw) if ag2_raw.isdigit() else ag2_raw
                     
                     wb_m = openpyxl.load_workbook(master_path)
+                    
+                    # 1. Update "Master Data" Sheet
                     if "Master Data" in wb_m.sheetnames:
                         ws_m = wb_m["Master Data"]
                         
-                        # Check duplicate and find last active row
                         is_duplicate = False
                         max_used_row = 2
                         
@@ -71,38 +71,67 @@ if action_choice == "Add New Entry":
                         else:
                             target_row = max_used_row + 1
                             
-                            # 1. Base values assign karein (As numbers to match format)
+                            # Base values assign karein
                             ws_m.cell(row=target_row, column=1, value=r_val)
                             ws_m.cell(row=target_row, column=2, value=a_val)
                             ws_m.cell(row=target_row, column=3, value=bp_clean)
                             ws_m.cell(row=target_row, column=4, value=ag2_val)
                             ws_m.cell(row=target_row, column=5, value=dr_clean)
-                            
-                            # 2. Helper columns & Formulas setup
                             ws_m.cell(row=target_row, column=6, value="YES")
-                            ws_m.cell(row=target_row, column=7, value=f'=A{target_row}&"_"&B{target_row}')
                             
-                            # 3. Clone styles and formulas from previous row
+                            # EXACT COUNTIFS FORMULA (Fixing start range $A$4:$F$4 and updating current row)
+                            ws_m.cell(row=target_row, column=7, value=f'=IF(F{target_row}="YES", A{target_row}&"_"&COUNTIFS($A$4:A{target_row}, A{target_row}, $F$4:F{target_row}, "YES"), "")')
+                            
+                            # Clone styles from previous row safely
                             for col in range(1, ws_m.max_column + 1):
                                 prev_cell = ws_m.cell(row=max_used_row, column=col)
                                 curr_cell = ws_m.cell(row=target_row, column=col)
                                 
-                                if prev_cell.font:
-                                    curr_cell.font = copy(prev_cell.font)
-                                if prev_cell.border:
-                                    curr_cell.border = copy(prev_cell.border)
-                                if prev_cell.fill:
-                                    curr_cell.fill = copy(prev_cell.fill)
-                                if prev_cell.alignment:
-                                    curr_cell.alignment = copy(prev_cell.alignment)
-                                    
+                                if prev_cell.font: curr_cell.font = copy(prev_cell.font)
+                                if prev_cell.border: curr_cell.border = copy(prev_cell.border)
+                                if prev_cell.fill: curr_cell.fill = copy(prev_cell.fill)
+                                if prev_cell.alignment: curr_cell.alignment = copy(prev_cell.alignment)
+                                
+                                # For other formula columns (if any >= 8), update only non-absolute row numbers safely
                                 if col >= 8 and prev_cell.value and str(prev_cell.value).startswith('='):
                                     old_formula = str(prev_cell.value)
-                                    new_formula = re.sub(r'\d+', str(target_row), old_formula)
+                                    new_formula = re.sub(r'(?<!\$)([A-Z]+)(\d+)', lambda m: f"{m.group(1)}{target_row}", old_formula)
                                     curr_cell.value = new_formula
 
+                            # 2. Update Specific Route Sheet (e.g. "Route_9") safely
+                            route_sheet_name = f"Route_{r_raw}"
+                            if route_sheet_name in wb_m.sheetnames:
+                                ws_r = wb_m[route_sheet_name]
+                                max_r_row = ws_r.max_row
+                                for r_chk in range(ws_r.max_row, 0, -1):
+                                    if ws_r.cell(row=r_chk, column=1).value is not None or ws_r.cell(row=r_chk, column=2).value is not None:
+                                        max_r_row = r_chk
+                                        break
+                                        
+                                target_r_row = max_r_row + 1
+                                
+                                ws_r.cell(row=target_r_row, column=1, value=r_val)
+                                ws_r.cell(row=target_r_row, column=2, value=a_val)
+                                ws_r.cell(row=target_r_row, column=3, value=bp_clean)
+                                ws_r.cell(row=target_r_row, column=4, value=ag2_val)
+                                ws_r.cell(row=target_r_row, column=5, value=dr_clean)
+                                
+                                if max_r_row >= 3:
+                                    for col in range(1, ws_r.max_column + 1):
+                                        p_cell = ws_r.cell(row=max_r_row, column=col)
+                                        c_cell = ws_r.cell(row=target_r_row, column=col)
+                                        if p_cell.font: c_cell.font = copy(p_cell.font)
+                                        if p_cell.border: c_cell.border = copy(p_cell.border)
+                                        if p_cell.fill: c_cell.fill = copy(p_cell.fill)
+                                        if p_cell.alignment: c_cell.alignment = copy(p_cell.alignment)
+                                        
+                                        if p_cell.value and str(p_cell.value).startswith('='):
+                                            old_f = str(p_cell.value)
+                                            new_f = re.sub(r'(?<!\$)([A-Z]+)(\d+)', lambda m: f"{m.group(1)}{target_r_row}", old_f)
+                                            c_cell.value = new_f
+
                             wb_m.save(master_path)
-                            st.sidebar.success("🎉 Naya record successfully Number format aur formulas ke sath Master File mein add ho gaya hai!")
+                            st.sidebar.success(f"🎉 Record successfully exact COUNTIFS formula ke sath Master Data aur {route_sheet_name} mein add ho gaya hai!")
                     else:
                         st.sidebar.error("❌ Master file mein 'Master Data' sheet nahi mili.")
                 except Exception as ex:
@@ -291,5 +320,5 @@ if uploaded_file is not None:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-    except Exception as e:
-        st.error(f"❌ Error during processing: {str(e)}")
+    except Exception as ex_main:
+        st.error(f"❌ Error during processing: {str(ex_main)}")
