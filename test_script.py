@@ -16,7 +16,7 @@ st.sidebar.header("🛠️ Manage Master Data")
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
 
 if action_choice == "Add New Entry":
-    with st.sidebar.form("add_master_form", clear_on_submit=True):
+   with st.sidebar.form("add_master_form", clear_on_submit=True):
         st.subheader("➕ Add Master Record")
         new_route = st.text_input("Route Number")
         new_agency = st.text_input("Agency ID")
