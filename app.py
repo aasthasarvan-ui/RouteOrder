@@ -281,7 +281,7 @@ st.markdown(
 )
 
 # ==============================================================================
-# SECTION 7: SIDEBAR - MANAGE MASTER DATA
+# SECTION 7: SIDEBAR - MANAGE MASTER DATA (FROM FIRST CODE - EXACT COUNTIFS)
 # ==============================================================================
 st.sidebar.header("🛠️ Manage Master Data")
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
@@ -539,10 +539,10 @@ for line in agency_fg_override.split('\n'):
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
 # ==============================================================================
-# SECTION 9: PRIMARY WORKFLOW: INBOUND DEMAND EXTRACTION & PROCESSING
+# SECTION 9: PRIMARY WORKFLOW: INBOUND DEMAND EXTRACTION & BACKGROUND MAPPING
 # ==============================================================================
 st.title(f"💼 Enterprise Sales Order Automation Hub ({st.session_state.selected_theme})")
-st.markdown("Upload multiple **Inbound Demand Files**. Background engine will auto-map DRCODEs and format orders.")
+st.markdown("Upload multiple **Inbound Demand Files**. Background engine will auto-map DRCODEs, insert columns, shift formulas, and process orders.")
 st.markdown("---")
 
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
@@ -599,7 +599,7 @@ if uploaded_inputs:
                     file_bytes = uploaded_file.getvalue()
                     df_input_raw = pd.read_excel(io.BytesIO(file_bytes), header=None)
 
-                    # --- BACKGROUND DRCODE INSERTION & MAPPING ENGINE ---
+                    # --- FIRST CODE'S BACKGROUND DRCODE INSERTION & FORMULA SHIFTING ENGINE ---
                     fg_row, fg_col = -1, -1
                     for r in range(df_input_raw.shape[0]):
                         for c in range(df_input_raw.shape[1]):
@@ -799,6 +799,13 @@ if uploaded_inputs:
 
                         agency_str = str(agency).replace('.0','').strip()
                         if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
+                            st.session_state.skipped_rows_log.append({
+                                "File Name": short_filename,
+                                "Row Index": r + 1,
+                                "Agency Value": str(agency),
+                                "Reason": "Invalid or Non-numeric Agency Number"
+                            })
+                            total_skipped_rows += 1
                             continue
 
                         agency_val = int(agency_str)
@@ -822,6 +829,13 @@ if uploaded_inputs:
                                     pass
 
                         if not row_has_items:
+                            st.session_state.skipped_rows_log.append({
+                                "File Name": short_filename,
+                                "Row Index": r + 1,
+                                "Agency Value": agency_val,
+                                "Reason": "Skipped: Zero or Blank Quantities across all SKUs"
+                            })
+                            total_skipped_rows += 1
                             continue
 
                         has_dr_code = False
@@ -838,10 +852,28 @@ if uploaded_inputs:
                             if unmapped_record not in unmapped_records_to_insert:
                                 unmapped_records_to_insert.append(unmapped_record)
 
+                            current_unmapped_dict = {
+                                "File Name": short_filename,
+                                "Route": str(route_num),
+                                "Agency": agency_val,
+                                "Status": "Generated via NEW_CUST (Missing DR in File and Master DB)"
+                            }
+                            if current_unmapped_dict not in st.session_state.unmapped_current_batch:
+                                st.session_state.unmapped_current_batch.append(current_unmapped_dict)
+
                         if has_dr_code and clean_dr.upper().startswith("DR"):
                             db_record = (short_filename, str(route_num), str(agency_val), str(clean_dr).upper(), ist_now.strftime("%Y-%m-%d %H:%M:%S"))
                             if db_record not in db_records_to_insert:
                                 db_records_to_insert.append(db_record)
+
+                        if row_total_qty > 500:
+                            st.session_state.anomaly_logs.append({
+                                "File Name": short_filename,
+                                "Agency": agency_val,
+                                "Route": route_num,
+                                "Total Qty": row_total_qty,
+                                "Flag": "⚠️ High Volume Spike (>500)"
+                            })
 
                         if has_dr_code:
                             agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
@@ -989,7 +1021,7 @@ if uploaded_inputs:
         st.warning("⚠️ Kripya pehle demand files upload karein!")
 
 # ==============================================================================
-# SECTION 10: KPI METRIC CARDS & EXPORT / DOWNLOAD HUB
+# SECTION 10: KPI METRIC CARDS & MULTI-CHANNEL DISPATCH HUB
 # ==============================================================================
 if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("---")
@@ -1009,52 +1041,112 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("---")
     st.markdown("### 📥 Bulk Download & Notifications")
 
+    with st.expander("✉️ Advanced Email Dispatch Options (Custom Subject & Note)"):
+        email_subject_custom = st.text_input("Custom Email Subject Line", f"🚀 Sales Orders Batch Execution Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}")
+        email_notes_custom = st.text_area("Custom Remarks / Notes to Include in Email Body", "All routes verified and processed successfully.")
+
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for item in st.session_state.processed_files:
             zip_file.writestr(item['filename'], item['data'])
 
-    col_zip, col_print = st.columns(2)
+    col_zip, col_pdf, col_summary, col_json, col_print, col_email, col_wa = st.columns(7)
+
     with col_zip:
-        st.download_button(
-            label="📦 Download All as ZIP Archive",
-            data=zip_buffer.getvalue(),
-            file_name=f"Batch_Orders_{get_ist_now().strftime('%Y-%m-%d')}.zip",
-            mime="application/zip",
-            key="zip_download"
-        )
+        st.download_button("📦 ZIP", data=zip_buffer.getvalue(), file_name=f"Batch_Orders_{get_ist_now().strftime('%Y-%m-%d')}.zip", mime="application/zip", key="zip_download")
+
+    with col_pdf:
+        try:
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 16)
+            pdf.cell(190, 10, "Enterprise Sales Order Summary Invoice", ln=True, align="C")
+            pdf.set_font("Arial", "", 10)
+            pdf.cell(190, 6, f"Generated On (IST): {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align="C")
+            pdf.ln(10)
+            pdf_bytes = bytes(pdf.output())
+            st.download_button("📄 PDF", data=pdf_bytes, file_name=f"Sales_Invoice_{get_ist_now().strftime('%Y-%m-%d')}.pdf", mime="application/pdf", key="pdf_download")
+        except Exception:
+            pass
+
+    with col_summary:
+        summary_txt = f"Total Input Quantity : {kpi['input_qty']:,.0f}\nTotal Generated Qty : {kpi['gen_qty']:,.0f}"
+        st.download_button("📄 TXT", data=summary_txt.encode('utf-8'), file_name="Summary.txt", mime="text/plain", key="txt_download")
+
+    with col_json:
+        json_data = json.dumps({"timestamp": get_ist_now().strftime('%Y-%m-%d %H:%M:%S'), "metrics": kpi}, indent=4)
+        st.download_button("💾 JSON", data=json_data.encode('utf-8'), file_name="Audit.json", mime="application/json", key="json_download")
+
     with col_print:
-        print_html = '<button onclick="parent.window.print()" style="width:100%; height:38px; background:#2563eb; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">🖨️ Print Report</button>'
+        print_html = '<button onclick="parent.window.print()" style="width:100%; height:38px; background:#2563eb; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">🖨️ Print</button>'
         components.html(print_html, height=50)
+
+    with col_email:
+        if st.button("📧 Email"):
+            if email_user and email_pass and recipient_email:
+                try:
+                    msg = EmailMessage()
+                    msg['Subject'] = email_subject_custom
+                    msg['From'] = email_user
+                    msg['To'] = recipient_email
+                    msg.set_content(f"Batch processed successfully. Total Qty: {kpi['input_qty']}")
+                    for item in st.session_state.processed_files:
+                        msg.add_attachment(item['data'], maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=item['filename'])
+                    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                        smtp.login(email_user, email_pass)
+                        smtp.send_message(msg)
+                    st.success("✅ Email dispatched!")
+                except Exception as e:
+                    st.error(f"❌ Email failed: {str(e)}")
+            else:
+                st.warning("⚠️ Enter email credentials!")
+
+    with col_wa:
+        if whatsapp_num:
+            wa_text = f"Sales Order Batch Ready! Total Qty: {kpi['input_qty']}."
+            wa_link = f"https://wa.me/{whatsapp_num}?text={urllib.parse.quote(wa_text)}"
+            st.markdown(f'<a href="{wa_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:38px; background:#25D366; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("##### Individual File Downloads:")
     for i, item in enumerate(st.session_state.processed_files):
-        st.download_button(
-            label=f"📥 Download {item['filename']}",
-            data=item['data'],
-            file_name=item['filename'],
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"dl_file_{i}_{item['filename']}"
-        )
+        st.download_button(label=f"📥 Download {item['name']}", data=item['data'], file_name=item['filename'], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_file_{i}_{item['filename']}")
 
 # ==============================================================================
-# SECTION 11: DATABASES & LEDGERS MANAGEMENT PANEL
+# SECTION 11: 5-TAB ENTERPRISE DATABASES & LEDGERS MANAGEMENT PANEL
 # ==============================================================================
 st.markdown("---")
-with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs & Audit)"):
+with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs, Traceability & Audit)"):
     try:
         conn = sqlite3.connect("sales_history.db")
         df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
         df_unmapped = pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger ORDER BY id DESC", conn)
         df_outputs = pd.read_sql("SELECT id, file_name, file_type, created_at FROM output_files_ledger ORDER BY id DESC", conn)
+        df_trace = pd.read_sql("SELECT id, batch_timestamp, input_file_name, total_input_qty, generated_output_file, output_type, version_no FROM input_output_traceability ORDER BY id DESC", conn)
+        df_audit = pd.read_sql("SELECT * FROM discrepancy_audit_ledger ORDER BY id DESC", conn)
         conn.close()
 
-        tab_m1, tab_m2, tab_m3 = st.tabs(["📋 Route-Agency-DR Master", "🚨 Unmapped Missing DR", "📦 Archived Outputs"])
+        tab_m1, tab_m2, tab_m3, tab_m4, tab_m5 = st.tabs([
+            "📋 Route-Agency-DR Master", 
+            "🚨 Unmapped Missing DR", 
+            "📦 Archived Outputs", 
+            "🔗 Input-Output Traceability", 
+            "🔍 Discrepancy Audit"
+        ])
 
         with tab_m1:
             if not df_master.empty:
                 st.dataframe(df_master, use_container_width=True)
+                row_id_to_del = st.number_input("Enter Master Record ID to Delete", min_value=1, step=1, key="row_id_input")
+                if st.button("🗑️ Delete Master Row & Reset ID"):
+                    conn = sqlite3.connect("sales_history.db")
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM unique_routes_master WHERE id = ?", (row_id_to_del,))
+                    cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Record ID {row_id_to_del} deleted & ID sequence reset!")
+                    st.rerun()
             else:
                 st.info("No master records found yet.")
 
@@ -1069,5 +1161,77 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
                 st.dataframe(df_outputs, use_container_width=True)
             else:
                 st.info("No output files archived yet.")
+
+        with tab_m4:
+            if not df_trace.empty:
+                st.dataframe(df_trace, use_container_width=True)
+            else:
+                st.info("No traceability mapping records found yet.")
+
+        with tab_m5:
+            if not df_audit.empty:
+                st.dataframe(df_audit, use_container_width=True)
+            else:
+                st.success("🟢 No discrepancies logged in current batch cycles!")
+
     except Exception as e:
         st.error(f"Error loading databases: {str(e)}")
+
+# ==============================================================================
+# SECTION 12: DYNAMIC MODULE & FEATURE AUTOMATIC IMPLEMENTATION HUB
+# ==============================================================================
+st.markdown("---")
+with st.expander("🔌 Dynamic Module & Feature Integration Hub (Auto-Implement & Link)", expanded=True):
+    st.markdown("Yahan aap koi bhi naya module ya feature add kar sakte hain.")
+
+    if "dynamic_modules" not in st.session_state:
+        st.session_state.dynamic_modules = []
+
+    with st.form("dynamic_module_form"):
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            mod_name = st.text_input("Module / Feature Name", placeholder="e.g., Advanced Tax Calculator")
+            mod_category = st.selectbox("Module Category", ["Analytics", "Automation", "Reporting", "Integration", "Custom Utility"])
+        with col_m2:
+            mod_icon = st.text_input("Module Icon (Emoji)", placeholder="📊")
+
+        mod_code = st.text_area("Module Python Logic (Streamlit Code)", placeholder="st.info('Hello from Dynamic Module!')", height=120)
+        submit_module = st.form_submit_button("⚡ Implement & Mount Module Automatically")
+
+        if submit_module:
+            if mod_name and mod_code:
+                new_mod = {
+                    "id": len(st.session_state.dynamic_modules) + 1,
+                    "name": mod_name,
+                    "category": mod_category,
+                    "icon": mod_icon if mod_icon else "🧩",
+                    "code": mod_code,
+                    "created_at": get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                st.session_state.dynamic_modules.append(new_mod)
+                st.success(f"✅ Module '{mod_name}' successfully implemented!")
+                st.rerun()
+            else:
+                st.warning("⚠️ Kripya Module Name aur Python Logic dono enter karein.")
+
+    if st.session_state.dynamic_modules:
+        st.markdown("---")
+        st.markdown("### 🚀 Active Dynamically Implemented Modules")
+        tabs_list = [f"{m['icon']} {m['name']}" for m in st.session_state.dynamic_modules]
+        active_tabs = st.tabs(tabs_list)
+
+        for idx, mod in enumerate(st.session_state.dynamic_modules):
+            with active_tabs[idx]:
+                st.markdown(f"**Category:** `{mod['category']}` | **Mounted At:** `{mod['created_at']}`")
+                st.markdown("---")
+                try:
+                    local_vars = {"st": st, "pd": pd, "io": io, "sqlite3": sqlite3, "datetime": datetime}
+                    exec(mod['code'], globals(), local_vars)
+                except Exception as ex:
+                    st.error(f"❌ Error executing dynamic module code: {str(ex)}")
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button(f"🗑️ Remove Module #{mod['id']} ({mod['name']})", key=f"del_mod_{mod['id']}"):
+                    st.session_state.dynamic_modules.pop(idx)
+                    st.success(f"Module '{mod['name']}' unmounted successfully!")
+                    st.rerun()
