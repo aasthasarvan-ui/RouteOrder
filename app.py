@@ -14,6 +14,7 @@ from email.message import EmailMessage
 from fpdf import FPDF
 import streamlit.components.v1 as components
 from copy import copy
+import os
 
 # ==============================================================================
 # SECTION 1: STREAMLIT PAGE CONFIGURATION & METADATA
