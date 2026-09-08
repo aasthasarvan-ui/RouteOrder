@@ -11,7 +11,7 @@ st.title("💼 Smart Input & Master DRCODE Mapping Hub (Format Preserved)")
 
 master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
 
-# --- SIDEBAR: MANAGE MASTER DATA (WITH EXACT COUNTIFS FORMULA PRESERVATION) ---
+# --- SIDEBAR: MANAGE MASTER DATA (EXACT ORIGINAL LOGIC WITH COUNTIFS & ROUTE SYNC) ---
 st.sidebar.header("🛠️ Manage Master Data")
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
 
@@ -79,7 +79,7 @@ if action_choice == "Add New Entry":
                             ws_m.cell(row=target_row, column=5, value=dr_clean)
                             ws_m.cell(row=target_row, column=6, value="YES")
                             
-                            # EXACT COUNTIFS FORMULA (Fixing start range $A$4:$F$4 and updating current row)
+                            # EXACT COUNTIFS FORMULA
                             ws_m.cell(row=target_row, column=7, value=f'=IF(F{target_row}="YES", A{target_row}&"_"&COUNTIFS($A$4:A{target_row}, A{target_row}, $F$4:F{target_row}, "YES"), "")')
                             
                             # Clone styles from previous row safely
@@ -92,13 +92,12 @@ if action_choice == "Add New Entry":
                                 if prev_cell.fill: curr_cell.fill = copy(prev_cell.fill)
                                 if prev_cell.alignment: curr_cell.alignment = copy(prev_cell.alignment)
                                 
-                                # For other formula columns (if any >= 8), update only non-absolute row numbers safely
                                 if col >= 8 and prev_cell.value and str(prev_cell.value).startswith('='):
                                     old_formula = str(prev_cell.value)
                                     new_formula = re.sub(r'(?<!\$)([A-Z]+)(\d+)', lambda m: f"{m.group(1)}{target_row}", old_formula)
                                     curr_cell.value = new_formula
 
-                            # 2. Update Specific Route Sheet (e.g. "Route_9") safely
+                            # 2. Update Specific Route Sheet (e.g. "Route_9") safely with format and formula cloning
                             route_sheet_name = f"Route_{r_raw}"
                             if route_sheet_name in wb_m.sheetnames:
                                 ws_r = wb_m[route_sheet_name]
@@ -305,8 +304,8 @@ if uploaded_file is not None:
             if existing_drcode_col:
                 target_col_idx = existing_drcode_col
             else:
-                ws.insert_cols(fg_col + 1)
-                target_col_idx = fg_col + 1
+                ws.insert_cols(excel_fg_col)
+                target_col_idx = excel_fg_col
                 ws.cell(row=excel_fg_row, column=target_col_idx, value="DRCODE")
 
             for row_idx in range(excel_fg_row + 1, ws.max_row + 1):
