@@ -121,10 +121,10 @@ if uploaded_file is not None:
                 if found_fg_col:
                     fg_idx = df_input.columns.get_loc(found_fg_col)
                     df_input.insert(fg_idx, 'DRCODE', drc_col)
-                    st.success(f"✅ Route ({route_num}) detected. DRCODE successfully mapped and inserted right before '{found_fg_col}[span_1](start_span)'[span_1](end_span)!")
+                    st.success(f"✅ Route ({route_num}) detected. DRCODE successfully mapped and inserted right before '{found_fg_col}'!")
                 else:
                     df_input['DRCODE'] = drc_col
-                    st.success(f"✅ Route ({route_num}) detected. DRCODE mapped and added to file[span_2](start_span)[span_2](end_span).")
+                    st.success(f"✅ Route ({route_num}) detected. DRCODE mapped and added to file.")
 
                 # 6. Preview & Download Output
                 st.subheader("Preview Processed Data (First 10 Rows)")
