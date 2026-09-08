@@ -338,3 +338,87 @@ if uploaded_file is not None:
 
     except Exception as ex_main:
         st.error(f"❌ Error during processing: {str(ex_main)}")
+
+
+import sqlite3
+
+# --- LIGHTWEIGHT DATABASE LAYER FOR INSTANT ADD/DELETE WITHOUT FILE OVERWRITE ISSUES ---
+DB_PATH = "master_cache.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS master_cache (
+            route TEXT,
+            agency TEXT,
+            business_partner TEXT,
+            agency2 TEXT,
+            drcode TEXT,
+            is_clean TEXT,
+            PRIMARY KEY (route, agency)
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def sync_excel_to_db():
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM master_cache")
+    count = cursor.fetchone()[0]
+    
+    # Agar database pehli baar khali hai, toh original Excel file se data import kar lo
+    if count == 0 and os.path.exists(master_path):
+        try:
+            df_init = pd.read_excel(master_path, sheet_name="Master Data", header=2)
+            df_init.columns = df_init.columns.astype(str).str.strip()
+            for _, row in df_init.iterrows():
+                r_val = str(row.get('Route', '')).replace('.0', '').strip()
+                a_val = str(row.get('Agency', '')).replace('.0', '').strip()
+                if r_val and r_val != 'nan' and a_val and a_val != 'nan':
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO master_cache (route, agency, business_partner, agency2, drcode, is_clean)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (
+                        r_val, 
+                        a_val, 
+                        str(row.get('Business Partner', '')), 
+                        str(row.get('Agency2', a_val)), 
+                        str(row.get('DRCODE', '')), 
+                        str(row.get('Is_Clean', 'YES'))
+                    ))
+            conn.commit()
+        except Exception as e:
+            st.error(f"DB Sync Error: {e}")
+    conn.close()
+
+def get_master_data_from_db():
+    sync_excel_to_db()
+    conn = sqlite3.connect(DB_PATH)
+    df_db = pd.read_sql("SELECT route as Route, agency as Agency, business_partner as [Business Partner], agency2 as Agency2, drcode as DRCODE, is_clean as Is_Clean FROM master_cache", conn)
+    conn.close()
+    return df_db
+
+def add_record_to_db(route, agency, bp, agency2, drcode):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            INSERT OR REPLACE INTO master_cache (route, agency, business_partner, agency2, drcode, is_clean)
+            VALUES (?, ?, ?, ?, ?, 'YES')
+        ''', (str(route), str(agency), str(bp), str(agency2), str(drcode)))
+        conn.commit()
+        success = True
+    except Exception as e:
+        success = False
+    conn.close()
+    return success
+
+def delete_record_from_db(route, agency):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM master_cache WHERE route = ? AND agency = ?", (str(route), str(agency)))
+    conn.commit()
+    conn.close()
