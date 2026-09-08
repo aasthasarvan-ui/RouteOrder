@@ -10,7 +10,7 @@ st.title("💼 Smart Input & Master DRCODE Mapping Hub (Format Preserved)")
 
 master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
 
-# --- SIDEBAR: MANAGE MASTER DATA (ADD & DELETE WITH PANDAS SYNC) ---
+# --- SIDEBAR: MANAGE MASTER DATA (ROBUST ADD & DELETE) ---
 st.sidebar.header("🛠️ Manage Master Data")
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
 
@@ -32,34 +32,31 @@ if action_choice == "Add New Entry":
                 st.sidebar.error(f"❌ Master file ({master_path}) project folder mein nahi mili!")
             else:
                 try:
-                    # Read via pandas (header=2 based on your master sheet structure)
-                    master_df_check = pd.read_excel(master_path, sheet_name="Master Data", header=2)
-                    master_df_check.columns = master_df_check.columns.astype(str).str.strip()
-                    
-                    # Normalize columns to check duplicates
                     r_clean = str(new_route).replace('.0', '').strip()
                     a_clean = str(new_agency).replace('.0', '').strip()
                     
-                    if 'Route' in master_df_check.columns and 'Agency' in master_df_check.columns:
-                        existing_routes = master_df_check['Route'].astype(str).str.replace('.0', '').str.strip()
-                        existing_agencies = master_df_check['Agency'].astype(str).str.replace('.0', '').str.strip()
+                    wb_m = openpyxl.load_workbook(master_path)
+                    if "Master Data" in wb_m.sheetnames:
+                        ws_m = wb_m["Master Data"]
                         
-                        duplicate_mask = (existing_routes == r_clean) & (existing_agencies == a_clean)
-                        if duplicate_mask.any():
+                        # Check duplicate by looking through rows starting from row 3
+                        is_duplicate = False
+                        for r in range(3, ws_m.max_row + 1):
+                            cell_r = str(ws_m.cell(row=r, column=1).value).replace('.0', '').strip()
+                            cell_a = str(ws_m.cell(row=r, column=2).value).replace('.0', '').strip()
+                            if cell_r == r_clean and cell_a == a_clean:
+                                is_duplicate = True
+                                break
+                                
+                        if is_duplicate:
                             st.sidebar.error(f"⚠️ Duplicate Error: Route '{new_route}' aur Agency '{new_agency}' pehle se Master File mein maujood hain!")
                         else:
-                            # Use openpyxl to safely append to exact sheet without disturbing other sheets
-                            wb_m = openpyxl.load_workbook(master_path)
-                            if "Master Data" in wb_m.sheetnames:
-                                ws_m = wb_m["Master Data"]
-                                ag2_val = str(new_agency2).strip() if new_agency2 else a_clean
-                                ws_m.append([r_clean, a_clean, str(new_bp).strip(), ag2_val, str(new_drcode).strip()])
-                                wb_m.save(master_path)
-                                st.sidebar.success("🎉 Naya record successfully Master File mein update/add ho gaya!")
-                            else:
-                                st.sidebar.error("❌ Master file mein 'Master Data' sheet nahi mili.")
+                            ag2_val = str(new_agency2).strip() if new_agency2 else a_clean
+                            ws_m.append([r_clean, a_clean, str(new_bp).strip(), ag2_val, str(new_drcode).strip()])
+                            wb_m.save(master_path)
+                            st.sidebar.success("🎉 Naya record successfully Master File mein add ho gaya!")
                     else:
-                        st.sidebar.error("❌ Master file ke columns 'Route' ya 'Agency' nahi mile.")
+                        st.sidebar.error("❌ Master file mein 'Master Data' sheet nahi mili.")
                 except Exception as ex:
                     st.sidebar.error(f"❌ Error saving master data: {ex}")
 
@@ -71,7 +68,11 @@ elif action_choice == "Delete Entry":
             temp_master_df.columns = temp_master_df.columns.astype(str).str.strip()
             
             if 'Route' in temp_master_df.columns and 'Agency' in temp_master_df.columns:
-                temp_master_df['Display_Label'] = "Route: " + temp_master_df['Route'].astype(str) + " | Agency: " + temp_master_df['Agency'].astype(str) + " | DRCODE: " + temp_master_df.get('DRCODE', '').astype(str)
+                # Clean up display list cleanly removing decimal points for readability
+                temp_master_df['Clean_Route'] = temp_master_df['Route'].astype(str).str.replace('.0', '', regex=False).str.strip()
+                temp_master_df['Clean_Agency'] = temp_master_df['Agency'].astype(str).str.replace('.0', '', regex=False).str.strip()
+                temp_master_df['Display_Label'] = "Route: " + temp_master_df['Clean_Route'] + " | Agency: " + temp_master_df['Clean_Agency'] + " | DRCODE: " + temp_master_df.get('DRCODE', '').astype(str)
+                
                 selected_to_delete = st.sidebar.selectbox("Select Record to Delete", temp_master_df['Display_Label'].tolist())
                 
                 if st.sidebar.button("Delete Selected Record"):
@@ -83,7 +84,8 @@ elif action_choice == "Delete Entry":
                     ws_m = wb_m["Master Data"]
                     
                     row_to_delete = None
-                    for r in range(4, ws_m.max_row + 1):
+                    # Search from row 3 onwards to match Excel rows accurately
+                    for r in range(3, ws_m.max_row + 1):
                         r_val = str(ws_m.cell(row=r, column=1).value).replace('.0', '').strip()
                         a_val = str(ws_m.cell(row=r, column=2).value).replace('.0', '').strip()
                         if r_val == sel_route and a_val == sel_agency:
