@@ -10,7 +10,7 @@ st.title("💼 Smart Input & Master DRCODE Mapping Hub (Format Preserved)")
 
 master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
 
-# --- SIDEBAR: MANAGE MASTER DATA (ROBUST ADD & DELETE) ---
+# --- SIDEBAR: MANAGE MASTER DATA (ROBUST ADD & DELETE WITH AUTO-KEY UPDATE) ---
 st.sidebar.header("🛠️ Manage Master Data")
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
 
@@ -63,7 +63,7 @@ if action_choice == "Add New Entry":
                         if is_duplicate:
                             st.sidebar.error(f"⚠️ Duplicate Error: Route '{new_route}' aur Agency '{new_agency}' pehle se Master File mein maujood hain!")
                         else:
-                            # Insert right after the last active row to keep formatting intact
+                            # Insert right after the last active row
                             target_row = max_used_row + 1
                             ws_m.cell(row=target_row, column=1, value=r_clean)
                             ws_m.cell(row=target_row, column=2, value=a_clean)
@@ -71,8 +71,14 @@ if action_choice == "Add New Entry":
                             ws_m.cell(row=target_row, column=4, value=ag2_clean)
                             ws_m.cell(row=target_row, column=5, value=dr_clean)
                             
+                            # --- AUTO-UPDATE HELPER COLUMNS (F, G, H etc. for Route sheets linkage) ---
+                            # Column F: Is_Clean ("YES")
+                            ws_m.cell(row=target_row, column=6, value="YES")
+                            # Column G: Clean_Route formula/value (e.g. Route_Agency format used in your sheets)
+                            ws_m.cell(row=target_row, column=7, value=f'={r_clean}&"_"&{a_clean}')
+                            
                             wb_m.save(master_path)
-                            st.sidebar.success("🎉 Naya record successfully Master File mein add ho gaya!")
+                            st.sidebar.success("🎉 Naya record successfully Master File mein add ho gaya aur route keys update kar di gayi hain!")
                     else:
                         st.sidebar.error("❌ Master file mein 'Master Data' sheet nahi mili.")
                 except Exception as ex:
