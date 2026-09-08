@@ -476,6 +476,95 @@ st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lo
 st.markdown("---")
 
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
+# --- AUTOMATIC BACKGROUND PRE-PROCESSING HOOK ---
+if uploaded_file is not None:
+    try:
+        # Background mein master file se mapping dictionary load karo
+        mapping_dict = {}
+        if os.path.exists(master_path):
+            m_df = pd.read_excel(master_path, sheet_name="Master Data", header=2)
+            m_df.columns = m_df.columns.astype(str).str.strip()
+            if 'Route' in m_df.columns and 'Agency' in m_df.columns and 'DRCODE' in m_df.columns:
+                for _, row in m_df[['Route', 'Agency', 'DRCODE']].dropna(subset=['DRCODE']).iterrows():
+                    rt_k = str(row['Route']).replace('.0', '').strip()
+                    ag_k = str(row['Agency']).replace('.0', '').strip()
+                    mapping_dict[(rt_k, ag_k)] = str(row['DRCODE']).strip()
+
+        raw_df = pd.read_excel(uploaded_file, header=None)
+        f_row, f_col = -1, -1
+        for r in range(raw_df.shape[0]):
+            for c in range(raw_df.shape[1]):
+                if "FG" in str(raw_df.iloc[r, c]).strip().upper():
+                    f_row, f_col = r, c
+                    break
+            if f_row != -1: break
+
+        if f_row != -1:
+            rt_num = "22"
+            m_rt = re.search(r'Route\s*\(?(\d+)\)?', uploaded_file.name, re.IGNORECASE)
+            if m_rt: rt_num = m_rt.group(1)
+
+            ag_col = -1
+            for c_s in range(f_col - 1, -1, -1):
+                v_cnt = 0
+                for r_c in range(f_row + 1, min(f_row + 15, raw_df.shape[0])):
+                    val_chk = raw_df.iloc[r_c, c_s]
+                    if pd.notna(val_chk) and str(val_chk).replace('.0', '').strip().isdigit():
+                        v_cnt += 1
+                if v_cnt >= 3:
+                    ag_col = c_s
+                    break
+            if ag_col == -1 and f_col > 0: ag_col = f_col - 1
+
+            # Openpyxl modify karke modified file ko wahi 'uploaded_file' variable bana do
+            wb_mod = openpyxl.load_workbook(uploaded_file)
+            ws_mod = wb_mod.active
+            
+            ex_f_row = f_row + 1
+            ex_f_col = f_col + 1
+            
+            has_dr_col = False
+            for ci in range(1, ws_mod.max_column + 1):
+                if str(ws_mod.cell(row=ex_f_row, column=ci).value).strip().upper() == "DRCODE":
+                    has_dr_col = True
+                    t_idx = ci
+                    break
+            
+            if not has_dr_col:
+                ws_mod.insert_cols(ex_f_col)
+                t_idx = ex_f_col
+                ws_mod.cell(row=ex_f_row, column=t_idx, value="DRCODE")
+                
+                # Universal Formula Shifting
+                for row_cells in ws_mod.iter_rows():
+                    for cell_item in row_cells:
+                        if cell_item.value and str(cell_item.value).startswith('='):
+                            old_f = str(cell_item.value)
+                            def shift_c(m):
+                                c_let, r_num = m.group(1), m.group(2)
+                                c_idx = openpyxl.utils.column_index_from_string(c_let)
+                                if c_idx >= t_idx:
+                                    return f"{openpyxl.utils.get_column_letter(c_idx + 1)}{r_num}"
+                                return m.group(0)
+                            cell_item.value = re.sub(r'([A-Z]+)(\d+)', shift_c, old_f)
+
+            # DRCODE values fill karo
+            for r_idx in range(ex_f_row + 1, ws_mod.max_row + 1):
+                raw_ag = ws_mod.cell(row=r_idx, column=ag_col + 1).value
+                ag_str = str(raw_ag).replace('.0', '').strip() if raw_ag is not None else ""
+                if ag_str and ag_str != "None":
+                    k = (str(rt_num), ag_str)
+                    assigned = mapping_dict.get(k, f"NEW_CUST_{ag_str}")
+                    ws_mod.cell(row=r_idx, column=t_idx, value=assigned)
+
+            # Modified workbook ko memory mein save karke uploaded_file ki jagah pass kar do
+            mod_buf = io.BytesIO()
+            wb_mod.save(mod_buf)
+            mod_buf.seek(0)
+            uploaded_file = mod_buf  # 👈 Yahan input file automatically updated file ban gayi!
+    except Exception as e:
+        pass
+
 
 # --- Pre-flight File Health Check ---
 if uploaded_inputs:
