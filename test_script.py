@@ -8,23 +8,19 @@ st.title("Sales Order Automation with Auto DRCODE Mapping")
 # --- Step 1: File Uploaders ---
 st.subheader("1. File Uploads")
 uploaded_file = st.file_uploader("Upload Input Demand Excel File", type=["xlsx", "xls"])
-
-# Optional Master file uploader (agar GitHub par na ho toh mobile se yahan upload kar sakte hain)
 master_file_input = st.file_uploader("Upload Master Route File (Optional agar GitHub me hai)", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
     try:
-        # Master file locate karne ka logic (Dono options covered)
         master_df = None
         master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
         
+        # Master file load karne ka logic (header=2 zaroori hai kyunki actual columns row 3 par hain)
         if master_file_input is not None:
-            # Option 2: User ne mobile se direct master file upload kar di
-            master_df = pd.read_excel(master_file_input, sheet_name="Master Data")
+            master_df = pd.read_excel(master_file_input, sheet_name="Master Data", header=2)
             st.success("Master file uploaded successfully from device!")
         elif os.path.exists(master_path):
-            # Option 1: Master file already GitHub repository / folder me maujood hai
-            master_df = pd.read_excel(master_path, sheet_name="Master Data")
+            master_df = pd.read_excel(master_path, sheet_name="Master Data", header=2)
             st.info("Master file loaded automatically from project repository.")
         else:
             st.error("⚠️ Master file nahi mili! Kripya ya toh GitHub par file rakhein ya upar upload option se select karein.")
