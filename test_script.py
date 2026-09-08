@@ -2,42 +2,56 @@ import streamlit as st
 import pandas as pd
 import os
 
+st.set_page_config(page_title="Sales Order Auto DRCODE Mapping", layout="wide")
 st.title("Sales Order Automation with Auto DRCODE Mapping")
 
-# 1. File Uploader for Input File
-uploaded_file = st.file_uploader("Upload Input Excel File", type=["xlsx", "xls"])
+# --- Step 1: File Uploaders ---
+st.subheader("1. File Uploads")
+uploaded_file = st.file_uploader("Upload Input Demand Excel File", type=["xlsx", "xls"])
+
+# Optional Master file uploader (agar GitHub par na ho toh mobile se yahan upload kar sakte hain)
+master_file_input = st.file_uploader("Upload Master Route File (Optional agar GitHub me hai)", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
     try:
-        # Master file ka path (jo aapke project folder me rakhi hai)
-        master_file_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
+        # Master file locate karne ka logic (Dono options covered)
+        master_df = None
+        master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
         
-        if not os.path.exists(master_file_path):
-            st.error(f"Master file '{master_file_path}' nahi mili! Please project folder me rakhein.")
+        if master_file_input is not None:
+            # Option 2: User ne mobile se direct master file upload kar di
+            master_df = pd.read_excel(master_file_input, sheet_name="Master Data")
+            st.success("Master file uploaded successfully from device!")
+        elif os.path.exists(master_path):
+            # Option 1: Master file already GitHub repository / folder me maujood hai
+            master_df = pd.read_excel(master_path, sheet_name="Master Data")
+            st.info("Master file loaded automatically from project repository.")
         else:
-            # 2. Read Uploaded Input File
+            st.error("⚠️ Master file nahi mili! Kripya ya toh GitHub par file rakhein ya upar upload option se select karein.")
+        
+        if master_df is not None:
+            # --- Step 2: Read Input File ---
             df_input = pd.read_excel(uploaded_file)
-            df_master = pd.read_excel(master_file_path, sheet_name="Master Data")
             
-            # Clean column names
+            # Clean column names (remove extra spaces)
             df_input.columns = df_input.columns.astype(str).str.strip()
-            df_master.columns = df_master.columns.astype(str).str.strip()
+            master_df.columns = master_df.columns.astype(str).str.strip()
             
-            # 3. Matching Keys
-            input_route_col = 'Route'     # Input file ka route column
-            input_agency_col = 'Agency'   # Input file ka agency column
+            # --- Step 3: Matching Keys ---
+            input_route_col = 'Route'     
+            input_agency_col = 'Agency'   
             
             master_route_col = 'Route'
             master_agency_col = 'Agency'
             
             # Prepare Master for Merge
-            df_temp_master = df_master[[master_route_col, master_agency_col, 'DRCODE']].drop_duplicates()
+            df_temp_master = master_df[[master_route_col, master_agency_col, 'DRCODE']].drop_duplicates()
             
             # Agar purana DRCODE column hai toh hata do
             if 'DRCODE' in df_input.columns:
                 df_input = df_input.drop(columns=['DRCODE'])
                 
-            # Merge (VLOOKUP equivalent)
+            # Merge (VLOOKUP equivalent based on Route + Agency)
             df_merged = pd.merge(
                 df_input,
                 df_temp_master,
@@ -54,8 +68,8 @@ if uploaded_file is not None:
                 
             df_input = df_merged
             
-            # 4. Positioning Logic: Insert DRCODE right before FGCODE
-            fg_code_column_name = 'FGCODE' # Apne actual material code column ka naam yahan rakhein
+            # --- Step 4: Positioning Logic (Insert DRCODE right before FGCODE) ---
+            fg_code_column_name = 'FGCODE' # Agar material code ka naam kuch aur ho toh yahan change kar sakte hain
             
             if 'DRCODE' in df_input.columns:
                 drc_col = df_input.pop('DRCODE')
@@ -65,16 +79,23 @@ if uploaded_file is not None:
                 else:
                     df_input['DRCODE'] = drc_col
             
-            st.success("DR Codes successfully mapped and inserted!")
+            st.success("✅ DR Codes successfully mapped and inserted right before FGCODE!")
             
-            # 5. Preview updated data on Streamlit UI
+            # --- Step 5: Preview Result ---
+            st.subheader("Processed Data Preview (First 10 Rows)")
             st.dataframe(df_input.head(10))
             
-            # 6. (Optional) Yahan se aapka baaki ka main processing logic shuru ho sakta hai
-            # df_output = your_main_calculation_function(df_input)
+            # Download Button for Final Processed File
+            output_file_name = "Processed_Demand_Output.xlsx"
+            df_input.to_excel(output_file_name, index=False)
             
-            # Download button for processed file
-            # ...
-            
+            with open(output_file_name, "rb") as f:
+                st.download_button(
+                    label="📥 Download Processed Excel File",
+                    data=f,
+                    file_name="Processed_Output.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                
     except Exception as e:
-        st.error(f"Error during processing: {e}")
+        st.error(f"❌ Error during processing: {e}")
