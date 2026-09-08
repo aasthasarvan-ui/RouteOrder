@@ -230,18 +230,29 @@ if uploaded_file is not None:
 
         df_input_raw = pd.read_excel(uploaded_file, header=None)
 
+        # FIXED FG Detection (Looking for "MATERIAL CODE" or exact section headers to avoid matching product codes like FG500007)
         fg_row, fg_col = -1, -1
         for r in range(df_input_raw.shape[0]):
             for c in range(df_input_raw.shape[1]):
                 val = str(df_input_raw.iloc[r, c]).strip().upper()
-                if "FG" in val:
+                if "MATERIAL CODE" in val or val == "FG":
                     fg_row, fg_col = r, c
                     break
             if fg_row != -1:
                 break
 
         if fg_row == -1:
-            st.error("❌ Input file mein 'FG' header nahi mila.")
+            for r in range(df_input_raw.shape[0]):
+                for c in range(df_input_raw.shape[1]):
+                    val = str(df_input_raw.iloc[r, c]).strip().upper()
+                    if val.startswith("FG") and len(val) > 2 and val[2:].isdigit():
+                        fg_row, fg_col = r, c
+                        break
+                if fg_row != -1:
+                    break
+
+        if fg_row == -1:
+            st.error("❌ Input file mein 'MATERIAL CODE' ya 'FG' header nahi mila.")
         else:
             route_num = "22"
             match_route = re.search(r'Route\s*\(?(\d+)\)?', uploaded_file.name, re.IGNORECASE)
@@ -294,8 +305,8 @@ if uploaded_file is not None:
             if existing_drcode_col:
                 target_col_idx = existing_drcode_col
             else:
-                ws.insert_cols(excel_fg_col)
-                target_col_idx = excel_fg_col
+                ws.insert_cols(fg_col + 1)
+                target_col_idx = fg_col + 1
                 ws.cell(row=excel_fg_row, column=target_col_idx, value="DRCODE")
 
             for row_idx in range(excel_fg_row + 1, ws.max_row + 1):
