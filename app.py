@@ -576,7 +576,6 @@ if uploaded_inputs:
                     st.error("❌ 'Output.xlsx' template file repository mein nahi mili.")
                     st.stop()
 
-                # Load Master Mapping Dictionary for background step
                 mapping_dict_bg = {}
                 if os.path.exists(master_path):
                     m_df_bg = pd.read_excel(master_path, sheet_name="Master Data", header=2)
@@ -600,7 +599,7 @@ if uploaded_inputs:
                     file_bytes = uploaded_file.getvalue()
                     df_input_raw = pd.read_excel(io.BytesIO(file_bytes), header=None)
 
-                    # --- FIRST CODE'S BACKGROUND DRCODE INSERTION & MAPPING ENGINE ---
+                    # --- BACKGROUND DRCODE INSERTION & MAPPING ENGINE ---
                     fg_row, fg_col = -1, -1
                     for r in range(df_input_raw.shape[0]):
                         for c in range(df_input_raw.shape[1]):
@@ -646,7 +645,6 @@ if uploaded_inputs:
                         if agency_col_bg == -1 and fg_col > 0:
                             agency_col_bg = fg_col - 1
 
-                        # Openpyxl modify & Universal Formula Shifting
                         wb_mod = openpyxl.load_workbook(io.BytesIO(file_bytes))
                         ws_mod = wb_mod.active
 
@@ -697,10 +695,8 @@ if uploaded_inputs:
                         wb_mod.save(mod_buf)
                         file_bytes = mod_buf.getvalue()
 
-                    # Now process via second code's main extraction logic using modified file bytes
                     df_input = pd.read_excel(io.BytesIO(file_bytes), header=None)
 
-                    # 1. Find FG Row & Col
                     fg_row, fg_col = -1, -1
                     for r in range(df_input.shape[0]):
                         for c in range(df_input.shape[1]):
@@ -714,7 +710,6 @@ if uploaded_inputs:
                     if fg_row == -1:
                         continue
 
-                    # 2. Strict Total/Sum Column Detection
                     total_col = df_input.shape[1]
                     for cSearch in range(fg_col, df_input.shape[1]):
                         is_total = False
@@ -730,7 +725,6 @@ if uploaded_inputs:
                             total_col = cSearch
                             break
 
-                    # 3. Route Number Finding Logic
                     route_num = default_fallback_route if default_fallback_route != "" else "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
 
@@ -755,7 +749,6 @@ if uploaded_inputs:
 
                     safe_route_num = "".join(c if c.isalnum() or c in ('-', '_') else "-" for c in str(route_num))
 
-                    # 4. Smart Agency Detection
                     agency_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         valid_count = 0
@@ -772,7 +765,6 @@ if uploaded_inputs:
                     if agency_col == -1 and fg_col > 0:
                         agency_col = fg_col - 1
 
-                    # 4.1 Strict DR Code Column Detection
                     dr_code_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
                         sample_val = str(df_input.iloc[fg_row, cSearch] if fg_row < df_input.shape[0] else "").strip().upper()
@@ -951,7 +943,6 @@ if uploaded_inputs:
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
 
-                # Update SQLite database
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
                 cursor.executemany("""
@@ -998,11 +989,46 @@ if uploaded_inputs:
         st.warning("⚠️ Kripya pehle demand files upload karein!")
 
 # ==============================================================================
-# SECTION 10: DOWNLOAD HUB & KPI CARDS
+# SECTION 10: KPI METRIC CARDS & EXPORT / DOWNLOAD HUB
 # ==============================================================================
-if st.session_state.processed_files:
+if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("---")
-    st.markdown("### 📥 Download Processed Output Files")
+    st.markdown("### 📈 Batch Performance & KPI Summary")
+    kpi = st.session_state.kpi_data
+
+    total_processed_orders = kpi['valid_count'] + kpi['missing_count']
+    success_rate = (kpi['valid_count'] / total_processed_orders * 100) if total_processed_orders > 0 else 0
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Total Input Qty", f"{kpi['input_qty']:,.0f}")
+    col2.metric("Generated Qty", f"{kpi['gen_qty']:,.0f}")
+    col3.metric("Valid Orders", kpi['valid_count'])
+    col4.metric("Success Rate", f"{success_rate:.1f}%")
+    col5.metric("Skipped Rows", kpi['skipped_count'], delta_color="inverse")
+
+    st.markdown("---")
+    st.markdown("### 📥 Bulk Download & Notifications")
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for item in st.session_state.processed_files:
+            zip_file.writestr(item['filename'], item['data'])
+
+    col_zip, col_print = st.columns(2)
+    with col_zip:
+        st.download_button(
+            label="📦 Download All as ZIP Archive",
+            data=zip_buffer.getvalue(),
+            file_name=f"Batch_Orders_{get_ist_now().strftime('%Y-%m-%d')}.zip",
+            mime="application/zip",
+            key="zip_download"
+        )
+    with col_print:
+        print_html = '<button onclick="parent.window.print()" style="width:100%; height:38px; background:#2563eb; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">🖨️ Print Report</button>'
+        components.html(print_html, height=50)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("##### Individual File Downloads:")
     for i, item in enumerate(st.session_state.processed_files):
         st.download_button(
             label=f"📥 Download {item['filename']}",
@@ -1011,3 +1037,37 @@ if st.session_state.processed_files:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key=f"dl_file_{i}_{item['filename']}"
         )
+
+# ==============================================================================
+# SECTION 11: DATABASES & LEDGERS MANAGEMENT PANEL
+# ==============================================================================
+st.markdown("---")
+with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs & Audit)"):
+    try:
+        conn = sqlite3.connect("sales_history.db")
+        df_master = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
+        df_unmapped = pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger ORDER BY id DESC", conn)
+        df_outputs = pd.read_sql("SELECT id, file_name, file_type, created_at FROM output_files_ledger ORDER BY id DESC", conn)
+        conn.close()
+
+        tab_m1, tab_m2, tab_m3 = st.tabs(["📋 Route-Agency-DR Master", "🚨 Unmapped Missing DR", "📦 Archived Outputs"])
+
+        with tab_m1:
+            if not df_master.empty:
+                st.dataframe(df_master, use_container_width=True)
+            else:
+                st.info("No master records found yet.")
+
+        with tab_m2:
+            if not df_unmapped.empty:
+                st.dataframe(df_unmapped, use_container_width=True)
+            else:
+                st.info("No unmapped missing DR records logged yet.")
+
+        with tab_m3:
+            if not df_outputs.empty:
+                st.dataframe(df_outputs, use_container_width=True)
+            else:
+                st.info("No output files archived yet.")
+    except Exception as e:
+        st.error(f"Error loading databases: {str(e)}")
