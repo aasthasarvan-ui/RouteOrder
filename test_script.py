@@ -11,7 +11,7 @@ st.title("💼 Smart Input & Master DRCODE Mapping Hub (Format Preserved)")
 
 master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
 
-# --- SIDEBAR: MANAGE MASTER DATA (WITH EXACT FORMAT & FORMULA CLONING) ---
+# --- SIDEBAR: MANAGE MASTER DATA (WITH NUMBER TYPE FIX & AUTO-KEY UPDATE) ---
 st.sidebar.header("🛠️ Manage Master Data")
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
 
@@ -33,11 +33,16 @@ if action_choice == "Add New Entry":
                 st.sidebar.error(f"❌ Master file ({master_path}) project folder mein nahi mili!")
             else:
                 try:
-                    r_clean = str(new_route).replace('.0', '').strip()
-                    a_clean = str(new_agency).replace('.0', '').strip()
-                    ag2_clean = str(new_agency2).strip() if new_agency2 else a_clean
+                    r_raw = str(new_route).replace('.0', '').strip()
+                    a_raw = str(new_agency).replace('.0', '').strip()
+                    ag2_raw = str(new_agency2).strip().replace('.0', '') if new_agency2 else a_raw
                     bp_clean = str(new_bp).strip()
                     dr_clean = str(new_drcode).strip()
+                    
+                    # Convert to integer if they are numbers so Excel treats them as numbers (fixing text/number mismatch)
+                    r_val = int(r_raw) if r_raw.isdigit() else r_raw
+                    a_val = int(a_raw) if a_raw.isdigit() else a_raw
+                    ag2_val = int(ag2_raw) if ag2_raw.isdigit() else ag2_raw
                     
                     wb_m = openpyxl.load_workbook(master_path)
                     if "Master Data" in wb_m.sheetnames:
@@ -57,7 +62,7 @@ if action_choice == "Add New Entry":
                             if cell_r is not None and cell_a is not None:
                                 match_r = str(cell_r).replace('.0', '').strip()
                                 match_a = str(cell_a).replace('.0', '').strip()
-                                if match_r == r_clean and match_a == a_clean:
+                                if match_r == str(r_val) and match_a == str(a_val):
                                     is_duplicate = True
                                     break
                                     
@@ -66,26 +71,22 @@ if action_choice == "Add New Entry":
                         else:
                             target_row = max_used_row + 1
                             
-                            # 1. Base values assign karein (Columns A to E)
-                            ws_m.cell(row=target_row, column=1, value=r_clean)
-                            ws_m.cell(row=target_row, column=2, value=a_clean)
+                            # 1. Base values assign karein (As numbers to match format)
+                            ws_m.cell(row=target_row, column=1, value=r_val)
+                            ws_m.cell(row=target_row, column=2, value=a_val)
                             ws_m.cell(row=target_row, column=3, value=bp_clean)
-                            ws_m.cell(row=target_row, column=4, value=ag2_clean)
+                            ws_m.cell(row=target_row, column=4, value=ag2_val)
                             ws_m.cell(row=target_row, column=5, value=dr_clean)
                             
-                            # 2. Helper columns & Formulas setup (jaise upar wale records mein hain)
-                            # Column F: Is_Clean ("YES")
+                            # 2. Helper columns & Formulas setup
                             ws_m.cell(row=target_row, column=6, value="YES")
-                            
-                            # Column G: Clean_Route formula (jaise =A534&"_"&B534 ya similar structure)
                             ws_m.cell(row=target_row, column=7, value=f'=A{target_row}&"_"&B{target_row}')
                             
-                            # Column H onwards: Agar upar wali row mein formulas hain toh unhe clone karein
+                            # 3. Clone styles and formulas from previous row
                             for col in range(1, ws_m.max_column + 1):
                                 prev_cell = ws_m.cell(row=max_used_row, column=col)
                                 curr_cell = ws_m.cell(row=target_row, column=col)
                                 
-                                # Style copy karein taaki font, border, alignment bilkul same rahe
                                 if prev_cell.font:
                                     curr_cell.font = copy(prev_cell.font)
                                 if prev_cell.border:
@@ -95,15 +96,13 @@ if action_choice == "Add New Entry":
                                 if prev_cell.alignment:
                                     curr_cell.alignment = copy(prev_cell.alignment)
                                     
-                                # Agar column H ya uske baad koi formula hai toh usko row ke mutabiq adjust karke copy karein
                                 if col >= 8 and prev_cell.value and str(prev_cell.value).startswith('='):
                                     old_formula = str(prev_cell.value)
-                                    # Row number replace karein formula mein (jaise row 534 ko target_row se)
                                     new_formula = re.sub(r'\d+', str(target_row), old_formula)
                                     curr_cell.value = new_formula
 
                             wb_m.save(master_path)
-                            st.sidebar.success("🎉 Naya record successfully format aur formulas ke sath Master File mein add ho gaya hai!")
+                            st.sidebar.success("🎉 Naya record successfully Number format aur formulas ke sath Master File mein add ho gaya hai!")
                     else:
                         st.sidebar.error("❌ Master file mein 'Master Data' sheet nahi mili.")
                 except Exception as ex:
