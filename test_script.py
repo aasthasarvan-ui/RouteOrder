@@ -11,7 +11,7 @@ st.title("💼 Smart Input & Master DRCODE Mapping Hub (Format Preserved)")
 
 master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
 
-# --- SIDEBAR: MANAGE MASTER DATA (WITH FORMAT & FORMULA CLONING FOR BOTH MASTER & ROUTE SHEETS) ---
+# --- SIDEBAR: MANAGE MASTER DATA (EXACT FORMAT & FORMULA CLONING FOR BOTH MASTER & ROUTE SHEETS) ---
 st.sidebar.header("🛠️ Manage Master Data")
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
 
@@ -97,7 +97,7 @@ if action_choice == "Add New Entry":
                                     new_formula = re.sub(r'(?<!\$)([A-Z]+)(\d+)', lambda m: f"{m.group(1)}{target_row}", old_formula)
                                     curr_cell.value = new_formula
 
-                            # 2. Update Specific Route Sheet (e.g. "Route_9" or "Route_1") with Formatting & Formulas cloned from its previous row
+                            # 2. Update Specific Route Sheet (e.g. "Route_9" or "Route_1") with EXACT FORMAT & FORMULAS cloned from its previous row
                             route_sheet_name = f"Route_{r_raw}"
                             if route_sheet_name in wb_m.sheetnames:
                                 ws_r = wb_m[route_sheet_name]
@@ -115,7 +115,7 @@ if action_choice == "Add New Entry":
                                 ws_r.cell(row=target_r_row, column=4, value=ag2_val)
                                 ws_r.cell(row=target_r_row, column=5, value=dr_clean)
                                 
-                                # Clone styling, formatting and formulas from previous row in Route sheet
+                                # Clone styling, formatting and formulas strictly from previous row in Route sheet
                                 if max_r_row >= 3:
                                     for col in range(1, ws_r.max_column + 1):
                                         p_cell = ws_r.cell(row=max_r_row, column=col)
@@ -125,14 +125,14 @@ if action_choice == "Add New Entry":
                                         if p_cell.fill: c_cell.fill = copy(p_cell.fill)
                                         if p_cell.alignment: c_cell.alignment = copy(p_cell.alignment)
                                         
-                                        # Safely adjust row numbers in formulas if route sheet has formulas
+                                        # Safely adjust row numbers in formulas if route sheet has formulas or filters
                                         if p_cell.value and str(p_cell.value).startswith('='):
                                             old_f = str(p_cell.value)
                                             new_f = re.sub(r'(?<!\$)([A-Z]+)(\d+)', lambda m: f"{m.group(1)}{target_r_row}", old_f)
                                             c_cell.value = new_f
 
                             wb_m.save(master_path)
-                            st.sidebar.success(f"🎉 Record successfully exact formatting aur formulas ke sath Master Data aur {route_sheet_name} mein add ho gaya hai!")
+                            st.sidebar.success(f"🎉 Record successfully exact format aur formulas ke sath Master Data aur {route_sheet_name} mein add ho gaya hai!")
                     else:
                         st.sidebar.error("❌ Master file mein 'Master Data' sheet nahi mili.")
                 except Exception as ex:
