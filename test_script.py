@@ -321,4 +321,5 @@ if uploaded_file is not None:
             )
 
     except Exception as ex_main:
-        st.error(f"❌ Error during processing: {str(ex_main)}") 
+        st.error(f"❌ Error during processing: {str(ex_main)}")  
+        
