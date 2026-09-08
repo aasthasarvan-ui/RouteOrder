@@ -34,25 +34,43 @@ if action_choice == "Add New Entry":
                 try:
                     r_clean = str(new_route).replace('.0', '').strip()
                     a_clean = str(new_agency).replace('.0', '').strip()
+                    ag2_clean = str(new_agency2).strip() if new_agency2 else a_clean
+                    bp_clean = str(new_bp).strip()
+                    dr_clean = str(new_drcode).strip()
                     
                     wb_m = openpyxl.load_workbook(master_path)
                     if "Master Data" in wb_m.sheetnames:
                         ws_m = wb_m["Master Data"]
                         
-                        # Check duplicate by looking through rows starting from row 3
+                        # Check duplicate and find last row accurately
                         is_duplicate = False
+                        max_used_row = 2
+                        
                         for r in range(3, ws_m.max_row + 1):
-                            cell_r = str(ws_m.cell(row=r, column=1).value).replace('.0', '').strip()
-                            cell_a = str(ws_m.cell(row=r, column=2).value).replace('.0', '').strip()
-                            if cell_r == r_clean and cell_a == a_clean:
-                                is_duplicate = True
-                                break
+                            cell_r = ws_m.cell(row=r, column=1).value
+                            cell_a = ws_m.cell(row=r, column=2).value
+                            
+                            if cell_r is not None or cell_a is not None:
+                                max_used_row = r
                                 
+                            if cell_r is not None and cell_a is not None:
+                                match_r = str(cell_r).replace('.0', '').strip()
+                                match_a = str(cell_a).replace('.0', '').strip()
+                                if match_r == r_clean and match_a == a_clean:
+                                    is_duplicate = True
+                                    break
+                                    
                         if is_duplicate:
                             st.sidebar.error(f"⚠️ Duplicate Error: Route '{new_route}' aur Agency '{new_agency}' pehle se Master File mein maujood hain!")
                         else:
-                            ag2_val = str(new_agency2).strip() if new_agency2 else a_clean
-                            ws_m.append([r_clean, a_clean, str(new_bp).strip(), ag2_val, str(new_drcode).strip()])
+                            # Insert right after the last active row to keep formatting intact
+                            target_row = max_used_row + 1
+                            ws_m.cell(row=target_row, column=1, value=r_clean)
+                            ws_m.cell(row=target_row, column=2, value=a_clean)
+                            ws_m.cell(row=target_row, column=3, value=bp_clean)
+                            ws_m.cell(row=target_row, column=4, value=ag2_clean)
+                            ws_m.cell(row=target_row, column=5, value=dr_clean)
+                            
                             wb_m.save(master_path)
                             st.sidebar.success("🎉 Naya record successfully Master File mein add ho gaya!")
                     else:
@@ -68,7 +86,6 @@ elif action_choice == "Delete Entry":
             temp_master_df.columns = temp_master_df.columns.astype(str).str.strip()
             
             if 'Route' in temp_master_df.columns and 'Agency' in temp_master_df.columns:
-                # Clean up display list cleanly removing decimal points for readability
                 temp_master_df['Clean_Route'] = temp_master_df['Route'].astype(str).str.replace('.0', '', regex=False).str.strip()
                 temp_master_df['Clean_Agency'] = temp_master_df['Agency'].astype(str).str.replace('.0', '', regex=False).str.strip()
                 temp_master_df['Display_Label'] = "Route: " + temp_master_df['Clean_Route'] + " | Agency: " + temp_master_df['Clean_Agency'] + " | DRCODE: " + temp_master_df.get('DRCODE', '').astype(str)
@@ -84,7 +101,6 @@ elif action_choice == "Delete Entry":
                     ws_m = wb_m["Master Data"]
                     
                     row_to_delete = None
-                    # Search from row 3 onwards to match Excel rows accurately
                     for r in range(3, ws_m.max_row + 1):
                         r_val = str(ws_m.cell(row=r, column=1).value).replace('.0', '').strip()
                         a_val = str(ws_m.cell(row=r, column=2).value).replace('.0', '').strip()
