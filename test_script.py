@@ -71,7 +71,6 @@ if action_choice == "Add New Entry":
                         else:
                             target_row = max_used_row + 1
                             
-                            # Base values assign karein
                             ws_m.cell(row=target_row, column=1, value=r_val)
                             ws_m.cell(row=target_row, column=2, value=a_val)
                             ws_m.cell(row=target_row, column=3, value=bp_clean)
@@ -79,10 +78,9 @@ if action_choice == "Add New Entry":
                             ws_m.cell(row=target_row, column=5, value=dr_clean)
                             ws_m.cell(row=target_row, column=6, value="YES")
                             
-                            # EXACT COUNTIFS FORMULA (Fixing start range $A$4:$F$4 and updating current row)
+                            # EXACT COUNTIFS FORMULA
                             ws_m.cell(row=target_row, column=7, value=f'=IF(F{target_row}="YES", A{target_row}&"_"&COUNTIFS($A$4:A{target_row}, A{target_row}, $F$4:F{target_row}, "YES"), "")')
                             
-                            # Clone styles from previous row safely
                             for col in range(1, ws_m.max_column + 1):
                                 prev_cell = ws_m.cell(row=max_used_row, column=col)
                                 curr_cell = ws_m.cell(row=target_row, column=col)
@@ -92,7 +90,6 @@ if action_choice == "Add New Entry":
                                 if prev_cell.fill: curr_cell.fill = copy(prev_cell.fill)
                                 if prev_cell.alignment: curr_cell.alignment = copy(prev_cell.alignment)
                                 
-                                # For other formula columns (if any >= 8), update only non-absolute row numbers safely
                                 if col >= 8 and prev_cell.value and str(prev_cell.value).startswith('='):
                                     old_formula = str(prev_cell.value)
                                     new_formula = re.sub(r'(?<!\$)([A-Z]+)(\d+)', lambda m: f"{m.group(1)}{target_row}", old_formula)
@@ -275,7 +272,7 @@ if uploaded_file is not None:
                     break
 
             if agency_col == -1 and fg_col > 0:
-                agency_col = fg_col - 1
+                    agency_col = fg_col - 1
 
             wb = openpyxl.load_workbook(uploaded_file)
             ws = wb.active
@@ -294,10 +291,28 @@ if uploaded_file is not None:
             if existing_drcode_col:
                 target_col_idx = existing_drcode_col
             else:
-                # 🌟 Fixed: removed 'translate' argument so it works cleanly without errors
                 ws.insert_cols(excel_fg_col)
                 target_col_idx = excel_fg_col
                 ws.cell(row=excel_fg_row, column=target_col_idx, value="DRCODE")
+                
+                # 🌟 UNIVERSAL FORMULA SHIFTING (Scans EVERY cell in the sheet; shifts any column letter >= inserted column index)
+                for row in ws.iter_rows():
+                    for cell in row:
+                        if cell.value and str(cell.value).startswith('='):
+                            old_formula = str(cell.value)
+                            def shift_cols_in_formula(match):
+                                col_letters = match.group(1)
+                                row_num = match.group(2)
+                                # Convert column letters to index (e.g., 'G' -> 7)
+                                col_idx = openpyxl.utils.column_index_from_string(col_letters)
+                                if col_idx >= target_col_idx:
+                                    # Shift right by 1 column
+                                    new_col_letter = openpyxl.utils.get_column_letter(col_idx + 1)
+                                    return f"{new_col_letter}{row_num}"
+                                return match.group(0)
+                            
+                            new_formula = re.sub(r'([A-Z]+)(\d+)', shift_cols_in_formula, old_formula)
+                            cell.value = new_formula
 
             for row_idx in range(excel_fg_row + 1, ws.max_row + 1):
                 raw_agency = ws.cell(row=row_idx, column=agency_col + 1).value
@@ -308,7 +323,7 @@ if uploaded_file is not None:
                     assigned_dr = mapping_dict.get(lookup_key, f"NEW_CUST_{agency_str}")
                     ws.cell(row=row_idx, column=target_col_idx, value=assigned_dr)
 
-            st.success(f"✅ Route ({route_num}) & Agency detected successfully! DRCODE mapped and inserted safely.")
+            st.success(f"✅ Route ({route_num}) & Agency detected successfully! DRCODE mapped and all sheet formulas shifted automatically.")
 
             output_buffer = io.BytesIO()
             wb.save(output_buffer)
