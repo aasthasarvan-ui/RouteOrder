@@ -10,10 +10,8 @@ st.title("💼 Smart Input & Master DRCODE Mapping Hub (Format Preserved)")
 
 master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
 
-# --- SIDEBAR: MANAGE MASTER DATA (ADD & DELETE) ---
+# --- SIDEBAR: MANAGE MASTER DATA (ADD & DELETE WITH PANDAS SYNC) ---
 st.sidebar.header("🛠️ Manage Master Data")
-
-# Tab navigation inside sidebar for Add & Delete
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
 
 if action_choice == "Add New Entry":
@@ -34,28 +32,34 @@ if action_choice == "Add New Entry":
                 st.sidebar.error(f"❌ Master file ({master_path}) project folder mein nahi mili!")
             else:
                 try:
-                    wb_m = openpyxl.load_workbook(master_path)
-                    if "Master Data" in wb_m.sheetnames:
-                        ws_m = wb_m["Master Data"]
+                    # Read via pandas (header=2 based on your master sheet structure)
+                    master_df_check = pd.read_excel(master_path, sheet_name="Master Data", header=2)
+                    master_df_check.columns = master_df_check.columns.astype(str).str.strip()
+                    
+                    # Normalize columns to check duplicates
+                    r_clean = str(new_route).replace('.0', '').strip()
+                    a_clean = str(new_agency).replace('.0', '').strip()
+                    
+                    if 'Route' in master_df_check.columns and 'Agency' in master_df_check.columns:
+                        existing_routes = master_df_check['Route'].astype(str).str.replace('.0', '').str.strip()
+                        existing_agencies = master_df_check['Agency'].astype(str).str.replace('.0', '').str.strip()
                         
-                        # Check for duplicate (Route & Agency check in columns A & B starting from row 4)
-                        is_duplicate = False
-                        for r in range(4, ws_m.max_row + 1):
-                            r_val = str(ws_m.cell(row=r, column=1).value).replace('.0', '').strip()
-                            a_val = str(ws_m.cell(row=r, column=2).value).replace('.0', '').strip()
-                            if r_val == str(new_route).strip() and a_val == str(new_agency).strip():
-                                is_duplicate = True
-                                break
-                                
-                        if is_duplicate:
+                        duplicate_mask = (existing_routes == r_clean) & (existing_agencies == a_clean)
+                        if duplicate_mask.any():
                             st.sidebar.error(f"⚠️ Duplicate Error: Route '{new_route}' aur Agency '{new_agency}' pehle se Master File mein maujood hain!")
                         else:
-                            # Append row matching exact columns: Route (A), Agency (B), Business Partner (C), Agency2 (D), DRCODE (E)
-                            ws_m.append([new_route.strip(), new_agency.strip(), new_bp.strip(), new_agency2.strip() if new_agency2 else new_agency.strip(), new_drcode.strip()])
-                            wb_m.save(master_path)
-                            st.sidebar.success("🎉 Naya record successfully Master File mein add ho gaya!")
+                            # Use openpyxl to safely append to exact sheet without disturbing other sheets
+                            wb_m = openpyxl.load_workbook(master_path)
+                            if "Master Data" in wb_m.sheetnames:
+                                ws_m = wb_m["Master Data"]
+                                ag2_val = str(new_agency2).strip() if new_agency2 else a_clean
+                                ws_m.append([r_clean, a_clean, str(new_bp).strip(), ag2_val, str(new_drcode).strip()])
+                                wb_m.save(master_path)
+                                st.sidebar.success("🎉 Naya record successfully Master File mein update/add ho gaya!")
+                            else:
+                                st.sidebar.error("❌ Master file mein 'Master Data' sheet nahi mili.")
                     else:
-                        st.sidebar.error("❌ Master file mein 'Master Data' sheet nahi mili.")
+                        st.sidebar.error("❌ Master file ke columns 'Route' ya 'Agency' nahi mile.")
                 except Exception as ex:
                     st.sidebar.error(f"❌ Error saving master data: {ex}")
 
@@ -67,19 +71,16 @@ elif action_choice == "Delete Entry":
             temp_master_df.columns = temp_master_df.columns.astype(str).str.strip()
             
             if 'Route' in temp_master_df.columns and 'Agency' in temp_master_df.columns:
-                # Create a readable label list for dropdown
                 temp_master_df['Display_Label'] = "Route: " + temp_master_df['Route'].astype(str) + " | Agency: " + temp_master_df['Agency'].astype(str) + " | DRCODE: " + temp_master_df.get('DRCODE', '').astype(str)
                 selected_to_delete = st.sidebar.selectbox("Select Record to Delete", temp_master_df['Display_Label'].tolist())
                 
                 if st.sidebar.button("Delete Selected Record"):
-                    # Find and delete row from openpyxl
-                    wb_m = openpyxl.load_workbook(master_path)
-                    ws_m = wb_m["Master Data"]
-                    
-                    # Parse selected label info
                     parts = selected_to_delete.split(" | ")
                     sel_route = parts[0].replace("Route: ", "").strip()
                     sel_agency = parts[1].replace("Agency: ", "").strip()
+                    
+                    wb_m = openpyxl.load_workbook(master_path)
+                    ws_m = wb_m["Master Data"]
                     
                     row_to_delete = None
                     for r in range(4, ws_m.max_row + 1):
@@ -97,13 +98,13 @@ elif action_choice == "Delete Entry":
                     else:
                         st.sidebar.error("❌ Record delete karne mein match nahi mila.")
             else:
-                st.sidebar.error("❌ Master file ke columns theek se read nahi ho paaye.")
+                st.sidebar.error("❌ Master file ke columns read nahi ho paaye.")
         except Exception as e:
-            st.sidebar.error(f"❌ Error loading master file for deletion: {e}")
+            st.sidebar.error(f"❌ Error loading master file: {e}")
     else:
         st.sidebar.warning("⚠️ Master file project folder mein nahi mili.")
 
-# --- DOWNLOAD UPDATED MASTER FILE BUTTON IN SIDEBAR ---
+# --- DOWNLOAD UPDATED MASTER FILE BUTTON ---
 if os.path.exists(master_path):
     with open(master_path, "rb") as master_f:
         master_bytes = master_f.read()
@@ -122,7 +123,6 @@ master_file_input = st.file_uploader("Upload Master Route File (Optional - agar 
 
 if uploaded_file is not None:
     try:
-        # 1. Load Master Route File
         master_df = None
         mapping_dict = {}
         
@@ -142,7 +142,6 @@ if uploaded_file is not None:
         else:
             st.warning("⚠️ Master file nahi mili. Sabhi agencies ke liye default 'NEW_CUST_' code assign kiya jayega.")
 
-        # Process master data if available
         if master_df is not None:
             master_df.columns = master_df.columns.astype(str).str.strip()
             if 'Route' in master_df.columns and 'Agency' in master_df.columns and 'DRCODE' in master_df.columns:
@@ -152,10 +151,8 @@ if uploaded_file is not None:
                     ag_key = str(r_item['Agency']).replace('.0', '').strip()
                     mapping_dict[(rt_key, ag_key)] = str(r_item['DRCODE']).strip()
 
-        # 2. Read raw dataframe via pandas for smart Route & Agency detection
         df_input_raw = pd.read_excel(uploaded_file, header=None)
 
-        # Find FG Row & Col dynamically
         fg_row, fg_col = -1, -1
         for r in range(df_input_raw.shape[0]):
             for c in range(df_input_raw.shape[1]):
@@ -169,8 +166,7 @@ if uploaded_file is not None:
         if fg_row == -1:
             st.error("❌ Input file mein 'FG' header nahi mila.")
         else:
-            # --- ROUTE DETECTION LOGIC ---
-            route_num = "22"  # Default fallback
+            route_num = "22"
             match_route = re.search(r'Route\s*\(?(\d+)\)?', uploaded_file.name, re.IGNORECASE)
             if match_route:
                 route_num = match_route.group(1)
@@ -188,7 +184,6 @@ if uploaded_file is not None:
                     if route_num != "22":
                         break
 
-            # --- AGENCY COLUMN DETECTION LOGIC ---
             agency_col = -1
             for cSearch in range(fg_col - 1, -1, -1):
                 valid_count = 0
@@ -205,14 +200,12 @@ if uploaded_file is not None:
             if agency_col == -1 and fg_col > 0:
                 agency_col = fg_col - 1
 
-            # --- OPENPYXL WORKFLOW (FORMAT, STYLING & FORMULAS PRESERVED) ---
             wb = openpyxl.load_workbook(uploaded_file)
             ws = wb.active
 
-            excel_fg_row = fg_row + 1  # openpyxl is 1-indexed
+            excel_fg_row = fg_row + 1
             excel_fg_col = fg_col + 1
             
-            # Check if DRCODE column already exists
             existing_drcode_col = None
             for col_idx in range(1, ws.max_column + 1):
                 cell_val = str(ws.cell(row=excel_fg_row, column=col_idx).value).strip().upper()
@@ -220,7 +213,6 @@ if uploaded_file is not None:
                     existing_drcode_col = col_idx
                     break
 
-            # Insert DRCODE column right before FGCODE if not present
             target_col_idx = excel_fg_col
             if existing_drcode_col:
                 target_col_idx = existing_drcode_col
@@ -229,7 +221,6 @@ if uploaded_file is not None:
                 target_col_idx = excel_fg_col
                 ws.cell(row=excel_fg_row, column=target_col_idx, value="DRCODE")
 
-            # Populate mapped DRCODE row by row using detected Route and Agency
             for row_idx in range(excel_fg_row + 1, ws.max_row + 1):
                 raw_agency = ws.cell(row=row_idx, column=agency_col + 1).value
                 agency_str = str(raw_agency).replace('.0', '').strip() if raw_agency is not None else ""
@@ -241,7 +232,6 @@ if uploaded_file is not None:
 
             st.success(f"✅ Route ({route_num}) & Agency detected successfully! DRCODE mapped and inserted right before FGCODE while keeping original file formatting intact.")
 
-            # Save to buffer for download
             output_buffer = io.BytesIO()
             wb.save(output_buffer)
             output_buffer.seek(0)
