@@ -4,13 +4,14 @@ import openpyxl
 import os
 import re
 import io
+from copy import copy
 
 st.set_page_config(page_title="Auto DRCODE Mapping Tool", layout="wide")
 st.title("💼 Smart Input & Master DRCODE Mapping Hub (Format Preserved)")
 
 master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
 
-# --- SIDEBAR: MANAGE MASTER DATA (ROBUST ADD & DELETE WITH AUTO-KEY UPDATE) ---
+# --- SIDEBAR: MANAGE MASTER DATA (WITH EXACT FORMAT & FORMULA CLONING) ---
 st.sidebar.header("🛠️ Manage Master Data")
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
 
@@ -42,7 +43,7 @@ if action_choice == "Add New Entry":
                     if "Master Data" in wb_m.sheetnames:
                         ws_m = wb_m["Master Data"]
                         
-                        # Check duplicate and find last row accurately
+                        # Check duplicate and find last active row
                         is_duplicate = False
                         max_used_row = 2
                         
@@ -63,22 +64,46 @@ if action_choice == "Add New Entry":
                         if is_duplicate:
                             st.sidebar.error(f"⚠️ Duplicate Error: Route '{new_route}' aur Agency '{new_agency}' pehle se Master File mein maujood hain!")
                         else:
-                            # Insert right after the last active row
                             target_row = max_used_row + 1
+                            
+                            # 1. Base values assign karein (Columns A to E)
                             ws_m.cell(row=target_row, column=1, value=r_clean)
                             ws_m.cell(row=target_row, column=2, value=a_clean)
                             ws_m.cell(row=target_row, column=3, value=bp_clean)
                             ws_m.cell(row=target_row, column=4, value=ag2_clean)
                             ws_m.cell(row=target_row, column=5, value=dr_clean)
                             
-                            # --- AUTO-UPDATE HELPER COLUMNS (F, G, H etc. for Route sheets linkage) ---
+                            # 2. Helper columns & Formulas setup (jaise upar wale records mein hain)
                             # Column F: Is_Clean ("YES")
                             ws_m.cell(row=target_row, column=6, value="YES")
-                            # Column G: Clean_Route formula/value (e.g. Route_Agency format used in your sheets)
-                            ws_m.cell(row=target_row, column=7, value=f'={r_clean}&"_"&{a_clean}')
                             
+                            # Column G: Clean_Route formula (jaise =A534&"_"&B534 ya similar structure)
+                            ws_m.cell(row=target_row, column=7, value=f'=A{target_row}&"_"&B{target_row}')
+                            
+                            # Column H onwards: Agar upar wali row mein formulas hain toh unhe clone karein
+                            for col in range(1, ws_m.max_column + 1):
+                                prev_cell = ws_m.cell(row=max_used_row, column=col)
+                                curr_cell = ws_m.cell(row=target_row, column=col)
+                                
+                                # Style copy karein taaki font, border, alignment bilkul same rahe
+                                if prev_cell.font:
+                                    curr_cell.font = copy(prev_cell.font)
+                                if prev_cell.border:
+                                    curr_cell.border = copy(prev_cell.border)
+                                if prev_cell.fill:
+                                    curr_cell.fill = copy(prev_cell.fill)
+                                if prev_cell.alignment:
+                                    curr_cell.alignment = copy(prev_cell.alignment)
+                                    
+                                # Agar column H ya uske baad koi formula hai toh usko row ke mutabiq adjust karke copy karein
+                                if col >= 8 and prev_cell.value and str(prev_cell.value).startswith('='):
+                                    old_formula = str(prev_cell.value)
+                                    # Row number replace karein formula mein (jaise row 534 ko target_row se)
+                                    new_formula = re.sub(r'\d+', str(target_row), old_formula)
+                                    curr_cell.value = new_formula
+
                             wb_m.save(master_path)
-                            st.sidebar.success("🎉 Naya record successfully Master File mein add ho gaya aur route keys update kar di gayi hain!")
+                            st.sidebar.success("🎉 Naya record successfully format aur formulas ke sath Master File mein add ho gaya hai!")
                     else:
                         st.sidebar.error("❌ Master file mein 'Master Data' sheet nahi mili.")
                 except Exception as ex:
