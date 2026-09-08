@@ -11,7 +11,7 @@ st.title("💼 Smart Input & Master DRCODE Mapping Hub (Format Preserved)")
 
 master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
 
-# --- SIDEBAR: MANAGE MASTER DATA (EXACT ORIGINAL LOGIC WITH COUNTIFS & ROUTE SYNC) ---
+# --- SIDEBAR: MANAGE MASTER DATA (FULL ORIGINAL LOGIC WITH COUNTIFS & ROUTE SYNC) ---
 st.sidebar.header("🛠️ Manage Master Data")
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
 
@@ -71,7 +71,6 @@ if action_choice == "Add New Entry":
                         else:
                             target_row = max_used_row + 1
                             
-                            # Base values assign karein
                             ws_m.cell(row=target_row, column=1, value=r_val)
                             ws_m.cell(row=target_row, column=2, value=a_val)
                             ws_m.cell(row=target_row, column=3, value=bp_clean)
@@ -82,7 +81,6 @@ if action_choice == "Add New Entry":
                             # EXACT COUNTIFS FORMULA
                             ws_m.cell(row=target_row, column=7, value=f'=IF(F{target_row}="YES", A{target_row}&"_"&COUNTIFS($A$4:A{target_row}, A{target_row}, $F$4:F{target_row}, "YES"), "")')
                             
-                            # Clone styles from previous row safely
                             for col in range(1, ws_m.max_column + 1):
                                 prev_cell = ws_m.cell(row=max_used_row, column=col)
                                 curr_cell = ws_m.cell(row=target_row, column=col)
@@ -97,7 +95,7 @@ if action_choice == "Add New Entry":
                                     new_formula = re.sub(r'(?<!\$)([A-Z]+)(\d+)', lambda m: f"{m.group(1)}{target_row}", old_formula)
                                     curr_cell.value = new_formula
 
-                            # 2. Update Specific Route Sheet (e.g. "Route_9") safely with format and formula cloning
+                            # 2. Update Specific Route Sheet (e.g. "Route_9") safely
                             route_sheet_name = f"Route_{r_raw}"
                             if route_sheet_name in wb_m.sheetnames:
                                 ws_r = wb_m[route_sheet_name]
@@ -229,7 +227,7 @@ if uploaded_file is not None:
 
         df_input_raw = pd.read_excel(uploaded_file, header=None)
 
-        # FIXED FG Detection (Looking for "MATERIAL CODE" or exact section headers to avoid matching product codes like FG500007)
+        # ROBUST FG/MATERIAL CODE DETECTION (Preventing false matches on product codes like FG500007)
         fg_row, fg_col = -1, -1
         for r in range(df_input_raw.shape[0]):
             for c in range(df_input_raw.shape[1]):
@@ -304,8 +302,8 @@ if uploaded_file is not None:
             if existing_drcode_col:
                 target_col_idx = existing_drcode_col
             else:
-                ws.insert_cols(excel_fg_col)
-                target_col_idx = excel_fg_col
+                ws.insert_cols(fg_col + 1)
+                target_col_idx = fg_col + 1
                 ws.cell(row=excel_fg_row, column=target_col_idx, value="DRCODE")
 
             for row_idx in range(excel_fg_row + 1, ws.max_row + 1):
@@ -317,7 +315,7 @@ if uploaded_file is not None:
                     assigned_dr = mapping_dict.get(lookup_key, f"NEW_CUST_{agency_str}")
                     ws.cell(row=row_idx, column=target_col_idx, value=assigned_dr)
 
-            st.success(f"✅ Route ({route_num}) & Agency detected successfully! DRCODE mapped and inserted right before FGCODE while keeping original file formatting intact.")
+            st.success(f"✅ Route ({route_num}) & Agency detected successfully! DRCODE mapped and inserted safely without disturbing existing summary formulas.")
 
             output_buffer = io.BytesIO()
             wb.save(output_buffer)
