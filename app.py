@@ -29,100 +29,36 @@ st.set_page_config(
 # ==============================================================================
 THEMES = {
     "💼 Classic Enterprise Navy": {
-        "icon": "💼", 
-        "bg": "#f4f6f9", 
-        "text": "#1f2937", 
-        "card_bg": "#ffffff", 
-        "border": "#cbd5e1",
-        "btn_bg": "#1e3a8a", 
-        "btn_hover": "#1d4ed8", 
-        "primary": "#2563eb", 
-        "input_bg": "#ffffff", 
-        "input_text": "#1f2937"
+        "icon": "💼", "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
+        "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
     },
     "🌙 Modern Dark ERP": {
-        "icon": "🌙", 
-        "bg": "#0b0f19", 
-        "text": "#f3f4f6", 
-        "card_bg": "#1f2937", 
-        "border": "#374151",
-        "btn_bg": "#374151", 
-        "btn_hover": "#4b5563", 
-        "primary": "#3b82f6", 
-        "input_bg": "#111827", 
-        "input_text": "#f3f4f6"
+        "icon": "🌙", "bg": "#0b0f19", "text": "#f3f4f6", "card_bg": "#1f2937", "border": "#374151",
+        "btn_bg": "#374151", "btn_hover": "#4b5563", "primary": "#3b82f6", "input_bg": "#111827", "input_text": "#f3f4f6"
     },
     "📊 Corporate Slate": {
-        "icon": "📊", 
-        "bg": "#eef2f5", 
-        "text": "#0f172a", 
-        "card_bg": "#ffffff", 
-        "border": "#94a3b8",
-        "btn_bg": "#475569", 
-        "btn_hover": "#334155", 
-        "primary": "#0284c7", 
-        "input_bg": "#ffffff", 
-        "input_text": "#0f172a"
+        "icon": "📊", "bg": "#eef2f5", "text": "#0f172a", "card_bg": "#ffffff", "border": "#94a3b8",
+        "btn_bg": "#475569", "btn_hover": "#334155", "primary": "#0284c7", "input_bg": "#ffffff", "input_text": "#0f172a"
     },
     "☀️ Clean Light Minimal": {
-        "icon": "☀️", 
-        "bg": "#ffffff", 
-        "text": "#111827", 
-        "card_bg": "#f9fafb", 
-        "border": "#d1d5db",
-        "btn_bg": "#0f172a", 
-        "btn_hover": "#1e293b", 
-        "primary": "#10b981", 
-        "input_bg": "#ffffff", 
-        "input_text": "#111827"
+        "icon": "☀️", "bg": "#ffffff", "text": "#111827", "card_bg": "#f9fafb", "border": "#d1d5db",
+        "btn_bg": "#0f172a", "btn_hover": "#1e293b", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
     },
     "⚡ Cyber Blue": {
-        "icon": "⚡", 
-        "bg": "#f0fdfa", 
-        "text": "#042f2e", 
-        "card_bg": "#ccfbf1", 
-        "border": "#5eead4",
-        "btn_bg": "#0d9488", 
-        "btn_hover": "#0f766e", 
-        "primary": "#14b8a6", 
-        "input_bg": "#ffffff", 
-        "input_text": "#042f2e"
+        "icon": "⚡", "bg": "#f0fdfa", "text": "#042f2e", "card_bg": "#ccfbf1", "border": "#5eead4",
+        "btn_bg": "#0d9488", "btn_hover": "#0f766e", "primary": "#14b8a6", "input_bg": "#ffffff", "input_text": "#042f2e"
     },
     "🌲 Emerald Corporate": {
-        "icon": "🌲", 
-        "bg": "#f0fdf4", 
-        "text": "#14532d", 
-        "card_bg": "#dcfce7", 
-        "border": "#86efac",
-        "btn_bg": "#16a34a", 
-        "btn_hover": "#15803d", 
-        "primary": "#22c55e", 
-        "input_bg": "#ffffff", 
-        "input_text": "#14532d"
+        "icon": "🌲", "bg": "#f0fdf4", "text": "#14532d", "card_bg": "#dcfce7", "border": "#86efac",
+        "btn_bg": "#16a34a", "btn_hover": "#15803d", "primary": "#22c55e", "input_bg": "#ffffff", "input_text": "#14532d"
     },
     "🍇 Executive Burgundy": {
-        "icon": "🍇", 
-        "bg": "#fdf2f8", 
-        "text": "#500724", 
-        "card_bg": "#fce7f3", 
-        "border": "#f472b6",
-        "btn_bg": "#db2777", 
-        "btn_hover": "#be185d", 
-        "primary": "#ec4899", 
-        "input_bg": "#ffffff", 
-        "input_text": "#500724"
+        "icon": "🍇", "bg": "#fdf2f8", "text": "#500724", "card_bg": "#fce7f3", "border": "#f472b6",
+        "btn_bg": "#db2777", "btn_hover": "#be185d", "primary": "#ec4899", "input_bg": "#ffffff", "input_text": "#500724"
     },
     "🪙 Titanium Charcoal": {
-        "icon": "🪙", 
-        "bg": "#18181b", 
-        "text": "#fafafa", 
-        "card_bg": "#27272a", 
-        "border": "#52525b",
-        "btn_bg": "#52525b", 
-        "btn_hover": "#71717a", 
-        "primary": "#e4e4e7", 
-        "input_bg": "#09090b", 
-        "input_text": "#fafafa"
+        "icon": "🪙", "bg": "#18181b", "text": "#fafafa", "card_bg": "#27272a", "border": "#52525b",
+        "btn_bg": "#52525b", "btn_hover": "#71717a", "primary": "#e4e4e7", "input_bg": "#09090b", "input_text": "#fafafa"
     }
 }
 
@@ -945,7 +881,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         st.download_button(label=f"📥 Download {item['name']}", data=item['data'], file_name=item['filename'], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_file_{i}_{item['filename']}")
 
 # ==============================================================================
-# SECTION 10: 5-TAB ENTERPRISE DATABASES & LEDGERS MANAGEMENT PANEL (WITH DELETE & ID RESET)
+# SECTION 10: 5-TAB ENTERPRISE DATABASES & LEDGERS MANAGEMENT PANEL (WITH BULK UPLOAD, MULTI-DELETE & EXCEL EXPORT)
 # ==============================================================================
 st.markdown("---")
 with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs, Traceability & Audit)"):
@@ -966,82 +902,282 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
             "🔍 Discrepancy Audit"
         ])
         
+        # --- TAB 1: MASTER TABLE (WITH MANUAL ENTRY, BULK UPLOAD, MULTI-DELETE & EXCEL EXPORT) ---
         with tab_m1:
+            st.markdown("#### 📋 Route-Agency-DR Master Management")
+            
+            with st.expander("➕ Add Single Entry or Bulk Upload DR Codes"):
+                c_man1, c_man2, c_man3 = st.columns(3)
+                with c_man1:
+                    m_route = st.text_input("Route No", "", key="man_route")
+                with c_man2:
+                    m_agency = st.text_input("Agency No", "", key="man_agency")
+                with c_man3:
+                    m_dr = st.text_input("DR Code (e.g., DR12345)", "", key="man_dr")
+                
+                if st.button("➕ Add Single Entry to Master DB"):
+                    if m_route and m_agency and m_dr:
+                        try:
+                            conn_add = sqlite3.connect("sales_history.db")
+                            cur_add = conn_add.cursor()
+                            cur_add.execute("""
+                                INSERT OR REPLACE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
+                                VALUES (?, ?, ?, ?, ?)
+                            """, ("Manual_Entry", m_route, m_agency, m_dr, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
+                            conn_add.commit()
+                            conn_add.close()
+                            st.success("✅ Entry added successfully!")
+                            st.rerun()
+                        except Exception as ex:
+                            st.error(f"Error: {ex}")
+                    else:
+                        st.warning("⚠️ Route, Agency aur DR Code bharna zaroori hai.")
+
+                st.markdown("---")
+                st.markdown("##### 📁 Bulk Upload CSV / Excel for Master Table")
+                bulk_file = st.file_uploader("Upload CSV/Excel containing route_no, agency_no, dr_code", type=["csv", "xlsx"], key="master_bulk_upload")
+                if bulk_file:
+                    try:
+                        if bulk_file.name.endswith('.csv'):
+                            df_bulk = pd.read_csv(bulk_file)
+                        else:
+                            df_bulk = pd.read_excel(bulk_file)
+                        
+                        if all(col in df_bulk.columns for col in ['route_no', 'agency_no', 'dr_code']):
+                            b_records = []
+                            for _, r_row in df_bulk.iterrows():
+                                b_records.append((str(r_row.get('file_name', 'Bulk_Upload')), str(r_row['route_no']), str(r_row['agency_no']), str(r_row['dr_code']), get_ist_now().strftime("%Y-%m-%d %H:%M:%S")))
+                            
+                            conn_b = sqlite3.connect("sales_history.db")
+                            cur_b = conn_b.cursor()
+                            cur_b.executemany("""
+                                INSERT OR REPLACE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at)
+                                VALUES (?, ?, ?, ?, ?)
+                            """, b_records)
+                            conn_b.commit()
+                            conn_b.close()
+                            st.success(f"✅ Successfully imported {len(b_records)} records in bulk!")
+                            st.rerun()
+                        else:
+                            st.error("❌ File columns must contain: 'route_no', 'agency_no', 'dr_code'")
+                    except Exception as ex:
+                        st.error(f"Bulk upload error: {ex}")
+
             if not df_master.empty:
                 st.dataframe(df_master, use_container_width=True)
-                row_id_to_del = st.number_input("Enter Master Record ID to Delete", min_value=1, step=1, key="row_id_input")
-                if st.button("🗑️ Delete Master Row & Reset ID"):
+                
+                # Excel Export Button for Master Table
+                m_buf = io.BytesIO()
+                df_master.to_excel(m_buf, index=False, sheet_name="Master Data")
+                m_buf.seek(0)
+                st.download_button("📥 Export Master Table to Excel", data=m_buf.getvalue(), file_name="Unique_Routes_Master.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_master_excel")
+
+                st.markdown("##### 🗑️ Multiple / Single Delete & ID Reset")
+                del_ids_master = st.text_input("Enter Record IDs to Delete separated by comma (e.g., 1, 2, 5)", "", key="del_master_ids")
+                if st.button("🗑️ Delete Specified IDs & Reset Master Sequence"):
+                    if del_ids_master:
+                        try:
+                            ids_to_del = [int(i.strip()) for i in del_ids_master.split(",") if i.strip().isdigit()]
+                            if ids_to_del:
+                                conn = sqlite3.connect("sales_history.db")
+                                cursor = conn.cursor()
+                                cursor.executemany("DELETE FROM unique_routes_master WHERE id = ?", [(i,) for i in ids_to_del])
+                                cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
+                                conn.commit()
+                                conn.close()
+                                st.success(f"✅ Selected IDs {ids_to_del} deleted & ID sequence reset!")
+                                st.rerun()
+                        except Exception as ex:
+                            st.error(f"Error: {ex}")
+                
+                if st.button("🚨 Wipe Entire Master Database & Reset IDs", key="wipe_master"):
                     conn = sqlite3.connect("sales_history.db")
                     cursor = conn.cursor()
-                    cursor.execute("DELETE FROM unique_routes_master WHERE id = ?", (row_id_to_del,))
+                    cursor.execute("DELETE FROM unique_routes_master")
                     cursor.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
                     conn.commit()
                     conn.close()
-                    st.success(f"✅ Record ID {row_id_to_del} deleted & ID sequence reset!")
+                    st.success("✅ Master Database wiped & IDs reset!")
                     st.rerun()
             else:
                 st.info("No master records found yet.")
 
+        # --- TAB 2: UNMAPPED MISSING DR LEDGER ---
         with tab_m2:
+            st.markdown("#### 🚨 Unmapped Missing DR Ledger")
             if not df_unmapped.empty:
                 st.dataframe(df_unmapped, use_container_width=True)
-                unmap_del_id = st.number_input("Enter Unmapped Record ID to Delete", min_value=1, step=1, key="unmap_del_id")
-                if st.button("🗑️ Delete Unmapped Record & Reset ID"):
+                
+                um_buf = io.BytesIO()
+                df_unmapped.to_excel(um_buf, index=False, sheet_name="Unmapped Ledger")
+                um_buf.seek(0)
+                st.download_button("📥 Export Unmapped Ledger to Excel", data=um_buf.getvalue(), file_name="Unmapped_Missing_DR_Ledger.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_unmapped_excel")
+
+                del_ids_unmap = st.text_input("Enter Unmapped IDs to Delete separated by comma (e.g., 1, 3)", "", key="del_unmap_ids")
+                if st.button("🗑️ Delete Specified Unmapped IDs & Reset Sequence"):
+                    if del_ids_unmap:
+                        try:
+                            ids_to_del = [int(i.strip()) for i in del_ids_unmap.split(",") if i.strip().isdigit()]
+                            if ids_to_del:
+                                conn = sqlite3.connect("sales_history.db")
+                                cursor = conn.cursor()
+                                cursor.executemany("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", [(i,) for i in ids_to_del])
+                                cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
+                                conn.commit()
+                                conn.close()
+                                st.success("✅ Selected unmapped records deleted & ID sequence reset!")
+                                st.rerun()
+                        except Exception as ex:
+                            st.error(f"Error: {ex}")
+
+                if st.button("🚨 Wipe Unmapped Ledger & Reset IDs", key="wipe_unmap"):
                     conn = sqlite3.connect("sales_history.db")
                     cursor = conn.cursor()
-                    cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
+                    cursor.execute("DELETE FROM unmapped_missing_dr_ledger")
                     cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
                     conn.commit()
                     conn.close()
-                    st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted & ID sequence reset!")
+                    st.success("✅ Unmapped ledger wiped & IDs reset!")
                     st.rerun()
             else:
                 st.info("No unmapped missing DR records logged yet.")
 
+        # --- TAB 3: ARCHIVED OUTPUTS (WITH EXCEL DOWNLOAD & EXPORT) ---
         with tab_m3:
+            st.markdown("#### 📦 Archived Output Files Ledger")
             if not df_outputs.empty:
                 st.dataframe(df_outputs, use_container_width=True)
-                delete_arch_id = st.number_input("Enter Archived File ID to Delete", min_value=1, step=1, key="del_arch_id_input")
-                if st.button("🗑️ Delete Archived File & Reset ID"):
+                
+                # Export Output Ledger Summary to Excel
+                out_sum_buf = io.BytesIO()
+                df_outputs.to_excel(out_sum_buf, index=False, sheet_name="Output Files Ledger")
+                out_sum_buf.seek(0)
+                st.download_button("📥 Export Output Files Summary to Excel", data=out_sum_buf.getvalue(), file_name="Output_Files_Ledger_Summary.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_output_summary_excel")
+
+                st.markdown("---")
+                sel_out_id = st.number_input("Enter Archived File ID to Download", min_value=1, step=1, key="dl_arch_file_id")
+                if st.button("📥 Download Specific Archived File"):
                     conn = sqlite3.connect("sales_history.db")
                     cursor = conn.cursor()
-                    cursor.execute("DELETE FROM output_files_ledger WHERE id = ?", (delete_arch_id,))
+                    cursor.execute("SELECT file_name, file_data FROM output_files_ledger WHERE id = ?", (sel_out_id,))
+                    row_res = cursor.fetchone()
+                    conn.close()
+                    if row_res:
+                        st.download_button(
+                            label=f"💾 Click here to download '{row_res[0]}'",
+                            data=row_res[1],
+                            file_name=row_res[0],
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key=f"dl_blob_{sel_out_id}"
+                        )
+                    else:
+                        st.warning("⚠️ Invalid ID or file not found in database.")
+
+                del_ids_out = st.text_input("Enter Archived File IDs to Delete separated by comma (e.g., 2, 4)", "", key="del_out_ids")
+                if st.button("🗑️ Delete Specified Archived Files & Reset Sequence"):
+                    if del_ids_out:
+                        try:
+                            ids_to_del = [int(i.strip()) for i in del_ids_out.split(",") if i.strip().isdigit()]
+                            if ids_to_del:
+                                conn = sqlite3.connect("sales_history.db")
+                                cursor = conn.cursor()
+                                cursor.executemany("DELETE FROM output_files_ledger WHERE id = ?", [(i,) for i in ids_to_del])
+                                cursor.execute("DELETE FROM sqlite_sequence WHERE name='output_files_ledger'")
+                                conn.commit()
+                                conn.close()
+                                st.success("✅ Selected archived files deleted & ID sequence reset!")
+                                st.rerun()
+                        except Exception as ex:
+                            st.error(f"Error: {ex}")
+
+                if st.button("🚨 Wipe All Archived Outputs & Reset IDs", key="wipe_outputs"):
+                    conn = sqlite3.connect("sales_history.db")
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM output_files_ledger")
                     cursor.execute("DELETE FROM sqlite_sequence WHERE name='output_files_ledger'")
                     conn.commit()
                     conn.close()
-                    st.success(f"✅ Archived File ID {delete_arch_id} deleted & ID sequence reset!")
+                    st.success("✅ Output files ledger wiped & IDs reset!")
                     st.rerun()
             else:
                 st.info("No output files archived yet.")
 
+        # --- TAB 4: TRACEABILITY LEDGER ---
         with tab_m4:
+            st.markdown("#### 🔗 Input-Output Traceability Ledger")
             if not df_trace.empty:
                 st.dataframe(df_trace, use_container_width=True)
-                trace_del_id = st.number_input("Enter Traceability Record ID to Delete", min_value=1, step=1, key="trace_del_id")
-                if st.button("🗑️ Delete Traceability Record & Reset ID"):
+                
+                tr_buf = io.BytesIO()
+                df_trace.to_excel(tr_buf, index=False, sheet_name="Traceability Ledger")
+                tr_buf.seek(0)
+                st.download_button("📥 Export Traceability Ledger to Excel", data=tr_buf.getvalue(), file_name="Input_Output_Traceability.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_trace_excel")
+
+                del_ids_trace = st.text_input("Enter Traceability IDs to Delete separated by comma (e.g., 1, 2)", "", key="del_trace_ids")
+                if st.button("🗑️ Delete Specified Traceability IDs & Reset Sequence"):
+                    if del_ids_trace:
+                        try:
+                            ids_to_del = [int(i.strip()) for i in del_ids_trace.split(",") if i.strip().isdigit()]
+                            if ids_to_del:
+                                conn = sqlite3.connect("sales_history.db")
+                                cursor = conn.cursor()
+                                cursor.executemany("DELETE FROM input_output_traceability WHERE id = ?", [(i,) for i in ids_to_del])
+                                cursor.execute("DELETE FROM sqlite_sequence WHERE name='input_output_traceability'")
+                                conn.commit()
+                                conn.close()
+                                st.success("✅ Selected traceability records deleted & ID sequence reset!")
+                                st.rerun()
+                        except Exception as ex:
+                            st.error(f"Error: {ex}")
+
+                if st.button("🚨 Wipe Traceability Ledger & Reset IDs", key="wipe_trace"):
                     conn = sqlite3.connect("sales_history.db")
                     cursor = conn.cursor()
-                    cursor.execute("DELETE FROM input_output_traceability WHERE id = ?", (trace_del_id,))
+                    cursor.execute("DELETE FROM input_output_traceability")
                     cursor.execute("DELETE FROM sqlite_sequence WHERE name='input_output_traceability'")
                     conn.commit()
                     conn.close()
-                    st.success(f"✅ Traceability Record ID {trace_del_id} deleted & ID sequence reset!")
+                    st.success("✅ Traceability ledger wiped & IDs reset!")
                     st.rerun()
             else:
-                st.info("No traceability mapping records found yet.")
+                st.info("No traceability records found yet.")
 
+        # --- TAB 5: DISCREPANCY AUDIT LEDGER ---
         with tab_m5:
+            st.markdown("#### 🔍 Discrepancy Audit Ledger")
             if not df_audit.empty:
                 st.dataframe(df_audit, use_container_width=True)
-                audit_del_id = st.number_input("Enter Discrepancy Record ID to Delete", min_value=1, step=1, key="audit_del_id")
-                if st.button("🗑️ Delete Discrepancy Record & Reset ID"):
+                
+                aud_buf = io.BytesIO()
+                df_audit.to_excel(aud_buf, index=False, sheet_name="Audit Ledger")
+                aud_buf.seek(0)
+                st.download_button("📥 Export Audit Ledger to Excel", data=aud_buf.getvalue(), file_name="Discrepancy_Audit_Ledger.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_audit_excel")
+
+                del_ids_audit = st.text_input("Enter Audit IDs to Delete separated by comma (e.g., 1)", "", key="del_audit_ids")
+                if st.button("🗑️ Delete Specified Audit IDs & Reset Sequence"):
+                    if del_ids_audit:
+                        try:
+                            ids_to_del = [int(i.strip()) for i in del_ids_audit.split(",") if i.strip().isdigit()]
+                            if ids_to_del:
+                                conn = sqlite3.connect("sales_history.db")
+                                cursor = conn.cursor()
+                                cursor.executemany("DELETE FROM discrepancy_audit_ledger WHERE id = ?", [(i,) for i in ids_to_del])
+                                cursor.execute("DELETE FROM sqlite_sequence WHERE name='discrepancy_audit_ledger'")
+                                conn.commit()
+                                conn.close()
+                                st.success("✅ Selected audit records deleted & ID sequence reset!")
+                                st.rerun()
+                        except Exception as ex:
+                            st.error(f"Error: {ex}")
+
+                if st.button("🚨 Wipe Audit Ledger & Reset IDs", key="wipe_audit"):
                     conn = sqlite3.connect("sales_history.db")
                     cursor = conn.cursor()
-                    cursor.execute("DELETE FROM discrepancy_audit_ledger WHERE id = ?", (audit_del_id,))
+                    cursor.execute("DELETE FROM discrepancy_audit_ledger")
                     cursor.execute("DELETE FROM sqlite_sequence WHERE name='discrepancy_audit_ledger'")
                     conn.commit()
                     conn.close()
-                    st.success(f"✅ Discrepancy Record ID {audit_del_id} deleted & ID sequence reset!")
+                    st.success("✅ Audit ledger wiped & IDs reset!")
                     st.rerun()
             else:
                 st.success("🟢 No discrepancies logged in current batch cycles!")
@@ -1050,7 +1186,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
         st.error(f"Error loading databases: {str(e)}")
 
 # ==============================================================================
-# SECTION 11: DYNAMIC MODULE & FEATURE AUTOMATIC IMPLEMENTATION HUB
+# SECTION 11: DYNAMIC MODULE HUB
 # ==============================================================================
 st.markdown("---")
 with st.expander("🔌 Dynamic Module & Feature Integration Hub (Auto-Implement & Link)", expanded=True):
