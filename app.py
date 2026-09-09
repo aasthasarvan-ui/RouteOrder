@@ -13,8 +13,6 @@ import urllib.parse
 from email.message import EmailMessage
 from fpdf import FPDF
 import streamlit.components.v1 as components
-from copy import copy
-import os
 
 # ==============================================================================
 # SECTION 1: STREAMLIT PAGE CONFIGURATION & METADATA
@@ -26,43 +24,105 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"
-
 # ==============================================================================
 # SECTION 2: 8 ENTERPRISE COLOR PALETTES & THEME DEFINITIONS
 # ==============================================================================
 THEMES = {
     "💼 Classic Enterprise Navy": {
-        "icon": "💼", "bg": "#f4f6f9", "text": "#1f2937", "card_bg": "#ffffff", "border": "#cbd5e1",
-        "btn_bg": "#1e3a8a", "btn_hover": "#1d4ed8", "primary": "#2563eb", "input_bg": "#ffffff", "input_text": "#1f2937"
+        "icon": "💼", 
+        "bg": "#f4f6f9", 
+        "text": "#1f2937", 
+        "card_bg": "#ffffff", 
+        "border": "#cbd5e1",
+        "btn_bg": "#1e3a8a", 
+        "btn_hover": "#1d4ed8", 
+        "primary": "#2563eb", 
+        "input_bg": "#ffffff", 
+        "input_text": "#1f2937"
     },
     "🌙 Modern Dark ERP": {
-        "icon": "🌙", "bg": "#0b0f19", "text": "#f3f4f6", "card_bg": "#1f2937", "border": "#374151",
-        "btn_bg": "#374151", "btn_hover": "#4b5563", "primary": "#3b82f6", "input_bg": "#111827", "input_text": "#f3f4f6"
+        "icon": "🌙", 
+        "bg": "#0b0f19", 
+        "text": "#f3f4f6", 
+        "card_bg": "#1f2937", 
+        "border": "#374151",
+        "btn_bg": "#374151", 
+        "btn_hover": "#4b5563", 
+        "primary": "#3b82f6", 
+        "input_bg": "#111827", 
+        "input_text": "#f3f4f6"
     },
     "📊 Corporate Slate": {
-        "icon": "📊", "bg": "#eef2f5", "text": "#0f172a", "card_bg": "#ffffff", "border": "#94a3b8",
-        "btn_bg": "#475569", "btn_hover": "#334155", "primary": "#0284c7", "input_bg": "#ffffff", "input_text": "#0f172a"
+        "icon": "📊", 
+        "bg": "#eef2f5", 
+        "text": "#0f172a", 
+        "card_bg": "#ffffff", 
+        "border": "#94a3b8",
+        "btn_bg": "#475569", 
+        "btn_hover": "#334155", 
+        "primary": "#0284c7", 
+        "input_bg": "#ffffff", 
+        "input_text": "#0f172a"
     },
     "☀️ Clean Light Minimal": {
-        "icon": "☀️", "bg": "#ffffff", "text": "#111827", "card_bg": "#f9fafb", "border": "#d1d5db",
-        "btn_bg": "#0f172a", "btn_hover": "#1e293b", "primary": "#10b981", "input_bg": "#ffffff", "input_text": "#111827"
+        "icon": "☀️", 
+        "bg": "#ffffff", 
+        "text": "#111827", 
+        "card_bg": "#f9fafb", 
+        "border": "#d1d5db",
+        "btn_bg": "#0f172a", 
+        "btn_hover": "#1e293b", 
+        "primary": "#10b981", 
+        "input_bg": "#ffffff", 
+        "input_text": "#111827"
     },
     "⚡ Cyber Blue": {
-        "icon": "⚡", "bg": "#f0fdfa", "text": "#042f2e", "card_bg": "#ccfbf1", "border": "#5eead4",
-        "btn_bg": "#0d9488", "btn_hover": "#0f766e", "primary": "#14b8a6", "input_bg": "#ffffff", "input_text": "#042f2e"
+        "icon": "⚡", 
+        "bg": "#f0fdfa", 
+        "text": "#042f2e", 
+        "card_bg": "#ccfbf1", 
+        "border": "#5eead4",
+        "btn_bg": "#0d9488", 
+        "btn_hover": "#0f766e", 
+        "primary": "#14b8a6", 
+        "input_bg": "#ffffff", 
+        "input_text": "#042f2e"
     },
     "🌲 Emerald Corporate": {
-        "icon": "🌲", "bg": "#f0fdf4", "text": "#14532d", "card_bg": "#dcfce7", "border": "#86efac",
-        "btn_bg": "#16a34a", "btn_hover": "#15803d", "primary": "#22c55e", "input_bg": "#ffffff", "input_text": "#14532d"
+        "icon": "🌲", 
+        "bg": "#f0fdf4", 
+        "text": "#14532d", 
+        "card_bg": "#dcfce7", 
+        "border": "#86efac",
+        "btn_bg": "#16a34a", 
+        "btn_hover": "#15803d", 
+        "primary": "#22c55e", 
+        "input_bg": "#ffffff", 
+        "input_text": "#14532d"
     },
     "🍇 Executive Burgundy": {
-        "icon": "🍇", "bg": "#fdf2f8", "text": "#500724", "card_bg": "#fce7f3", "border": "#f472b6",
-        "btn_bg": "#db2777", "btn_hover": "#be185d", "primary": "#ec4899", "input_bg": "#ffffff", "input_text": "#500724"
+        "icon": "🍇", 
+        "bg": "#fdf2f8", 
+        "text": "#500724", 
+        "card_bg": "#fce7f3", 
+        "border": "#f472b6",
+        "btn_bg": "#db2777", 
+        "btn_hover": "#be185d", 
+        "primary": "#ec4899", 
+        "input_bg": "#ffffff", 
+        "input_text": "#500724"
     },
     "🪙 Titanium Charcoal": {
-        "icon": "🪙", "bg": "#18181b", "text": "#fafafa", "card_bg": "#27272a", "border": "#52525b",
-        "btn_bg": "#52525b", "btn_hover": "#71717a", "primary": "#e4e4e7", "input_bg": "#09090b", "input_text": "#fafafa"
+        "icon": "🪙", 
+        "bg": "#18181b", 
+        "text": "#fafafa", 
+        "card_bg": "#27272a", 
+        "border": "#52525b",
+        "btn_bg": "#52525b", 
+        "btn_hover": "#71717a", 
+        "primary": "#e4e4e7", 
+        "input_bg": "#09090b", 
+        "input_text": "#fafafa"
     }
 }
 
@@ -84,7 +144,7 @@ def verify_core_integrity():
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
         existing_tables = [row[0] for row in cursor.fetchall()]
         conn.close()
-
+        
         required_tables = [
             'history_logs', 
             'unique_routes_master', 
@@ -103,7 +163,7 @@ def verify_core_integrity():
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
-
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS history_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,12 +231,12 @@ def init_db():
             logged_at TEXT
         )
     """)
-
+    
     cursor.execute("PRAGMA table_info(unique_routes_master)")
     columns = [col[1] for col in cursor.fetchall()]
     if "file_name" not in columns:
         cursor.execute("ALTER TABLE unique_routes_master ADD COLUMN file_name TEXT")
-
+        
     conn.commit()
     conn.close()
 
@@ -281,179 +341,11 @@ st.markdown(
 )
 
 # ==============================================================================
-# SECTION 7: SIDEBAR - MANAGE MASTER DATA (FROM FIRST CODE - EXACT COUNTIFS)
+# SECTION 7: CONTROL PANEL & ERP SYSTEM SETTINGS
 # ==============================================================================
-st.sidebar.header("🛠️ Manage Master Data")
-action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
-
-if action_choice == "Add New Entry":
-    with st.sidebar.form("add_master_form", clear_on_submit=True):
-        st.subheader("➕ Add Master Record")
-        new_route = st.text_input("Route Number")
-        new_agency = st.text_input("Agency ID")
-        new_bp = st.text_input("Business Partner Name")
-        new_agency2 = st.text_input("Agency2 (Optional / Same as Agency)")
-        new_drcode = st.text_input("DRCODE")
-
-        submit_master = st.form_submit_button("Save to Master File")
-
-        if submit_master:
-            if not new_route or not new_agency or not new_drcode:
-                st.sidebar.error("❌ Route, Agency, aur DRCODE bharna zaroori hai!")
-            elif not os.path.exists(master_path):
-                st.sidebar.error(f"❌ Master file ({master_path}) project folder mein nahi mili!")
-            else:
-                try:
-                    r_raw = str(new_route).replace('.0', '').strip()
-                    a_raw = str(new_agency).replace('.0', '').strip()
-                    ag2_raw = str(new_agency2).strip().replace('.0', '') if new_agency2 else a_raw
-                    bp_clean = str(new_bp).strip()
-                    dr_clean = str(new_drcode).strip()
-
-                    r_val = int(r_raw) if r_raw.isdigit() else r_raw
-                    a_val = int(a_raw) if a_raw.isdigit() else a_raw
-                    ag2_val = int(ag2_raw) if ag2_raw.isdigit() else ag2_raw
-
-                    wb_m = openpyxl.load_workbook(master_path)
-
-                    if "Master Data" in wb_m.sheetnames:
-                        ws_m = wb_m["Master Data"]
-                        is_duplicate = False
-                        max_used_row = 2
-
-                        for r in range(3, ws_m.max_row + 1):
-                            cell_r = ws_m.cell(row=r, column=1).value
-                            cell_a = ws_m.cell(row=r, column=2).value
-
-                            if cell_r is not None or cell_a is not None:
-                                max_used_row = r
-
-                            if cell_r is not None and cell_a is not None:
-                                match_r = str(cell_r).replace('.0', '').strip()
-                                match_a = str(cell_a).replace('.0', '').strip()
-                                if match_r == str(r_val) and match_a == str(a_val):
-                                    is_duplicate = True
-                                    break
-
-                        if is_duplicate:
-                            st.sidebar.error(f"⚠️ Duplicate Error: Route '{new_route}' aur Agency '{new_agency}' pehle se Master File mein maujood hain!")
-                        else:
-                            target_row = max_used_row + 1
-
-                            ws_m.cell(row=target_row, column=1, value=r_val)
-                            ws_m.cell(row=target_row, column=2, value=a_val)
-                            ws_m.cell(row=target_row, column=3, value=bp_clean)
-                            ws_m.cell(row=target_row, column=4, value=ag2_val)
-                            ws_m.cell(row=target_row, column=5, value=dr_clean)
-                            ws_m.cell(row=target_row, column=6, value="YES")
-
-                            ws_m.cell(row=target_row, column=7, value=f'=IF(F{target_row}="YES", A{target_row}&"_"&COUNTIFS($A$4:A{target_row}, A{target_row}, $F$4:F{target_row}, "YES"), "")')
-
-                            for col in range(1, ws_m.max_column + 1):
-                                prev_cell = ws_m.cell(row=max_used_row, column=col)
-                                curr_cell = ws_m.cell(row=target_row, column=col)
-
-                                if prev_cell.font: curr_cell.font = copy(prev_cell.font)
-                                if prev_cell.border: curr_cell.border = copy(prev_cell.border)
-                                if prev_cell.fill: curr_cell.fill = copy(prev_cell.fill)
-                                if prev_cell.alignment: curr_cell.alignment = copy(prev_cell.alignment)
-
-                                if col >= 8 and prev_cell.value and str(prev_cell.value).startswith('='):
-                                    old_formula = str(prev_cell.value)
-                                    new_formula = re.sub(r'(?<!\$)([A-Z]+)(\d+)', lambda m: f"{m.group(1)}{target_row}", old_formula)
-                                    curr_cell.value = new_formula
-
-                            route_sheet_name = f"Route_{r_raw}"
-                            if route_sheet_name in wb_m.sheetnames:
-                                ws_r = wb_m[route_sheet_name]
-                                max_r_row = ws_r.max_row
-                                for r_chk in range(ws_r.max_row, 0, -1):
-                                    if ws_r.cell(row=r_chk, column=1).value is not None or ws_r.cell(row=r_chk, column=2).value is not None:
-                                        max_r_row = r_chk
-                                        break
-
-                                target_r_row = max_r_row + 1
-                                ws_r.cell(row=target_r_row, column=1, value=r_val)
-                                ws_r.cell(row=target_r_row, column=2, value=a_val)
-                                ws_r.cell(row=target_r_row, column=3, value=bp_clean)
-                                ws_r.cell(row=target_r_row, column=4, value=ag2_val)
-                                ws_r.cell(row=target_r_row, column=5, value=dr_clean)
-
-                                if max_r_row >= 3:
-                                    for col in range(1, ws_r.max_column + 1):
-                                        p_cell = ws_r.cell(row=max_r_row, column=col)
-                                        c_cell = ws_r.cell(row=target_r_row, column=col)
-                                        if p_cell.font: c_cell.font = copy(p_cell.font)
-                                        if p_cell.border: c_cell.border = copy(p_cell.border)
-                                        if p_cell.fill: c_cell.fill = copy(p_cell.fill)
-                                        if p_cell.alignment: c_cell.alignment = copy(p_cell.alignment)
-
-                                        if p_cell.value and str(p_cell.value).startswith('='):
-                                            old_f = str(p_cell.value)
-                                            new_f = re.sub(r'(?<!\$)([A-Z]+)(\d+)', lambda m: f"{m.group(1)}{target_r_row}", old_f)
-                                            c_cell.value = new_f
-
-                            wb_m.save(master_path)
-                            st.sidebar.success(f"🎉 Record successfully added to Master Data and {route_sheet_name}!")
-                    else:
-                        st.sidebar.error("❌ Master file mein 'Master Data' sheet nahi mili.")
-                except Exception as ex:
-                    st.sidebar.error(f"❌ Error saving master data: {ex}")
-
-elif action_choice == "Delete Entry":
-    st.sidebar.subheader("🗑️ Delete Master Record")
-    if os.path.exists(master_path):
-        try:
-            temp_master_df = pd.read_excel(master_path, sheet_name="Master Data", header=2)
-            temp_master_df.columns = temp_master_df.columns.astype(str).str.strip()
-
-            if 'Route' in temp_master_df.columns and 'Agency' in temp_master_df.columns:
-                temp_master_df['Clean_Route'] = temp_master_df['Route'].astype(str).str.replace('.0', '', regex=False).str.strip()
-                temp_master_df['Clean_Agency'] = temp_master_df['Agency'].astype(str).str.replace('.0', '', regex=False).str.strip()
-                temp_master_df['Display_Label'] = "Route: " + temp_master_df['Clean_Route'] + " | Agency: " + temp_master_df['Clean_Agency'] + " | DRCODE: " + temp_master_df.get('DRCODE', '').astype(str)
-
-                selected_to_delete = st.sidebar.selectbox("Select Record to Delete", temp_master_df['Display_Label'].tolist())
-
-                if st.sidebar.button("Delete Selected Record"):
-                    parts = selected_to_delete.split(" | ")
-                    sel_route = parts[0].replace("Route: ", "").strip()
-                    sel_agency = parts[1].replace("Agency: ", "").strip()
-
-                    wb_m = openpyxl.load_workbook(master_path)
-                    ws_m = wb_m["Master Data"]
-
-                    row_to_delete = None
-                    for r in range(3, ws_m.max_row + 1):
-                        r_val = str(ws_m.cell(row=r, column=1).value).replace('.0', '').strip()
-                        a_val = str(ws_m.cell(row=r, column=2).value).replace('.0', '').strip()
-                        if r_val == sel_route and a_val == sel_agency:
-                            row_to_delete = r
-                            break
-
-                    if row_to_delete:
-                        ws_m.delete_rows(row_to_delete)
-                        wb_m.save(master_path)
-                        st.sidebar.success(f"🗑️ Record successfully delete ho gaya!")
-                        st.rerun()
-        except Exception as e:
-            st.sidebar.error(f"❌ Error: {e}")
-
-if os.path.exists(master_path):
-    with open(master_path, "rb") as master_f:
-        master_bytes = master_f.read()
-        st.sidebar.download_button(
-            label="📥 Download Updated Master File",
-            data=master_bytes,
-            file_name="Business_Partners_Master_Updated.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-# ==============================================================================
-# SECTION 8: CONTROL PANEL & ERP SYSTEM SETTINGS
-# ==============================================================================
-with st.expander("⚙️ Enterprise Control Panel, Theme Engine & System Settings (Click to Expand)", expanded=False):
+with st.expander("⚙️ Enterprise Control Panel, Theme Engine & System Settings (Click to Expand)", expanded=True):
     st.subheader("🎨 Theme Engine (8 Professional Themes)")
-
+    
     def on_theme_change():
         st.session_state.selected_theme = st.session_state.theme_selectbox
 
@@ -468,14 +360,14 @@ with st.expander("⚙️ Enterprise Control Panel, Theme Engine & System Setting
     st.markdown("---")
 
     col_set1, col_set2, col_set3 = st.columns(3)
-
+    
     with col_set1:
         st.subheader("Default Fallback FG Code")
         st.session_state.fg_code = st.text_input("FG Code Input", value=st.session_state.fg_code, label_visibility="collapsed")
         c1, c2 = st.columns(2)
         if c1.button("Clear FG"): st.session_state.fg_code = ""; st.rerun()
         if c2.button("Restore FG"): st.session_state.fg_code = DEFAULTS["fg_code"]; st.rerun()
-
+        
         st.subheader("Default Route Fallback")
         st.session_state.route = st.text_input("Route Input", value=st.session_state.route, label_visibility="collapsed")
         c1, c2 = st.columns(2)
@@ -539,53 +431,64 @@ for line in agency_fg_override.split('\n'):
             agency_col_override_map[(int(ag), int(col_idx))] = fg
 
 # ==============================================================================
-# SECTION 9: PRIMARY WORKFLOW: INBOUND DEMAND EXTRACTION & BACKGROUND MAPPING
+# SECTION 8: PRIMARY WORKFLOW: INBOUND DEMAND EXTRACTION & PROCESSING
 # ==============================================================================
 st.title(f"💼 Enterprise Sales Order Automation Hub ({st.session_state.selected_theme})")
-st.markdown("Upload multiple **Inbound Demand Files**. Background engine will auto-map DRCODEs, insert columns, shift formulas, and process orders.")
+st.markdown("Upload multiple **Inbound Demand Files** to process orders, auto-lookup missing DRs, log valid unmapped entries, and archive outputs.")
 st.markdown("---")
 
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True, key="inputs")
 
 if uploaded_inputs:
-    if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
+    with st.expander("🔍 Pre-flight File Health Check Report", expanded=False):
+        preflight_logs = []
+        for uploaded_file in uploaded_inputs:
+            short_filename = uploaded_file.name
+            if short_filename.lower() == "output.xlsx":
+                continue
+            try:
+                df_prev = pd.read_excel(io.BytesIO(uploaded_file.getvalue()), header=None)
+                fg_found = any("FG" in str(df_prev.iloc[r, c]).strip().upper() for r in range(df_prev.shape[0]) for c in range(df_prev.shape[1]))
+                if fg_found:
+                    preflight_logs.append({"File Name": short_filename, "Health Status": "🟢 Healthy", "Details": "FG Header detected successfully"})
+                else:
+                    preflight_logs.append({"File Name": short_filename, "Health Status": "🔴 Warning", "Details": "'FG' header missing"})
+            except Exception as e:
+                preflight_logs.append({"File Name": short_filename, "Health Status": "❌ Corrupt", "Details": str(e)})
+        if preflight_logs:
+            st.dataframe(pd.DataFrame(preflight_logs), use_container_width=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
+    if uploaded_inputs:
         st.session_state.processed_files = []
         st.session_state.comparison_summary = []
         st.session_state.skipped_rows_log = []
         st.session_state.anomaly_logs = []
         st.session_state.unmapped_current_batch = []
-
+        
         total_input_qty = 0
         total_gen_qty = 0
         total_valid_orders = 0
         total_missing_orders = 0
         total_skipped_rows = 0
-
+        
         db_records_to_insert = []
         unmapped_records_to_insert = []
         output_files_to_store = []
         traceability_records = []
         discrepancy_records = []
-
-        with st.spinner("⚡ Running Background DRCODE Mapping, Formula Shifting & Processing... Please wait."):
+        
+        with st.spinner("⚡ Reading files, auto-looking up missing DRs, logging valid unmapped entries... Please wait."):
             try:
                 try:
                     with open("Output.xlsx", "rb") as f:
                         template_bytes = f.read()
                 except FileNotFoundError:
-                    st.error("❌ 'Output.xlsx' template file repository mein nahi mili.")
+                    st.error("❌ 'Output.xlsx' template file repository mein nahi mili. Kripya template file ko GitHub repo ke main folder mein upload karein.")
                     st.stop()
-
-                mapping_dict_bg = {}
-                if os.path.exists(master_path):
-                    m_df_bg = pd.read_excel(master_path, sheet_name="Master Data", header=2)
-                    m_df_bg.columns = m_df_bg.columns.astype(str).str.strip()
-                    if 'Route' in m_df_bg.columns and 'Agency' in m_df_bg.columns and 'DRCODE' in m_df_bg.columns:
-                        for _, r_item in m_df_bg[['Route', 'Agency', 'DRCODE']].dropna(subset=['DRCODE']).iterrows():
-                            rt_k = str(r_item['Route']).replace('.0', '').strip()
-                            ag_k = str(r_item['Agency']).replace('.0', '').strip()
-                            mapping_dict_bg[(rt_k, ag_k)] = str(r_item['DRCODE']).strip()
-
+                
                 ist_now = get_ist_now()
                 today_date = ist_now.strftime("%Y-%m-%d")
                 timestamp = ist_now.strftime("%H%M%S")
@@ -597,104 +500,6 @@ if uploaded_inputs:
                         continue
 
                     file_bytes = uploaded_file.getvalue()
-                    df_input_raw = pd.read_excel(io.BytesIO(file_bytes), header=None)
-
-                    # --- FIRST CODE'S BACKGROUND DRCODE INSERTION & FORMULA SHIFTING ENGINE ---
-                    fg_row, fg_col = -1, -1
-                    for r in range(df_input_raw.shape[0]):
-                        for c in range(df_input_raw.shape[1]):
-                            val = str(df_input_raw.iloc[r, c]).strip().upper()
-                            if "FG" in val:
-                                fg_row, fg_col = r, c
-                                break
-                        if fg_row != -1:
-                            break
-
-                    if fg_row != -1:
-                        route_num_bg = "22"
-                        match_route = re.search(r'Route\s*\(?(\d+)\)?', short_filename, re.IGNORECASE)
-                        if match_route:
-                            route_num_bg = match_route.group(1)
-                        else:
-                            ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
-                            for r in range(fg_row):
-                                for c in range(min(fg_col, 30)):
-                                    cell_val = str(df_input_raw.iloc[r, c]).strip()
-                                    upper_val = cell_val.upper()
-                                    if upper_val in ignore_list or any(upper_val.startswith(p) for p in ["PC", "MS", "M", "GM", "DP", "SKU", "FG"]):
-                                        continue
-                                    if cell_val != "" and len(cell_val) <= 3 and any(char.isdigit() for char in cell_val):
-                                        route_num_bg = cell_val
-                                        break
-                                if route_num_bg != "22":
-                                    break
-
-                        agency_col_bg = -1
-                        for cSearch in range(fg_col - 1, -1, -1):
-                            valid_count = 0
-                            for rCheck in range(fg_row + 1, min(fg_row + 15, df_input_raw.shape[0])):
-                                v = df_input_raw.iloc[rCheck, cSearch]
-                                if pd.notna(v):
-                                    s_val = str(v).replace('.0', '').strip()
-                                    if s_val.isdigit() and 1 <= len(s_val) <= 5:
-                                        valid_count += 1
-                            if valid_count >= 3:
-                                agency_col_bg = cSearch
-                                break
-
-                        if agency_col_bg == -1 and fg_col > 0:
-                            agency_col_bg = fg_col - 1
-
-                        wb_mod = openpyxl.load_workbook(io.BytesIO(file_bytes))
-                        ws_mod = wb_mod.active
-
-                        excel_fg_row = fg_row + 1
-                        excel_fg_col = fg_col + 1
-
-                        existing_drcode_col = None
-                        for col_idx in range(1, ws_mod.max_column + 1):
-                            cell_val = str(ws_mod.cell(row=excel_fg_row, column=col_idx).value).strip().upper()
-                            if cell_val == "DRCODE":
-                                existing_drcode_col = col_idx
-                                break
-
-                        target_col_idx = excel_fg_col
-                        if existing_drcode_col:
-                            target_col_idx = existing_drcode_col
-                        else:
-                            ws_mod.insert_cols(excel_fg_col)
-                            target_col_idx = excel_fg_col
-                            ws_mod.cell(row=excel_fg_row, column=target_col_idx, value="DRCODE")
-
-                            for row in ws_mod.iter_rows():
-                                for cell in row:
-                                    if cell.value and str(cell.value).startswith('='):
-                                        old_formula = str(cell.value)
-                                        def shift_cols_in_formula(match):
-                                            col_letters = match.group(1)
-                                            row_num = match.group(2)
-                                            col_idx = openpyxl.utils.column_index_from_string(col_letters)
-                                            if col_idx >= target_col_idx:
-                                                new_col_letter = openpyxl.utils.get_column_letter(col_idx + 1)
-                                                return f"{new_col_letter}{row_num}"
-                                            return match.group(0)
-
-                                        new_formula = re.sub(r'([A-Z]+)(\d+)', shift_cols_in_formula, old_formula)
-                                        cell.value = new_formula
-
-                        for row_idx in range(excel_fg_row + 1, ws_mod.max_row + 1):
-                            raw_agency = ws_mod.cell(row=row_idx, column=agency_col_bg + 1).value
-                            agency_str = str(raw_agency).replace('.0', '').strip() if raw_agency is not None else ""
-
-                            if agency_str and agency_str != "None":
-                                lookup_key = (str(route_num_bg), agency_str)
-                                assigned_dr = mapping_dict_bg.get(lookup_key, f"NEW_CUST_{agency_str}")
-                                ws_mod.cell(row=row_idx, column=target_col_idx, value=assigned_dr)
-
-                        mod_buf = io.BytesIO()
-                        wb_mod.save(mod_buf)
-                        file_bytes = mod_buf.getvalue()
-
                     df_input = pd.read_excel(io.BytesIO(file_bytes), header=None)
 
                     fg_row, fg_col = -1, -1
@@ -718,29 +523,22 @@ if uploaded_inputs:
                             if any(kw in cell_val for kw in ["TOTAL", "SUM", "TOTA", "TOT", "TTL", "NET"]):
                                 is_total = True
                                 break
-                            if scan_r >= fg_row + 1 and ("SUM" in cell_val or "=" in cell_val):
-                                is_total = True
-                                break
                         if is_total:
                             total_col = cSearch
                             break
 
                     route_num = default_fallback_route if default_fallback_route != "" else "22"
                     ignore_list = ["RT", "DR", "RT DR", "ROUTE", "SALES PERSON", "CONTACT NO:", "MATERIAL CODE"]
-
+                    
                     for r in range(fg_row):
                         for c in range(min(total_col, 30)):
                             cell_val = str(df_input.iloc[r, c]).strip()
                             upper_val = cell_val.upper()
-                            if upper_val in ignore_list:
+                            if upper_val in ignore_list or any(upper_val.startswith(p) for p in ["PC", "MS", "M", "GM", "DP", "SKU", "FG"]):
                                 continue
-                            is_product_code = any(upper_val.startswith(p) for p in ["PC", "MS", "M", "GM", "DP", "SKU", "FG"])
-                            if is_product_code:
-                                continue
-                            if cell_val != "" and len(cell_val) <= 3:
-                                if any(char.isdigit() for char in cell_val):
-                                    route_num = cell_val
-                                    break
+                            if cell_val != "" and 1 <= len(cell_val) <= 3 and any(char.isdigit() for char in cell_val):
+                                route_num = cell_val
+                                break
                         if route_num != (default_fallback_route if default_fallback_route != "" else "22"):
                             break
 
@@ -767,8 +565,8 @@ if uploaded_inputs:
 
                     dr_code_col = -1
                     for cSearch in range(fg_col - 1, -1, -1):
-                        sample_val = str(df_input.iloc[fg_row, cSearch] if fg_row < df_input.shape[0] else "").strip().upper()
-                        if sample_val == "DRCODE":
+                        sample_val = str(df_input.iloc[fg_row + 1, cSearch] if fg_row + 1 < df_input.shape[0] else "").strip().upper()
+                        if re.match(r'^DR\d+', sample_val):
                             dr_code_col = cSearch
                             break
 
@@ -796,7 +594,7 @@ if uploaded_inputs:
                         agency = df_input.iloc[r, agency_col] if agency_col >= 0 else None
                         if pd.isna(agency) or str(agency).strip() in ["", "nan", "None"]:
                             continue
-
+                        
                         agency_str = str(agency).replace('.0','').strip()
                         if not agency_str.isdigit() or not (1 <= len(agency_str) <= 5):
                             st.session_state.skipped_rows_log.append({
@@ -809,7 +607,7 @@ if uploaded_inputs:
                             continue
 
                         agency_val = int(agency_str)
-
+                        
                         row_has_items = False
                         valid_row_quantities = []
                         row_total_qty = 0
@@ -840,18 +638,52 @@ if uploaded_inputs:
 
                         has_dr_code = False
                         clean_dr = ""
+
+                        def validate_strict_dr(val):
+                            if pd.isna(val):
+                                return None
+                            s = str(val).strip().replace('.0', '').upper()
+                            if not s or s in ["0", "NAN", "NONE"]:
+                                return None
+                            match = re.search(r'\bDR\d+\b', s) or re.search(r'DR\d+', s)
+                            return match.group(0) if match else None
+
                         if dr_code_col >= 0 and dr_code_col < df_input.shape[1]:
-                            val_dr = df_input.iloc[r, dr_code_col]
-                            if pd.notna(val_dr) and str(val_dr).strip() != "" and str(val_dr).strip().upper() != "DRCODE":
+                            res_dr = validate_strict_dr(df_input.iloc[r, dr_code_col])
+                            if res_dr:
                                 has_dr_code = True
-                                clean_dr = str(val_dr).replace('.0', '').strip()
+                                clean_dr = res_dr
 
                         if not has_dr_code:
-                            clean_dr = f"NEW_CUST_{agency_val}"
-                            unmapped_record = (short_filename, str(route_num), str(agency_val), clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S"))
+                            for c_scan in range(fg_col):
+                                if c_scan == agency_col:
+                                    continue
+                                res_dr = validate_strict_dr(df_input.iloc[r, c_scan])
+                                if res_dr:
+                                    has_dr_code = True
+                                    clean_dr = res_dr
+                                    break
+
+                        if not has_dr_code:
+                            conn_lookup = sqlite3.connect("sales_history.db")
+                            cursor_lookup = conn_lookup.cursor()
+                            cursor_lookup.execute("""
+                                SELECT dr_code FROM unique_routes_master 
+                                WHERE route_no = ? AND agency_no = ? AND dr_code LIKE 'DR%' 
+                                LIMIT 1
+                            """, (str(route_num), str(agency_val)))
+                            db_match = cursor_lookup.fetchone()
+                            conn_lookup.close()
+                            
+                            if db_match:
+                                has_dr_code = True
+                                clean_dr = db_match[0]
+
+                        if not has_dr_code:
+                            unmapped_record = (short_filename, str(route_num), str(agency_val), f"NEW_CUST_{agency_val}", ist_now.strftime("%Y-%m-%d %H:%M:%S"))
                             if unmapped_record not in unmapped_records_to_insert:
                                 unmapped_records_to_insert.append(unmapped_record)
-
+                            
                             current_unmapped_dict = {
                                 "File Name": short_filename,
                                 "Route": str(route_num),
@@ -884,23 +716,23 @@ if uploaded_inputs:
                             agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
                             current_seq = agency_counts_missing[agency_val]
                             ref_number = f"RT-{route_num}-{agency_val}-{today_date}-NEW" if current_seq == 1 else f"RT-{route_num}-{agency_val}-{today_date}-NEW-{current_seq}"
-                            target_ws, current_r, order_num, dr_to_use, file_category = ws_missing, missing_row, missing_order_num, clean_dr, "Missing DR"
+                            target_ws, current_r, order_num, dr_to_use, file_category = ws_missing, missing_row, missing_order_num, f"NEW_CUST_{agency_val}", "Missing DR"
 
                         item_id = 10
                         for c, fg_code, qty_val in valid_row_quantities:
                             cleaned_fg = str(fg_code).strip()
                             upper_fg = cleaned_fg.upper()
-
+                            
                             if (agency_val, c) in agency_col_override_map:
                                 current_fg = agency_col_override_map[(agency_val, c)]
                             elif upper_fg.startswith("FG"):
                                 current_fg = cleaned_fg
                             else:
                                 current_fg = direct_col_mapping.get(c, default_fg_code)
-
+                            
                             total_input_qty += qty_val
                             total_gen_qty += qty_val
-
+                            
                             file_comparison_rows.append({
                                 "File Name": short_filename,
                                 "Status": file_category,
@@ -928,7 +760,7 @@ if uploaded_inputs:
                             target_ws.cell(row=current_r, column=22, value=2100)
                             target_ws.cell(row=current_r, column=26, value=str(route_num))
                             target_ws.cell(row=current_r, column=27, value=agency_val)
-
+                            
                             item_id += 10
                             current_r += 1
 
@@ -974,7 +806,7 @@ if uploaded_inputs:
                         ).reset_index()
                         df_pivot["Difference"] = df_pivot["Input Qty"] - df_pivot["Generated Qty"]
                         st.session_state.comparison_summary.append(df_pivot)
-
+                        
                 conn = sqlite3.connect("sales_history.db")
                 cursor = conn.cursor()
                 cursor.executemany("""
@@ -986,7 +818,7 @@ if uploaded_inputs:
                     INSERT OR IGNORE INTO unmapped_missing_dr_ledger (file_name, route_no, agency_no, dr_code, created_at)
                     VALUES (?, ?, ?, ?, ?)
                 """, unmapped_records_to_insert)
-
+                
                 for fname, ftype, fdata, fdate in output_files_to_store:
                     cursor.execute("""
                         INSERT OR REPLACE INTO output_files_ledger (file_name, file_type, file_data, created_at)
@@ -997,7 +829,7 @@ if uploaded_inputs:
                     INSERT INTO input_output_traceability (batch_timestamp, input_file_name, input_file_blob, total_input_qty, generated_output_file, output_type, version_no, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, traceability_records)
-
+                
                 cursor.execute(
                     "INSERT INTO history_logs (timestamp, files_count, total_qty, status) VALUES (?, ?, ?, ?)",
                     (get_ist_now().strftime("%Y-%m-%d %H:%M:%S"), len(uploaded_inputs), total_input_qty, "Success")
@@ -1013,7 +845,7 @@ if uploaded_inputs:
                     "skipped_count": total_skipped_rows
                 }
 
-                st.success("✅ Batch Processing & Auto-DRCODE Mapping Completed Successfully!")
+                st.success("✅ Batch Processing, Traceability Mapping & Audit Ledgers Updated Successfully!")
 
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
@@ -1021,16 +853,16 @@ if uploaded_inputs:
         st.warning("⚠️ Kripya pehle demand files upload karein!")
 
 # ==============================================================================
-# SECTION 10: KPI METRIC CARDS & MULTI-CHANNEL DISPATCH HUB
+# SECTION 9: KPI METRIC CARDS & DISPATCH HUB
 # ==============================================================================
 if st.session_state.processed_files or st.session_state.skipped_rows_log:
     st.markdown("---")
     st.markdown("### 📈 Batch Performance & KPI Summary")
     kpi = st.session_state.kpi_data
-
+    
     total_processed_orders = kpi['valid_count'] + kpi['missing_count']
     success_rate = (kpi['valid_count'] / total_processed_orders * 100) if total_processed_orders > 0 else 0
-
+    
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total Input Qty", f"{kpi['input_qty']:,.0f}")
     col2.metric("Generated Qty", f"{kpi['gen_qty']:,.0f}")
@@ -1040,7 +872,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
 
     st.markdown("---")
     st.markdown("### 📥 Bulk Download & Notifications")
-
+    
     with st.expander("✉️ Advanced Email Dispatch Options (Custom Subject & Note)"):
         email_subject_custom = st.text_input("Custom Email Subject Line", f"🚀 Sales Orders Batch Execution Report (IST) - {get_ist_now().strftime('%Y-%m-%d')}")
         email_notes_custom = st.text_area("Custom Remarks / Notes to Include in Email Body", "All routes verified and processed successfully.")
@@ -1049,12 +881,12 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for item in st.session_state.processed_files:
             zip_file.writestr(item['filename'], item['data'])
-
+    
     col_zip, col_pdf, col_summary, col_json, col_print, col_email, col_wa = st.columns(7)
-
+    
     with col_zip:
         st.download_button("📦 ZIP", data=zip_buffer.getvalue(), file_name=f"Batch_Orders_{get_ist_now().strftime('%Y-%m-%d')}.zip", mime="application/zip", key="zip_download")
-
+        
     with col_pdf:
         try:
             pdf = FPDF()
@@ -1072,15 +904,15 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
     with col_summary:
         summary_txt = f"Total Input Quantity : {kpi['input_qty']:,.0f}\nTotal Generated Qty : {kpi['gen_qty']:,.0f}"
         st.download_button("📄 TXT", data=summary_txt.encode('utf-8'), file_name="Summary.txt", mime="text/plain", key="txt_download")
-
+        
     with col_json:
         json_data = json.dumps({"timestamp": get_ist_now().strftime('%Y-%m-%d %H:%M:%S'), "metrics": kpi}, indent=4)
         st.download_button("💾 JSON", data=json_data.encode('utf-8'), file_name="Audit.json", mime="application/json", key="json_download")
-
+        
     with col_print:
         print_html = '<button onclick="parent.window.print()" style="width:100%; height:38px; background:#2563eb; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">🖨️ Print</button>'
         components.html(print_html, height=50)
-
+        
     with col_email:
         if st.button("📧 Email"):
             if email_user and email_pass and recipient_email:
@@ -1113,7 +945,7 @@ if st.session_state.processed_files or st.session_state.skipped_rows_log:
         st.download_button(label=f"📥 Download {item['name']}", data=item['data'], file_name=item['filename'], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_file_{i}_{item['filename']}")
 
 # ==============================================================================
-# SECTION 11: 5-TAB ENTERPRISE DATABASES & LEDGERS MANAGEMENT PANEL
+# SECTION 10: 5-TAB ENTERPRISE DATABASES & LEDGERS MANAGEMENT PANEL (WITH DELETE & ID RESET)
 # ==============================================================================
 st.markdown("---")
 with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped, Outputs, Traceability & Audit)"):
@@ -1125,7 +957,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
         df_trace = pd.read_sql("SELECT id, batch_timestamp, input_file_name, total_input_qty, generated_output_file, output_type, version_no FROM input_output_traceability ORDER BY id DESC", conn)
         df_audit = pd.read_sql("SELECT * FROM discrepancy_audit_ledger ORDER BY id DESC", conn)
         conn.close()
-
+        
         tab_m1, tab_m2, tab_m3, tab_m4, tab_m5 = st.tabs([
             "📋 Route-Agency-DR Master", 
             "🚨 Unmapped Missing DR", 
@@ -1133,7 +965,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
             "🔗 Input-Output Traceability", 
             "🔍 Discrepancy Audit"
         ])
-
+        
         with tab_m1:
             if not df_master.empty:
                 st.dataframe(df_master, use_container_width=True)
@@ -1153,24 +985,64 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
         with tab_m2:
             if not df_unmapped.empty:
                 st.dataframe(df_unmapped, use_container_width=True)
+                unmap_del_id = st.number_input("Enter Unmapped Record ID to Delete", min_value=1, step=1, key="unmap_del_id")
+                if st.button("🗑️ Delete Unmapped Record & Reset ID"):
+                    conn = sqlite3.connect("sales_history.db")
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM unmapped_missing_dr_ledger WHERE id = ?", (unmap_del_id,))
+                    cursor.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Unmapped Record ID {unmap_del_id} deleted & ID sequence reset!")
+                    st.rerun()
             else:
                 st.info("No unmapped missing DR records logged yet.")
 
         with tab_m3:
             if not df_outputs.empty:
                 st.dataframe(df_outputs, use_container_width=True)
+                delete_arch_id = st.number_input("Enter Archived File ID to Delete", min_value=1, step=1, key="del_arch_id_input")
+                if st.button("🗑️ Delete Archived File & Reset ID"):
+                    conn = sqlite3.connect("sales_history.db")
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM output_files_ledger WHERE id = ?", (delete_arch_id,))
+                    cursor.execute("DELETE FROM sqlite_sequence WHERE name='output_files_ledger'")
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Archived File ID {delete_arch_id} deleted & ID sequence reset!")
+                    st.rerun()
             else:
                 st.info("No output files archived yet.")
 
         with tab_m4:
             if not df_trace.empty:
                 st.dataframe(df_trace, use_container_width=True)
+                trace_del_id = st.number_input("Enter Traceability Record ID to Delete", min_value=1, step=1, key="trace_del_id")
+                if st.button("🗑️ Delete Traceability Record & Reset ID"):
+                    conn = sqlite3.connect("sales_history.db")
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM input_output_traceability WHERE id = ?", (trace_del_id,))
+                    cursor.execute("DELETE FROM sqlite_sequence WHERE name='input_output_traceability'")
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Traceability Record ID {trace_del_id} deleted & ID sequence reset!")
+                    st.rerun()
             else:
                 st.info("No traceability mapping records found yet.")
 
         with tab_m5:
             if not df_audit.empty:
                 st.dataframe(df_audit, use_container_width=True)
+                audit_del_id = st.number_input("Enter Discrepancy Record ID to Delete", min_value=1, step=1, key="audit_del_id")
+                if st.button("🗑️ Delete Discrepancy Record & Reset ID"):
+                    conn = sqlite3.connect("sales_history.db")
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM discrepancy_audit_ledger WHERE id = ?", (audit_del_id,))
+                    cursor.execute("DELETE FROM sqlite_sequence WHERE name='discrepancy_audit_ledger'")
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Discrepancy Record ID {audit_del_id} deleted & ID sequence reset!")
+                    st.rerun()
             else:
                 st.success("🟢 No discrepancies logged in current batch cycles!")
 
@@ -1178,7 +1050,7 @@ with st.expander("🗄️ View, Export & Manage All Databases (Master, Unmapped,
         st.error(f"Error loading databases: {str(e)}")
 
 # ==============================================================================
-# SECTION 12: DYNAMIC MODULE & FEATURE AUTOMATIC IMPLEMENTATION HUB
+# SECTION 11: DYNAMIC MODULE & FEATURE AUTOMATIC IMPLEMENTATION HUB
 # ==============================================================================
 st.markdown("---")
 with st.expander("🔌 Dynamic Module & Feature Integration Hub (Auto-Implement & Link)", expanded=True):
