@@ -80,59 +80,12 @@ def get_ist_now():
 def init_db():
     conn = sqlite3.connect("sales_history.db")
     cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS history_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            files_count INTEGER,
-            total_qty REAL,
-            status TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS output_files_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT UNIQUE,
-            file_type TEXT,
-            file_data BLOB,
-            created_at TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT,
-            route_no TEXT,
-            agency_no TEXT,
-            dr_code TEXT,
-            created_at TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS input_output_traceability (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            batch_timestamp TEXT,
-            input_file_name TEXT,
-            total_input_qty REAL,
-            generated_output_file TEXT,
-            output_type TEXT,
-            created_at TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS discrepancy_audit_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            batch_timestamp TEXT,
-            file_name TEXT,
-            agency_no TEXT,
-            dr_code TEXT,
-            fg_code TEXT,
-            input_qty REAL,
-            generated_qty REAL,
-            difference REAL,
-            logged_at TEXT
-        )
-    """)
+    cursor.execute("CREATE TABLE IF NOT EXISTS history_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, files_count INTEGER, total_qty REAL, status TEXT)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS unique_routes_master (id INTEGER PRIMARY KEY AUTOINCREMENT, file_name TEXT, route_no TEXT, agency_no TEXT, dr_code TEXT, created_at TEXT, UNIQUE(route_no, agency_no, dr_code))")
+    cursor.execute("CREATE TABLE IF NOT EXISTS output_files_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, file_name TEXT UNIQUE, file_type TEXT, file_data BLOB, created_at TEXT)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, file_name TEXT, route_no TEXT, agency_no TEXT, dr_code TEXT, created_at TEXT)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS input_output_traceability (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_timestamp TEXT, input_file_name TEXT, total_input_qty REAL, generated_output_file TEXT, output_type TEXT, created_at TEXT)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS discrepancy_audit_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_timestamp TEXT, file_name TEXT, agency_no TEXT, dr_code TEXT, fg_code TEXT, input_qty REAL, generated_qty REAL, difference REAL, logged_at TEXT)")
     conn.commit()
     conn.close()
 
@@ -185,7 +138,7 @@ st.markdown(
 )
 
 # ==============================================================================
-# SECTION 7: SIDEBAR - MANAGE MASTER DATA
+# SECTION 7: SIDEBAR - MANAGE MASTER DATA (EXACT COUNTIFS PRESERVATION)
 # ==============================================================================
 st.sidebar.header("🛠️ Manage Master Data")
 action_choice = st.sidebar.radio("Choose Action", ["Add New Entry", "Delete Entry"])
@@ -230,14 +183,12 @@ if action_choice == "Add New Entry":
                             if cell_r is not None or cell_a is not None:
                                 max_used_row = r
                             if cell_r is not None and cell_a is not None:
-                                match_r = str(cell_r).replace('.0', '').strip()
-                                match_a = str(cell_a).replace('.0', '').strip()
-                                if match_r == str(r_val) and match_a == str(a_val):
+                                if str(cell_r).replace('.0', '').strip() == str(r_val) and str(cell_a).replace('.0', '').strip() == str(a_val):
                                     is_duplicate = True
                                     break
 
                         if is_duplicate:
-                            st.sidebar.error(f"⚠️ Duplicate Error: Route '{new_route}' aur Agency '{new_agency}' pehle se Master File mein maujood hain!")
+                            st.sidebar.error(f"⚠️ Duplicate Error: Route '{new_route}' aur Agency '{new_agency}' pehle se maujood hain!")
                         else:
                             target_row = max_used_row + 1
                             ws_m.cell(row=target_row, column=1, value=r_val)
@@ -256,8 +207,7 @@ if action_choice == "Add New Entry":
                                 if prev_cell.fill: curr_cell.fill = copy(prev_cell.fill)
                                 if prev_cell.alignment: curr_cell.alignment = copy(prev_cell.alignment)
                                 if col >= 8 and prev_cell.value and str(prev_cell.value).startswith('='):
-                                    old_formula = str(prev_cell.value)
-                                    curr_cell.value = re.sub(r'(?<!\$)([A-Z]+)(\d+)', lambda m: f"{m.group(1)}{target_row}", old_formula)
+                                    curr_cell.value = re.sub(r'(?<!\$)([A-Z]+)(\d+)', lambda m: f"{m.group(1)}{target_row}", str(prev_cell.value))
 
                             route_sheet_name = f"Route_{r_raw}"
                             if route_sheet_name in wb_m.sheetnames:
@@ -358,7 +308,6 @@ if uploaded_inputs:
 
         with st.spinner("⚡ Loading Master File and Processing Batch Orders... Please wait."):
             try:
-                # Load Master Data Mapping Dictionary using your exact logic
                 master_df = None
                 mapping_dict = {}
 
@@ -485,7 +434,6 @@ if uploaded_inputs:
                             agency_str = str(raw_agency).replace('.0', '').strip() if raw_agency is not None else ""
                             if agency_str and agency_str != "None":
                                 lookup_key = (str(route_num), agency_str)
-                                # Master file lookup or fallback to NEW_CUST
                                 assigned_dr = mapping_dict.get(lookup_key, f"NEW_CUST_{agency_str}")
                                 ws_mod.cell(row=row_idx, column=target_col_idx, value=assigned_dr)
 
