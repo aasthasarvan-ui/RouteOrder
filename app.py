@@ -736,23 +736,62 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                     break
 
                         # --- AUTO-LOOKUP MISSING DR FROM DATABASE MASTER ---
+                                                # --- STRICT DR CODE DETECTION & HIERARCHICAL LOOKUP ---
+                        # PRIORITY 2: SQLite Database Lookup (Agar file mein na ho)
                         if not has_dr_code:
-                            conn_lookup = sqlite3.connect("sales_history.db")
-                            cursor_lookup = conn_lookup.cursor()
-                            cursor_lookup.execute("""
-                                SELECT dr_code FROM unique_routes_master 
-                                WHERE route_no = ? AND agency_no = ? AND dr_code LIKE 'DR%' 
-                                LIMIT 1
-                            """, (str(route_num), str(agency_val)))
-                            db_match = cursor_lookup.fetchone()
-                            conn_lookup.close()
+                            try:
+                                conn_lookup = sqlite3.connect("sales_history.db")
+                                cursor_lookup = conn_lookup.cursor()
+                                cursor_lookup.execute("""
+                                    SELECT dr_code FROM unique_routes_master 
+                                    WHERE route_no = ? AND agency_no = ? AND dr_code LIKE 'DR%' 
+                                    LIMIT 1
+                                """, (str(route_num), str(agency_val)))
+                                db_match = cursor_lookup.fetchone()
+                                conn_lookup.close()
+                                
+                                if db_match:
+                                    has_dr_code = True
+                                    clean_dr = db_match[0]
+                            except Exception:
+                                pass
 
-                            if db_match:
-                                has_dr_code = True
-                                clean_dr = db_match[0]
+                        # PRIORITY 3: Master Excel File Lookup (Agar SQLite mein bhi na mile)
+                        if not has_dr_code and os.path.exists(master_path):
+                            try:
+                                master_df_lookup = pd.read_excel(master_path, sheet_name="Master Data", header=2)
+                                master_df_lookup.columns = master_df_lookup.columns.astype(str).str.strip()
+                                
+                                if 'Route' in master_df_lookup.columns and 'Agency' in master_df_lookup.columns and 'DRCODE' in master_df_lookup.columns:
+                                    matched_row = master_df_lookup[
+                                        (master_df_lookup['Route'].astype(str).str.replace('.0', '', regex=False).str.strip() == str(route_num)) & 
+                                        (master_df_lookup['Agency'].astype(str).str.replace('.0', '', regex=False).str.strip() == str(agency_val))
+                                    ]
+                                    
+                                    if not matched_row.empty:
+                                        excel_dr = str(matched_row['DRCODE'].values[0]).strip()
+                                        if excel_dr and excel_dr.upper() not in ["NAN", "NONE", ""]:
+                                            has_dr_code = True
+                                            clean_dr = excel_dr
+                            except Exception as e:
+                                print(f"Master Excel Lookup Error: {e}")
 
+                        # PRIORITY 4: Final Fallback (NEW_CUST agar teeno jagah na mile)
                         if not has_dr_code:
-                            unmapped_record = (short_filename, str(route_num), str(agency_val), f"NEW_CUST_{agency_val}", ist_now.strftime("%Y-%m-%d %H:%M:%S"))
+                            clean_dr = f"NEW_CUST_{agency_val}"
+                            unmapped_record = (short_filename, str(route_num), str(agency_val), clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S"))
+                            if unmapped_record not in unmapped_records_to_insert:
+                                unmapped_records_to_insert.append(unmapped_record)
+                            
+                            current_unmapped_dict = {
+                                "File Name": short_filename,
+                                "Route": str(route_num),
+                                "Agency": agency_val,
+                                "Status": "Generated via NEW_CUST (Missing in File, SQLite & Master Excel)"
+                            }
+                            if current_unmapped_dict not in st.session_state.unmapped_current_batch:
+                                st.session_state.unmapped_current_batch.append(current_unmapped_dict)
+
                             if unmapped_record not in unmapped_records_to_insert:
                                 unmapped_records_to_insert.append(unmapped_record)
 
