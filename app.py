@@ -25,6 +25,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"  # <--- Yahan define karna hai
 # ==============================================================================
 # SECTION 2: 8 ENTERPRISE COLOR PALETTES & THEME DEFINITIONS
 # ==============================================================================
