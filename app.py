@@ -781,7 +781,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                     break # Jaise hi route sheet mein mil jaye, loop rok dein
                             except Exception as e:
                                 print(f"Route Sheet Lookup Error: {e}")
-                                                        # --- PRIORITY 3.5: SAFE ROUTE + AGENCY + 'YES' STATUS LOOKUP ---
+                                                              # --- PRIORITY 3.5: SAFE ROUTE + AGENCY + 'YES' STATUS LOOKUP ---
                         if not has_dr_code and os.path.exists(master_path):
                             try:
                                 xls_multi = pd.ExcelFile(master_path)
@@ -790,7 +790,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                     df_multi.columns = df_multi.columns.astype(str).str.strip()
                                     
                                     if 'Route' in df_multi.columns and 'Agency' in df_multi.columns and 'DRCODE' in df_multi.columns:
-                                        # Safely clean and convert both inbound and master columns to string
                                         rt_str = str(route_num).replace('.0', '').strip()
                                         ag_str = str(agency_val).replace('.0', '').strip()
                                         
@@ -802,7 +801,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                         if not matched_multi.empty:
                                             valid_row = pd.DataFrame()
                                             for col in matched_multi.columns:
-                                                # Avoid type comparison errors by converting cell to string safely
                                                 col_series = matched_multi[col].astype(str).str.strip().str.upper()
                                                 if col_series.eq('YES').any():
                                                     valid_row = matched_multi[col_series == 'YES']
@@ -822,8 +820,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                     if multi_log_record not in unmapped_records_to_insert:
                                                         unmapped_records_to_insert.append(multi_log_record)
                             except Exception as multi_err:
-                                print(f"Multiple Sheet Safe Lookup Error: {multi_err}")
-
+                                print(f"Multiple Sheet Safe Lookup Error: {multi_err}")                  
                         # PRIORITY 4: Final Fallback (NEW_CUST agar teeno jagah na mile)
                         if not has_dr_code:
                             clean_dr = f"NEW_CUST_{agency_val}"
