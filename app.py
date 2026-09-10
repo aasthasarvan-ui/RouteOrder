@@ -781,7 +781,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                     break # Jaise hi route sheet mein mil jaye, loop rok dein
                             except Exception as e:
                                 print(f"Route Sheet Lookup Error: {e}")
-                        # --- PRIORITY 3.5: CHECK MULTIPLE SHEET USING (Route + Agency + 'YES' Status) ---
+                        # --- PRIORITY 3.5: SAFE ROUTE + AGENCY + 'YES' STATUS LOOKUP ---
                         if not has_dr_code and os.path.exists(master_path):
                             try:
                                 xls_multi = pd.ExcelFile(master_path)
@@ -789,25 +789,41 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                     df_multi = pd.read_excel(xls_multi, sheet_name="Multiple DRCODE Details", header=2)
                                     df_multi.columns = df_multi.columns.astype(str).str.strip()
                                     
-                                    # Check if required columns exist
                                     if 'Route' in df_multi.columns and 'Agency' in df_multi.columns and 'DRCODE' in df_multi.columns:
-                                        # Clean and filter by both Route AND Agency
+                                        # Safely clean and convert both inbound and master columns to string
                                         rt_str = str(route_num).replace('.0', '').strip()
                                         ag_str = str(agency_val).replace('.0', '').strip()
                                         
-                                        matched_multi = df_multi[
-                                            (df_multi['Route'].astype(str).str.replace('.0', '', regex=False).str.strip() == rt_str) & 
-                                            (df_multi['Agency'].astype(str).str.replace('.0', '', regex=False).str.strip() == ag_str)
-                                        ]
+                                        master_rt = df_multi['Route'].astype(str).str.replace('.0', '', regex=False).str.strip()
+                                        master_ag = df_multi['Agency'].astype(str).str.replace('.0', '', regex=False).str.strip()
+                                        
+                                        matched_multi = df_multi[(master_rt == rt_str) & (master_ag == ag_str)]
                                         
                                         if not matched_multi.empty:
-                                            # Look for 'YES' in any status/flag column for this specific Route-Agency pair
                                             valid_row = pd.DataFrame()
                                             for col in matched_multi.columns:
-                                                if matched_multi[col].astype(str).str.strip().str.upper().eq('YES').any():
-                                                    valid_row = matched_multi[matched_multi[col].astype(str).str.strip().str.upper() == 'YES']
+                                                # Avoid type comparison errors by converting cell to string safely
+                                                col_series = matched_multi[col].astype(str).str.strip().str.upper()
+                                                if col_series.eq('YES').any():
+                                                    valid_row = matched_multi[col_series == 'YES']
                                                     break
                                             
+                                            if valid_row.empty:
+                                                valid_row = matched_multi.tail(1)
+                                            
+                                            if not valid_row.empty:
+                                                found_multi_dr = str(valid_row['DRCODE'].values[-1]).strip()
+                                                if found_multi_dr and found_multi_dr.upper() not in ["NAN", "NONE", ""]:
+                                                    has_dr_code = True
+                                                    clean_dr = found_multi_dr
+                                                    
+                                                    is_multi_assigned = True
+                                                    multi_log_record = (short_filename, str(route_num), str(agency_val), clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S"))
+                                                    if multi_log_record not in unmapped_records_to_insert:
+                                                        unmapped_records_to_insert.append(multi_log_record)
+                            except Exception as multi_err:
+                                print(f"Multiple Sheet Safe Lookup Error: {multi_err}")
+
                                             # Fallback to last row if 'YES' column header varies
                                             if valid_row.empty:
                                                 valid_row = matched_multi.tail(1)
