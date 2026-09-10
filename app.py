@@ -786,7 +786,34 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                     break # Stop loop once found in route sheet
                             except Exception as e:
                                 print(f"Route Sheet Lookup Error: {e}")
-                                                        # --- PRIORITY 3.5: SAFE MULTIPLE DRCODE SHEET LOOKUP ('YES' STATUS CHECK) ---
+                        # --- PRIORITY 3: ROUTE SHEETS LOOKUP (100% Safe String Conversion) ---
+                        if not has_dr_code and os.path.exists(master_path):
+                            try:
+                                xls_route = pd.ExcelFile(master_path)
+                                rt_clean = str(route_num).replace('.0', '').strip()
+                                ag_clean = str(agency_val).replace('.0', '').strip()
+
+                                route_sheet_name = f"Route_{rt_clean}"
+                                if route_sheet_name in xls_route.sheet_names:
+                                    df_r = pd.read_excel(xls_route, sheet_name=route_sheet_name, header=2)
+                                    df_r.columns = df_r.columns.astype(str).str.strip()
+                                    
+                                    if 'Route' in df_r.columns and 'Agency' in df_r.columns and 'DRCODE' in df_r.columns:
+                                        df_r_clean = df_r.dropna(subset=['Route', 'Agency']).copy()
+                                        r_col = df_r_clean['Route'].astype(str).str.split('.').str[0].str.strip()
+                                        a_col = df_r_clean['Agency'].astype(str).str.split('.').str[0].str.strip()
+                                        
+                                        matched_row = df_r_clean[(r_col == rt_clean) & (a_col == ag_clean)]
+                                        
+                                        if not matched_row.empty:
+                                            excel_dr = str(matched_row['DRCODE'].values[0]).strip()
+                                            if excel_dr and excel_dr.upper() not in ["NAN", "NONE", ""]:
+                                                has_dr_code = True
+                                                clean_dr = excel_dr
+                            except Exception as e:
+                                print(f"Route Sheet Lookup Error: {e}")
+
+                        # --- PRIORITY 3.5: SAFE MULTIPLE DRCODE SHEET LOOKUP ---
                         if not has_dr_code and os.path.exists(master_path):
                             try:
                                 xls_multi = pd.ExcelFile(master_path)
@@ -798,7 +825,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                         rt_clean = str(route_num).replace('.0', '').strip()
                                         ag_clean = str(agency_val).replace('.0', '').strip()
                                         
-                                        # Drop rows where Route or Agency are NaN to prevent type comparison crashes
                                         df_multi_clean = df_multi.dropna(subset=['Route', 'Agency']).copy()
                                         m_r_col = df_multi_clean['Route'].astype(str).str.split('.').str[0].str.strip()
                                         m_a_col = df_multi_clean['Agency'].astype(str).str.split('.').str[0].str.strip()
@@ -820,11 +846,8 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                 if found_multi_dr and found_multi_dr.upper() not in ["NAN", "NONE", ""]:
                                                     has_dr_code = True
                                                     clean_dr = found_multi_dr
-                                                    
                                                     is_multi_assigned = True
-                                                    multi_log_root = str(route_num)
-                                                    multi_log_agency = str(agency_val)
-                                                    multi_log_record = (short_filename, multi_log_root, multi_log_agency, clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S"))
+                                                    multi_log_record = (short_filename, str(route_num), str(agency_val), clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S"))
                                                     if multi_log_record not in unmapped_records_to_insert:
                                                         unmapped_records_to_insert.append(multi_log_record)
                             except Exception as multi_err:
