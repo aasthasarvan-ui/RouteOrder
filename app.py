@@ -786,8 +786,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                     break # Stop loop once found in route sheet
                             except Exception as e:
                                 print(f"Route Sheet Lookup Error: {e}")
-
-                        # --- PRIORITY 3.5: SAFE MULTIPLE DRCODE SHEET LOOKUP ('YES' STATUS CHECK) ---
+                                                        # --- PRIORITY 3.5: SAFE MULTIPLE DRCODE SHEET LOOKUP ('YES' STATUS CHECK) ---
                         if not has_dr_code and os.path.exists(master_path):
                             try:
                                 xls_multi = pd.ExcelFile(master_path)
@@ -799,6 +798,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                         rt_clean = str(route_num).replace('.0', '').strip()
                                         ag_clean = str(agency_val).replace('.0', '').strip()
                                         
+                                        # Drop rows where Route or Agency are NaN to prevent type comparison crashes
                                         df_multi_clean = df_multi.dropna(subset=['Route', 'Agency']).copy()
                                         m_r_col = df_multi_clean['Route'].astype(str).str.split('.').str[0].str.strip()
                                         m_a_col = df_multi_clean['Agency'].astype(str).str.split('.').str[0].str.strip()
@@ -830,7 +830,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             except Exception as multi_err:
                                 print(f"Multiple Sheet Safe Lookup Error: {multi_err}")
 
-                                
                         # PRIORITY 4: Final Fallback (NEW_CUST agar teeno jagah na mile)
                         if not has_dr_code:
                             clean_dr = f"NEW_CUST_{agency_val}"
