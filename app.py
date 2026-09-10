@@ -781,6 +781,51 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                     break # Jaise hi route sheet mein mil jaye, loop rok dein
                             except Exception as e:
                                 print(f"Route Sheet Lookup Error: {e}")
+                        # --- PRIORITY 3.5: CHECK MULTIPLE SHEET USING (Route + Agency + 'YES' Status) ---
+                        if not has_dr_code and os.path.exists(master_path):
+                            try:
+                                xls_multi = pd.ExcelFile(master_path)
+                                if "Multiple DRCODE Details" in xls_multi.sheet_names:
+                                    df_multi = pd.read_excel(xls_multi, sheet_name="Multiple DRCODE Details", header=2)
+                                    df_multi.columns = df_multi.columns.astype(str).str.strip()
+                                    
+                                    # Check if required columns exist
+                                    if 'Route' in df_multi.columns and 'Agency' in df_multi.columns and 'DRCODE' in df_multi.columns:
+                                        # Clean and filter by both Route AND Agency
+                                        rt_str = str(route_num).replace('.0', '').strip()
+                                        ag_str = str(agency_val).replace('.0', '').strip()
+                                        
+                                        matched_multi = df_multi[
+                                            (df_multi['Route'].astype(str).str.replace('.0', '', regex=False).str.strip() == rt_str) & 
+                                            (df_multi['Agency'].astype(str).str.replace('.0', '', regex=False).str.strip() == ag_str)
+                                        ]
+                                        
+                                        if not matched_multi.empty:
+                                            # Look for 'YES' in any status/flag column for this specific Route-Agency pair
+                                            valid_row = pd.DataFrame()
+                                            for col in matched_multi.columns:
+                                                if matched_multi[col].astype(str).str.strip().str.upper().eq('YES').any():
+                                                    valid_row = matched_multi[matched_multi[col].astype(str).str.strip().str.upper() == 'YES']
+                                                    break
+                                            
+                                            # Fallback to last row if 'YES' column header varies
+                                            if valid_row.empty:
+                                                valid_row = matched_multi.tail(1)
+                                            
+                                            if not valid_row.empty:
+                                                found_multi_dr = str(valid_row['DRCODE'].values[-1]).strip()
+                                                if found_multi_dr and found_multi_dr.upper() not in ["NAN", "NONE", ""]:
+                                                    has_dr_code = True
+                                                    clean_dr = found_multi_dr
+                                                    
+                                                    # Flag for highlighting and logging
+                                                    is_multi_assigned = True
+                                                    multi_log_record = (short_filename, str(route_num), str(agency_val), clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S"))
+                                                    if multi_log_record not in unmapped_records_to_insert:
+                                                        unmapped_records_to_insert.append(multi_log_record)
+                            except Exception as multi_err:
+                                print(f"Multiple Sheet Route-Agency Lookup Error: {multi_err}")
+
 
                         # PRIORITY 4: Final Fallback (NEW_CUST agar teeno jagah na mile)
                         if not has_dr_code:
@@ -888,7 +933,14 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
 
                             item_id += 10
                             current_r += 1
-
+                                                    # 🎨 Highlight row if auto-mapped via Multiple DR sheet ('YES' status)
+                        if locals().get('is_multi_assigned', False):
+                            from openpyxl.styles import PatternFill
+                            highlight_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+                            # current_r abhi write ho chuka hai, toh us row ko color karein
+                            for col_idx in range(1, 30): # columns range
+                                target_ws.cell(row=current_r - 1, column=col_idx).fill = highlight_fill
+                                
                         if has_dr_code:
                             valid_row, valid_order_num, valid_items_created, total_valid_orders = current_r, valid_order_num + 1, valid_items_created + 1, total_valid_orders + 1
                         else:
