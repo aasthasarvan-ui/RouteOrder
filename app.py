@@ -781,27 +781,29 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                     break # Jaise hi route sheet mein mil jaye, loop rok dein
                             except Exception as e:
                                 print(f"Route Sheet Lookup Error: {e}")
-                                                              # --- PRIORITY 3.5: SAFE ROUTE + AGENCY + 'YES' STATUS LOOKUP ---
+                                                                # --- PRIORITY 3.5: INDEX-BASED SAFE LOOKUP FOR MULTIPLE SHEET ---
                         if not has_dr_code and os.path.exists(master_path):
                             try:
                                 xls_multi = pd.ExcelFile(master_path)
                                 if "Multiple DRCODE Details" in xls_multi.sheet_names:
-                                    df_multi = pd.read_excel(xls_multi, sheet_name="Multiple DRCODE Details", header=2)
-                                    df_multi.columns = df_multi.columns.astype(str).str.strip()
+                                    # header=3 ya jo bhi data row start ho (agar row 4 se data hai toh header=3)
+                                    df_multi = pd.read_excel(xls_multi, sheet_name="Multiple DRCODE Details", header=3)
                                     
-                                    if 'Route' in df_multi.columns and 'Agency' in df_multi.columns and 'DRCODE' in df_multi.columns:
+                                    if df_multi.shape[1] >= 6: # Ensure at least 6 columns exist (A, B, C, D, E, F...)
                                         rt_str = str(route_num).replace('.0', '').strip()
                                         ag_str = str(agency_val).replace('.0', '').strip()
                                         
-                                        master_rt = df_multi['Route'].astype(str).str.replace('.0', '', regex=False).str.strip()
-                                        master_ag = df_multi['Agency'].astype(str).str.replace('.0', '', regex=False).str.strip()
+                                        # Index 0 = Column A (Route), Index 1 = Column B (Agency), Index 4 = Column E (DRCODE)
+                                        master_rt = df_multi.iloc[:, 0].astype(str).str.replace('.0', '', regex=False).str.strip()
+                                        master_ag = df_multi.iloc[:, 1].astype(str).str.replace('.0', '', regex=False).str.strip()
                                         
                                         matched_multi = df_multi[(master_rt == rt_str) & (master_ag == ag_str)]
                                         
                                         if not matched_multi.empty:
                                             valid_row = pd.DataFrame()
-                                            for col in matched_multi.columns:
-                                                col_series = matched_multi[col].astype(str).str.strip().str.upper()
+                                            # Check column F (Index 5) or any column containing 'YES'
+                                            for col_idx in range(5, matched_multi.shape[1]):
+                                                col_series = matched_multi.iloc[:, col_idx].astype(str).str.strip().str.upper()
                                                 if col_series.eq('YES').any():
                                                     valid_row = matched_multi[col_series == 'YES']
                                                     break
@@ -810,7 +812,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                 valid_row = matched_multi.tail(1)
                                             
                                             if not valid_row.empty:
-                                                found_multi_dr = str(valid_row['DRCODE'].values[-1]).strip()
+                                                found_multi_dr = str(valid_row.iloc[:, 4].values[-1]).strip() # Index 4 is DRCODE (Column E)
                                                 if found_multi_dr and found_multi_dr.upper() not in ["NAN", "NONE", ""]:
                                                     has_dr_code = True
                                                     clean_dr = found_multi_dr
@@ -820,7 +822,8 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                     if multi_log_record not in unmapped_records_to_insert:
                                                         unmapped_records_to_insert.append(multi_log_record)
                             except Exception as multi_err:
-                                print(f"Multiple Sheet Safe Lookup Error: {multi_err}")                  
+                                print(f"Index-based Multiple Sheet Lookup Error: {multi_err}")
+                      
                         # PRIORITY 4: Final Fallback (NEW_CUST agar teeno jagah na mile)
                         if not has_dr_code:
                             clean_dr = f"NEW_CUST_{agency_val}"
