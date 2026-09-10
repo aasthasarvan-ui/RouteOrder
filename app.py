@@ -781,49 +781,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                     break # Jaise hi route sheet mein mil jaye, loop rok dein
                             except Exception as e:
                                 print(f"Route Sheet Lookup Error: {e}")
-                                              # --- PRIORITY 3.5: SAFE MULTIPLE DRCODE SHEET LOOKUP ('YES' STATUS CHECK) ---
-                        if not has_dr_code and os.path.exists(master_path):
-                            try:
-                                xls_multi = pd.ExcelFile(master_path)
-                                if "Multiple DRCODE Details" in xls_multi.sheet_names:
-                                    df_multi = pd.read_excel(xls_multi, sheet_name="Multiple DRCODE Details", header=2)
-                                    df_multi.columns = df_multi.columns.astype(str).str.strip()
-                                    
-                                    if 'Route' in df_multi.columns and 'Agency' in df_multi.columns and 'DRCODE' in df_multi.columns:
-                                        rt_str = str(route_num).replace('.0', '').strip()
-                                        ag_str = str(agency_val).replace('.0', '').strip()
-                                        
-                                        # Drop rows where Route or Agency are NaN to prevent type comparison crashes
-                                        df_multi_clean = df_multi.dropna(subset=['Route', 'Agency']).copy()
-                                        
-                                        master_rt = df_multi_clean['Route'].astype(str).str.replace('.0', '', regex=False).str.strip()
-                                        master_ag = df_multi_clean['Agency'].astype(str).str.replace('.0', '', regex=False).str.strip()
-                                        
-                                        matched_multi = df_multi_clean[(master_rt == rt_str) & (master_ag == ag_str)]
-                                        
-                                        if not matched_multi.empty:
-                                            valid_row = pd.DataFrame()
-                                            # Check the last column (Column F / Unnamed status column) for 'YES'
-                                            status_col = matched_multi.columns[-1]
-                                            col_series = matched_multi[status_col].astype(str).str.strip().str.upper()
-                                            
-                                            if col_series.eq('YES').any():
-                                                valid_row = matched_multi[col_series == 'YES']
-                                            else:
-                                                valid_row = matched_multi.tail(1)
-                                            
-                                            if not valid_row.empty:
-                                                found_multi_dr = str(valid_row['DRCODE'].values[-1]).strip()
-                                                if found_multi_dr and found_multi_dr.upper() not in ["NAN", "NONE", ""]:
-                                                    has_dr_code = True
-                                                    clean_dr = found_multi_dr
-                                                    
-                                                    is_multi_assigned = True
-                                                    multi_log_record = (short_filename, str(route_num), str(agency_val), clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S"))
-                                                    if multi_log_record not in unmapped_records_to_insert:
-                                                        unmapped_records_to_insert.append(multi_log_record)
-                            except Exception as multi_err:
-                                print(f"Multiple Sheet Safe Lookup Error: {multi_err}")
+                                              
                                 
                         # PRIORITY 4: Final Fallback (NEW_CUST agar teeno jagah na mile)
                         if not has_dr_code:
