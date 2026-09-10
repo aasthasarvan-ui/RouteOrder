@@ -758,25 +758,29 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             except Exception:
                                 pass
 
-                        # PRIORITY 3: Master Excel File Lookup (Agar SQLite mein bhi na mile)
+                        # --- PRIORITY 3: EXCLUSIVELY ROUTE SHEETS LOOKUP (Master Data Sheet Skip karke) ---
                         if not has_dr_code and os.path.exists(master_path):
                             try:
-                                master_df_lookup = pd.read_excel(master_path, sheet_name="Master Data", header=2)
-                                master_df_lookup.columns = master_df_lookup.columns.astype(str).str.strip()
-                                
-                                if 'Route' in master_df_lookup.columns and 'Agency' in master_df_lookup.columns and 'DRCODE' in master_df_lookup.columns:
-                                    matched_row = master_df_lookup[
-                                        (master_df_lookup['Route'].astype(str).str.replace('.0', '', regex=False).str.strip() == str(route_num)) & 
-                                        (master_df_lookup['Agency'].astype(str).str.replace('.0', '', regex=False).str.strip() == str(agency_val))
-                                    ]
-                                    
-                                    if not matched_row.empty:
-                                        excel_dr = str(matched_row['DRCODE'].values[0]).strip()
-                                        if excel_dr and excel_dr.upper() not in ["NAN", "NONE", ""]:
-                                            has_dr_code = True
-                                            clean_dr = excel_dr
+                                xls_route = pd.ExcelFile(master_path)
+                                for sheet_name in xls_route.sheet_names:
+                                    if sheet_name.startswith("Route_"):
+                                        df_r = pd.read_excel(xls_route, sheet_name=sheet_name, header=2)
+                                        df_r.columns = df_r.columns.astype(str).str.strip()
+                                        
+                                        if 'Route' in df_r.columns and 'Agency' in df_r.columns and 'DRCODE' in df_r.columns:
+                                            matched_row = df_r[
+                                                (df_r['Route'].astype(str).str.replace('.0', '', regex=False).str.strip() == str(route_num)) & 
+                                                (df_r['Agency'].astype(str).str.replace('.0', '', regex=False).str.strip() == str(agency_val))
+                                            ]
+                                            
+                                            if not matched_row.empty:
+                                                excel_dr = str(matched_row['DRCODE'].values[0]).strip()
+                                                if excel_dr and excel_dr.upper() not in ["NAN", "NONE", ""]:
+                                                    has_dr_code = True
+                                                    clean_dr = excel_dr
+                                                    break # Jaise hi route sheet mein mil jaye, loop rok dein
                             except Exception as e:
-                                print(f"Master Excel Lookup Error: {e}")
+                                print(f"Route Sheet Lookup Error: {e}")
 
                         # PRIORITY 4: Final Fallback (NEW_CUST agar teeno jagah na mile)
                         if not has_dr_code:
