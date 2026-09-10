@@ -826,7 +826,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                 # Fallback to last row if 'YES' column header varies
                                             if valid_row.empty:
                                                 valid_row = matched_multi.tail(1)
-                                            
                                             if not valid_row.empty:
                                                 found_multi_dr = str(valid_row['DRCODE'].values[-1]).strip()
                                                 if found_multi_dr and found_multi_dr.upper() not in ["NAN", "NONE", ""]:
