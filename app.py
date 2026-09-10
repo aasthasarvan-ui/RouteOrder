@@ -823,8 +823,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                         unmapped_records_to_insert.append(multi_log_record)
                             except Exception as multi_err:
                                 print(f"Multiple Sheet Safe Lookup Error: {multi_err}")
-
-                                            # Fallback to last row if 'YES' column header varies
+                                # Fallback to last row if 'YES' column header varies
                                             if valid_row.empty:
                                                 valid_row = matched_multi.tail(1)
                                             
