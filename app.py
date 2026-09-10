@@ -781,7 +781,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                     break # Jaise hi route sheet mein mil jaye, loop rok dein
                             except Exception as e:
                                 print(f"Route Sheet Lookup Error: {e}")
-                        # --- PRIORITY 3.5: SAFE ROUTE + AGENCY + 'YES' STATUS LOOKUP ---
+                                                        # --- PRIORITY 3.5: SAFE ROUTE + AGENCY + 'YES' STATUS LOOKUP ---
                         if not has_dr_code and os.path.exists(master_path):
                             try:
                                 xls_multi = pd.ExcelFile(master_path)
@@ -823,23 +823,6 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                         unmapped_records_to_insert.append(multi_log_record)
                             except Exception as multi_err:
                                 print(f"Multiple Sheet Safe Lookup Error: {multi_err}")
-                                # Fallback to last row if 'YES' column header varies
-                                            if valid_row.empty:
-                                                valid_row = matched_multi.tail(1)
-                                            if not valid_row.empty:
-                                                found_multi_dr = str(valid_row['DRCODE'].values[-1]).strip()
-                                                if found_multi_dr and found_multi_dr.upper() not in ["NAN", "NONE", ""]:
-                                                    has_dr_code = True
-                                                    clean_dr = found_multi_dr
-                                                    
-                                                    # Flag for highlighting and logging
-                                                    is_multi_assigned = True
-                                                    multi_log_record = (short_filename, str(route_num), str(agency_val), clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S"))
-                                                    if multi_log_record not in unmapped_records_to_insert:
-                                                        unmapped_records_to_insert.append(multi_log_record)
-                            except Exception as multi_err:
-                                print(f"Multiple Sheet Route-Agency Lookup Error: {multi_err}")
-
 
                         # PRIORITY 4: Final Fallback (NEW_CUST agar teeno jagah na mile)
                         if not has_dr_code:
