@@ -670,7 +670,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             continue
 
                         agency_val = int(agency_str)
-
+                        agency_val_str = str(agency_val)
                         row_has_items = False
                         valid_row_quantities = []
                         row_total_qty = 0
