@@ -815,14 +815,13 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                         if final_multi_dr:
                                             has_dr_code = True
                                             clean_dr = final_multi_dr
-                                            is_multi_assigned = True
+                                            is_multi_assigned = True # Sirf Multiple sheet match par hi row yellow highlight hogi
                                             
                                             multi_log_record = (short_filename, str(route_num), str(agency_val), clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S"))
                                             if multi_log_record not in unmapped_records_to_insert:
                                                 unmapped_records_to_insert.append(multi_log_record)
                             except Exception as multi_err:
                                 print(f"Multiple Sheet Safe Lookup Error: {multi_err}")
-
                         # PRIORITY 4: Final Fallback (NEW_CUST agar teeno jagah na mile)
                         if not has_dr_code:
                             clean_dr = f"NEW_CUST_{agency_val}"
