@@ -781,8 +781,8 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                                     break # Jaise hi route sheet mein mil jaye, loop rok dein
                             except Exception as e:
                                 print(f"Route Sheet Lookup Error: {e}")
-                                              
-                                                        # --- PRIORITY 3.5: SAFE DICTIONARY-BASED MULTIPLE DRCODE LOOKUP ('YES' STATUS) ---
+                                
+                        # --- PRIORITY 3.5: SAFE DICTIONARY-BASED MULTIPLE DRCODE LOOKUP ('YES' STATUS) ---
                         if not has_dr_code and os.path.exists(master_path):
                             try:
                                 xls_multi = pd.ExcelFile(master_path)
@@ -806,10 +806,10 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                             
                                             if m_rt == rt_clean and m_ag == ag_clean:
                                                 if m_dr and m_dr.upper() not in ["NAN", "NONE", ""]:
-                                                    fallback_dr = m_dr # Safety fallback agar YES na mile
+                                                    fallback_dr = m_dr
                                                     if m_status == "YES":
                                                         matched_dr = m_dr
-                                                        break # Jaise hi YES mile, ruk jayein
+                                                        break
                                         
                                         final_multi_dr = matched_dr if matched_dr else fallback_dr
                                         if final_multi_dr:
@@ -819,7 +819,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                                             
                                             multi_log_record = (short_filename, str(route_num), str(agency_val), clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S"))
                                             if multi_log_record not in unmapped_records_to_insert:
-                                            unmapped_records_to_insert.append(multi_log_record)
+                                                unmapped_records_to_insert.append(multi_log_record)
                             except Exception as multi_err:
                                 print(f"Multiple Sheet Safe Lookup Error: {multi_err}")
 
