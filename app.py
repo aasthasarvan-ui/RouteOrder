@@ -782,7 +782,47 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                             except Exception as e:
                                 print(f"Route Sheet Lookup Error: {e}")
                                               
-                                
+                                                        # --- PRIORITY 3.5: SAFE DICTIONARY-BASED MULTIPLE DRCODE LOOKUP ('YES' STATUS) ---
+                        if not has_dr_code and os.path.exists(master_path):
+                            try:
+                                xls_multi = pd.ExcelFile(master_path)
+                                if "Multiple DRCODE Details" in xls_multi.sheet_names:
+                                    df_multi = pd.read_excel(xls_multi, sheet_name="Multiple DRCODE Details", header=2)
+                                    df_multi.columns = df_multi.columns.astype(str).str.strip()
+                                    
+                                    if 'Route' in df_multi.columns and 'Agency' in df_multi.columns and 'DRCODE' in df_multi.columns:
+                                        rt_clean = str(route_num).replace('.0', '').strip()
+                                        ag_clean = str(agency_val).replace('.0', '').strip()
+                                        status_col = df_multi.columns[-1] # Aakhri column (Column F - YES/NO)
+                                        
+                                        matched_dr = ""
+                                        fallback_dr = ""
+                                        
+                                        for _, m_row in df_multi.dropna(subset=['Route', 'Agency']).iterrows():
+                                            m_rt = str(m_row['Route']).split('.')[0].strip()
+                                            m_ag = str(m_row['Agency']).split('.')[0].strip()
+                                            m_dr = str(m_row['DRCODE']).strip()
+                                            m_status = str(m_row[status_col]).strip().upper()
+                                            
+                                            if m_rt == rt_clean and m_ag == ag_clean:
+                                                if m_dr and m_dr.upper() not in ["NAN", "NONE", ""]:
+                                                    fallback_dr = m_dr # Safety fallback agar YES na mile
+                                                    if m_status == "YES":
+                                                        matched_dr = m_dr
+                                                        break # Jaise hi YES mile, ruk jayein
+                                        
+                                        final_multi_dr = matched_dr if matched_dr else fallback_dr
+                                        if final_multi_dr:
+                                            has_dr_code = True
+                                            clean_dr = final_multi_dr
+                                            is_multi_assigned = True
+                                            
+                                            multi_log_record = (short_filename, str(route_num), str(agency_val), clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S"))
+                                            if multi_log_record not in unmapped_records_to_insert:
+                                            unmapped_records_to_insert.append(multi_log_record)
+                            except Exception as multi_err:
+                                print(f"Multiple Sheet Safe Lookup Error: {multi_err}")
+
                         # PRIORITY 4: Final Fallback (NEW_CUST agar teeno jagah na mile)
                         if not has_dr_code:
                             clean_dr = f"NEW_CUST_{agency_val}"
