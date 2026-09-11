@@ -654,6 +654,7 @@ if st.button("🚀 Process Batch Orders & Update Master DB", type="primary"):
                     file_input_qty = 0
 
                     for r in range(fg_row + 1, df_input.shape[0]):
+                        is_multi_assigned = False
                         agency = df_input.iloc[r, agency_col] if agency_col >= 0 else None
                         if pd.isna(agency) or str(agency).strip() in ["", "nan", "None"]:
                             continue
