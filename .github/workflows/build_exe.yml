@@ -38,7 +38,7 @@ jobs:
           --hidden-import=pytz ^
           --hidden-import=fpdf ^
           --hidden-import=sqlite3 ^
-          your_script_name.py
+          app.py
       shell: cmd
 
     - name: Archive production artifacts
