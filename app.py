@@ -285,16 +285,22 @@ def save_output_file_to_db(file_name: str, file_bytes: bytes, file_type: str = "
         return False
 
 # ==============================================================================
-# SECTION 5: SESSION STATE DEFAULTS
+# SECTION 5: SESSION STATE DEFAULTS & SAFE SECRETS HANDLER
 # ==============================================================================
+def get_safe_secret(section, key, default=""):
+    try:
+        return st.secrets.get(section, {}).get(key, default)
+    except Exception:
+        return default
+
 DEFAULTS = {
     "fg_code": "FG500014",
     "col_map": "36:FG500014AJ\n37:FG500014AK",
     "agency_override": "101:36:FG500014N01\n101:37:FG500014N02",
     "route": "22",
-    "email_user": st.secrets.get("email", {}).get("sender_email", ""),
-    "email_pass": st.secrets.get("email", {}).get("app_password", ""),
-    "recipient": st.secrets.get("email", {}).get("recipient_email", ""),
+    "email_user": get_safe_secret("email", "sender_email", ""),
+    "email_pass": get_safe_secret("email", "app_password", ""),
+    "recipient": get_safe_secret("email", "recipient_email", ""),
     "whatsapp": "",
     "selected_theme": "💼 Classic Enterprise Navy",
     "processed_files": [],
