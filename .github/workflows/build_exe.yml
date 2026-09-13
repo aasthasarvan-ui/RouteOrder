@@ -24,14 +24,14 @@ jobs:
         pip install streamlit pandas openpyxl pytz fpdf pyinstaller
       shell: cmd
 
-    - name: Build EXE with PyInstaller and Streamlit Hooks
+    - name: Build EXE with PyInstaller and Streamlit Metadata Hooks
       run: |
         python -c "import streamlit; print(streamlit.__path__[0])" > st_path.txt
         set /p ST_DIR=<st_path.txt
         
-        REM NOTE: 'your_script_name.py' ki jagah apni main python file ka naam likhein (jaise app.py)
         pyinstaller --noconsole --onedir --name="SalesOrderAutomation" ^
           --add-data "%ST_DIR%/static;streamlit/static" ^
+          --collect-all streamlit ^
           --hidden-import=streamlit ^
           --hidden-import=pandas ^
           --hidden-import=openpyxl ^
