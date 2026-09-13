@@ -24,8 +24,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+# --- Robust Path Resolution for Online (Cloud) & Offline (.EXE) ---
+if getattr(sys, 'frozen', False):
+    # Jab software .EXE (offline localhost) ki tarah run hoga
+    application_path = os.path.dirname(sys.executable)
+else:
+    # Jab script normal ya Streamlit Cloud (online) par run hogi
+    application_path = os.path.dirname(os.path.abspath(__file__))
 
-master_path = "Business_Partners_Master_Original_Keys_Restored.xlsx"  # <--- Yahan define karna hai
+master_path = os.path.join(application_path, "Business_Partners_Master_Original_Keys_Restored.xlsx")
 # ==============================================================================
 # SECTION 2: 8 ENTERPRISE COLOR PALETTES & THEME DEFINITIONS
 # ==============================================================================
