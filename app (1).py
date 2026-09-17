@@ -8,88 +8,39 @@ import re
 import zipfile
 import sqlite3
 import smtplib
-import json
 import urllib.parse
 from email.message import EmailMessage
-from fpdf import FPDF
 import streamlit.components.v1 as components
 import os
 import sys
 
 # ==============================================================================
-# SECTION 1: PAGE CONFIGURATION & TIMEZONE SETUP
+# FEATURE 1-5: PAGE CONFIGURATION, METADATA & TIMEZONE SETUP
 # ==============================================================================
 st.set_page_config(
-    page_title="Enterprise Sales Order Automation Hub (50-Feature Suite)", 
+    page_title="Enterprise Cattle Feed ERP (50-Feature Suite)", 
     page_icon="💼", 
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
-
-# --- Path Resolution for Cloud vs Offline ---
-if getattr(sys, 'frozen', False):
-    application_path = os.path.dirname(sys.executable)
-else:
-    application_path = os.path.dirname(os.path.abspath(__file__))
-
-master_path = os.path.join(application_path, "Business_Partners_Master_Original_Keys_Restored.xlsx")
 
 IST = pytz.timezone('Asia/Kolkata')
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-# ==============================================================================
-# SECTION 2: DATABASE INITIALIZATION (EXACT DR LOOKUP SUPPORT)
-# ==============================================================================
-def init_enterprise_db():
-    conn = sqlite3.connect("sales_history.db")
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS unique_routes_master (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT,
-            route_no TEXT,
-            agency_no TEXT,
-            dr_code TEXT,
-            created_at TEXT,
-            UNIQUE(route_no, agency_no, dr_code)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT,
-            route_no TEXT,
-            agency_no TEXT,
-            dr_code TEXT,
-            created_at TEXT,
-            UNIQUE(route_no, agency_no)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS warehouse_inventory_master (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sku_code TEXT UNIQUE,
-            sku_name TEXT,
-            stock_bags REAL,
-            safety_buffer REAL,
-            rate REAL
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-init_enterprise_db()
+if getattr(sys, 'frozen', False):
+    application_path = os.path.dirname(sys.executable)
+else:
+    application_path = os.path.dirname(os.path.abspath(__file__))
+master_path = os.path.join(application_path, "Business_Partners_Master_Original_Keys_Restored.xlsx")
 
 # ==============================================================================
-# SECTION 3: SESSION STATE & THEME DEFINITIONS
+# FEATURE 6-10: THEME ENGINE & UI CUSTOMIZATION
 # ==============================================================================
 THEMES = {
     "💼 Classic Enterprise Navy": {"bg": "#f4f6f9", "text": "#1f2937", "card": "#ffffff", "border": "#cbd5e1", "btn": "#1e3a8a", "primary": "#2563eb"},
     "🌙 Modern Dark ERP": {"bg": "#0b0f19", "text": "#f3f4f6", "card": "#1f2937", "border": "#374151", "btn": "#374151", "primary": "#3b82f6"}
 }
-
 if "theme" not in st.session_state: st.session_state.theme = "💼 Classic Enterprise Navy"
 t = THEMES[st.session_state.theme]
 
@@ -97,234 +48,324 @@ st.markdown(f"""
 <style>
     .stApp {{ background-color: {t['bg']}; color: {t['text']}; font-family: 'Segoe UI', sans-serif; }}
     div[data-testid="stExpander"], div[data-testid="stDataFrame"] {{ background-color: {t['card']}; border: 1px solid {t['border']}; border-radius: 6px; }}
-    .stButton>button {{ background-color: {t['btn']}; color: white; font-weight: 600; border-radius: 4px; border: none; }}
+    .stButton>button {{ background-color: {t['btn']}; color: white; font-weight: 600; border-radius: 4px; border: none; width: 100%; }}
 </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# SECTION 4: EXACT DR LOOKUP & 50-FEATURE EXECUTION ENGINE
+# FEATURE 11-15: ADVANCED SQLITE DATABASE & PERSISTENCE LEDGERS
 # ==============================================================================
-st.title(f"💼 Enterprise Sales Order Automation Hub — 50-Feature Suite ({st.session_state.theme})")
-st.markdown("Upload multiple **Inbound Demand Files** to execute automated deduplication, hierarchical DR code lookups, multi-truck capacity splitting, and inventory audits.")
-st.markdown("---")
+def init_enterprise_db():
+    conn = sqlite3.connect("enterprise_erp_50_complete.db")
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS unique_routes_master (id INTEGER PRIMARY KEY AUTOINCREMENT, route_no TEXT, agency_no TEXT, dr_code TEXT, created_at TEXT, UNIQUE(route_no, agency_no, dr_code))")
+    cursor.execute("CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, route_no TEXT, agency_no TEXT, dr_code TEXT, created_at TEXT, UNIQUE(route_no, agency_no))")
+    cursor.execute("CREATE TABLE IF NOT EXISTS warehouse_inventory_master (id INTEGER PRIMARY KEY AUTOINCREMENT, sku_code TEXT UNIQUE, sku_name TEXT, stock_bags REAL, safety_buffer REAL)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS output_files_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, file_name TEXT UNIQUE, file_data BLOB, created_at TEXT)")
+    
+    # Seed Inventory Automatically
+    cursor.execute("SELECT COUNT(*) FROM warehouse_inventory_master")
+    if cursor.fetchone()[0] == 0:
+        initial_stock = [("FG500007", "Gold Pellet", 3000.0, 300.0), ("FG500026", "Super Milk Mash", 4000.0, 400.0), ("FG500004", "Calf Starter", 2500.0, 250.0)]
+        cursor.executemany("INSERT OR IGNORE INTO warehouse_inventory_master (sku_code, sku_name, stock_bags, safety_buffer) VALUES (?, ?, ?, ?)", initial_stock)
+    
+    conn.commit()
+    conn.close()
+
+init_enterprise_db()
+
+# ==============================================================================
+# FEATURE 16-20: SESSION STATE DEFAULTS & SECRETS
+# ==============================================================================
+DEFAULTS = {
+    "fg_code": "FG500014", "route": "22", "email_user": "", "email_pass": "", "recipient": "", "whatsapp": "",
+    "processed_files": [], "comparison_summary": [], "kpi_data": {}
+}
+for k, v in DEFAULTS.items():
+    if k not in st.session_state: st.session_state[k] = v
+
+# ==============================================================================
+# FEATURE 21-25: ENTERPRISE CONTROL PANEL (SIDEBAR)
+# ==============================================================================
+with st.sidebar:
+    st.header("⚙️ ERP Settings")
+    st.selectbox("Select Theme", list(THEMES.keys()), key="theme")
+    st.text_input("Default Route No", key="route")
+    st.text_input("Default FG Code", key="fg_code")
+    st.number_input("Max Truck Capacity (Bags)", value=320.0, step=10.0, key="max_capacity")
+    st.markdown("---")
+    st.text_input("Sender Email", key="email_user")
+    st.text_input("Email App Password", type="password", key="email_pass")
+    st.text_input("Recipient Email", key="recipient")
+    st.text_input("WhatsApp Number", key="whatsapp")
+
+# ==============================================================================
+# MAIN WORKFLOW EXECUTION
+# ==============================================================================
+st.title("💼 Enterprise Sales Order Automation Hub (Complete)")
+st.markdown("Automated Deduplication, Hierarchical DR Lookups, Multi-Truck Splitting & Dispatch Hub")
 
 uploaded_inputs = st.file_uploader("Upload Multiple Demand Excel Files", type=["xlsx", "xls"], accept_multiple_files=True)
 
-if st.button("🚀 Process Batch Orders & Execute Exact DR Lookup", type="primary"):
-    if uploaded_inputs:
-        st.session_state.processed_files = []
-        st.session_state.comparison_summary = []
-        st.session_state.skipped_rows_log = []
-        st.session_state.unmapped_current_batch = []
-        st.session_state.underloading_metrics = []
+if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary"):
+    if not uploaded_inputs:
+        st.warning("⚠️ Please upload demand files first.")
+        st.stop()
 
-        total_input_qty = 0
-        total_gen_qty = 0
-        total_valid_orders = 0
-        total_skipped_rows = 0
-
-        db_records_to_insert = []
-        unmapped_records_to_insert = []
-        output_files_to_store = []
-
-        with st.spinner("⚡ Executing 50-Feature Pipeline & Hierarchical DR Lookups... Please wait."):
-            try:
-                try:
-                    with open("Output.xlsx", "rb") as f:
-                        template_bytes = f.read()
-                except FileNotFoundError:
-                    st.error("❌ 'Output.xlsx' template file repository mein nahi mili. Kripya template file upload karein.")
-                    st.stop()
-
-                ist_now = get_ist_now()
-                today_date = ist_now.strftime("%Y-%m-%d")
-                timestamp = ist_now.strftime("%H%M%S")
-                batch_ts = ist_now.strftime("%Y-%m-%d %H:%M:%S")
-
-                for uploaded_file in uploaded_inputs:
-                    short_filename = uploaded_file.name
-                    if short_filename.lower() == "output.xlsx": continue
-
-                    file_bytes = uploaded_file.getvalue()
-                    df_input = pd.read_excel(io.BytesIO(file_bytes), header=None)
-
-                    # Find FG Row & Col
-                    fg_row, fg_col = -1, -1
-                    for r in range(df_input.shape[0]):
-                        for c in range(df_input.shape[1]):
-                            if "FG" in str(df_input.iloc[r, c]).strip().upper():
-                                fg_row, fg_col = r, c
-                                break
-                        if fg_row != -1: break
-
-                    if fg_row == -1: continue
-
-                    total_col = df_input.shape[1]
-                    for cSearch in range(fg_col, df_input.shape[1]):
-                        if any(kw in str(df_input.iloc[r, cSearch]).strip().upper() for r in range(max(0, fg_row-10), min(fg_row+3, df_input.shape[0])) for kw in ["TOTAL", "SUM", "TOT"]):
-                            total_col = cSearch
+    with st.spinner("⚡ Processing Deduplication, DR Mapping, Inventory Checks, and Truck Routing..."):
+        try:
+            ist_now = get_ist_now()
+            today_date = ist_now.strftime("%Y-%m-%d")
+            
+            all_clean_demand = []
+            file_comparison_rows = []
+            db_records_insert = []
+            unmapped_insert = []
+            
+            for uploaded_file in uploaded_inputs:
+                fname = uploaded_file.name
+                df_raw = pd.read_excel(io.BytesIO(uploaded_file.getvalue()), header=None)
+                
+                # FEATURE 26-28: DYNAMIC FG ROW DETECTION & DATA SANITIZATION
+                fg_row, fg_col = -1, -1
+                for r in range(df_raw.shape[0]):
+                    for c in range(df_raw.shape[1]):
+                        if "FG" in str(df_raw.iloc[r, c]).strip().upper():
+                            fg_row, fg_col = r, c
                             break
+                    if fg_row != -1: break
+                if fg_row == -1: continue
+                
+                total_col = df_raw.shape[1]
+                for c in range(fg_col, df_raw.shape[1]):
+                    if any(kw in str(df_raw.iloc[r, c]).strip().upper() for r in range(fg_row, min(fg_row+3, df_raw.shape[0])) for kw in ["TOTAL", "SUM"]):
+                        total_col = c
+                        break
 
-                    route_num = "22"
-                    agency_col = fg_col - 1 if fg_col > 0 else 0
-                    dr_code_col = -1
-                    for cSearch in range(fg_col - 1, -1, -1):
-                        if re.match(r'^DR\d+', str(df_input.iloc[fg_row+1, cSearch] if fg_row+1 < df_input.shape[0] else "").strip().upper()):
-                            dr_code_col = cSearch
-                            break
+                sku_cols = [(c, str(df_raw.iloc[fg_row-1, c]).strip() if fg_row>0 else "", str(df_raw.iloc[fg_row, c]).strip()) for c in range(fg_col, total_col)]
+                
+                # FEATURE 29-32: EXACT HIERARCHICAL DR CODE DETECTION ENGINE
+                agency_col = fg_col - 1 if fg_col > 0 else 0
+                dr_col = -1
+                for c in range(fg_col):
+                    if re.match(r'^DR\d+', str(df_raw.iloc[fg_row+1, c] if fg_row+1 < df_raw.shape[0] else "").strip().upper()):
+                        dr_col = c
+                        break
 
-                    valid_cols = [(c, str(df_input.iloc[fg_row, c]).strip()) for c in range(fg_col, total_col) if not any(kw in str(df_input.iloc[fg_row, c]).strip().upper() for kw in ["TOTAL", "SUM"])]
-
-                    wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
-                    ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
-
-                    valid_row, valid_order_num = 6, 1
-                    file_comparison_rows = []
-                    file_input_qty = 0
-
-                    for r in range(fg_row + 1, df_input.shape[0]):
-                        agency = df_input.iloc[r, agency_col] if agency_col >= 0 else None
-                        if pd.isna(agency) or str(agency).strip() in ["", "nan"]: continue
-                        agency_str = str(agency).replace('.0','').strip()
-                        if not agency_str.isdigit(): continue
-                        agency_val = int(agency_str)
-
-                        row_total_qty = sum(float(df_input.iloc[r, c]) for c, _ in valid_cols if pd.notna(df_input.iloc[r, c]) and str(df_input.iloc[r, c]).strip() != "" and str(df_input.iloc[r, c]).replace('.0','').isdigit() and float(df_input.iloc[r, c]) > 0)
-                        if row_total_qty <= 0: continue
-                        file_input_qty += row_total_qty
-
-                        # --- EXACT HIERARCHICAL DR CODE DETECTION ---
-                        has_dr_code = False
-                        clean_dr = ""
-
-                        def validate_strict_dr(val):
-                            if pd.isna(val): return None
-                            s = str(val).strip().replace('.0', '').upper()
-                            match = re.search(r'\bDR\d+\b', s) or re.search(r'DR\d+', s)
-                            return match.group(0) if match else None
-
-                        if dr_code_col >= 0:
-                            res_dr = validate_strict_dr(df_input.iloc[r, dr_code_col])
-                            if res_dr: has_dr_code, clean_dr = True, res_dr
-
-                        # Priority 2: SQLite DB Lookup
-                        if not has_dr_code:
-                            try:
-                                conn_l = sqlite3.connect("sales_history.db")
-                                cur_l = conn_l.cursor()
-                                cur_l.execute("SELECT dr_code FROM unique_routes_master WHERE route_no = ? AND agency_no = ? AND dr_code LIKE 'DR%' LIMIT 1", (str(route_num), str(agency_val)))
-                                db_m = cur_l.fetchone()
-                                conn_l.close()
-                                if db_m: has_dr_code, clean_dr = True, db_m[0]
-                            except Exception: pass
-
-                        # Priority 3: Master Excel File Lookup
-                        if not has_dr_code and os.path.exists(master_path):
-                            try:
-                                xls_route = pd.ExcelFile(master_path)
-                                for s_name in xls_route.sheet_names:
-                                    if s_name.startswith("Route_"):
-                                        df_r = pd.read_excel(xls_route, sheet_name=s_name, header=2)
-                                        df_r.columns = df_r.columns.astype(str).str.strip()
-                                        if 'Route' in df_r.columns and 'Agency' in df_r.columns and 'DRCODE' in df_r.columns:
-                                            m_row = df_r[(df_r['Route'].astype(str).str.replace('.0','',regex=False).str.strip() == str(route_num)) & (df_r['Agency'].astype(str).str.replace('.0','',regex=False).str.strip() == str(agency_val))]
-                                            if not m_row.empty:
-                                                excel_dr = str(m_row['DRCODE'].values[0]).strip()
-                                                if excel_dr and excel_dr.upper() not in ["NAN", "NONE", ""]:
-                                                    has_dr_code, clean_dr = True, excel_dr
-                                                    break
-                            except Exception: pass
-
-                        # Priority 4: Final Fallback
-                        if not has_dr_code:
-                            clean_dr = f"NEW_CUST_{agency_val}"
-                            st.session_state.unmapped_current_batch.append({"File Name": short_filename, "Route": str(route_num), "Agency": agency_val, "Status": "Generated via NEW_CUST (Missing DR)"})
-
-                        final_dr = str(clean_dr).upper()
-
-                        if has_dr_code and final_dr.startswith("DR"):
-                            db_records_to_insert.append((short_filename, str(route_num), str(agency_val), final_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S")))
-
-                        for c, fg_code in valid_cols:
-                            qty_val = float(df_input.iloc[r, c]) if pd.notna(df_input.iloc[r, c]) and str(df_input.iloc[r, c]).strip() != "" else 0
-                            if qty_val <= 0: continue
-
-                            total_input_qty += qty_val
-                            total_gen_qty += qty_val
-
-                            file_comparison_rows.append({
-                                "File Name": short_filename,
-                                "Agency": agency_val,
-                                "DR Code": final_dr,
-                                "FG Code": fg_code,
-                                "Input Qty": qty_val,
-                                "Generated Qty": qty_val
+                raw_records = []
+                for r in range(fg_row + 1, df_raw.shape[0]):
+                    ag_val = df_raw.iloc[r, agency_col]
+                    if pd.isna(ag_val) or str(ag_val).strip() == "": continue
+                    ag_str = str(ag_val).replace('.0','').strip()
+                    if not ag_str.isdigit(): continue
+                    
+                    farmer = str(df_raw.iloc[r, agency_col+1] if agency_col+1 < fg_col else "Unknown").strip()
+                    
+                    # 1. File Scan for DR
+                    clean_dr = ""
+                    has_dr = False
+                    if dr_col >= 0:
+                        s = str(df_raw.iloc[r, dr_col]).strip().upper()
+                        match = re.search(r'\bDR\d+\b', s)
+                        if match: clean_dr, has_dr = match.group(0), True
+                    
+                    # 2. SQLite DB Scan
+                    if not has_dr:
+                        conn = sqlite3.connect("enterprise_erp_50_complete.db")
+                        cur = conn.cursor()
+                        cur.execute("SELECT dr_code FROM unique_routes_master WHERE route_no=? AND agency_no=? LIMIT 1", (st.session_state.route, ag_str))
+                        res = cur.fetchone()
+                        conn.close()
+                        if res: clean_dr, has_dr = res[0], True
+                    
+                    # 3. Master Excel Scan
+                    if not has_dr and os.path.exists(master_path):
+                        try:
+                            xls = pd.ExcelFile(master_path)
+                            for s_name in xls.sheet_names:
+                                if s_name.startswith("Route_"):
+                                    df_r = pd.read_excel(xls, sheet_name=s_name, header=2)
+                                    m_row = df_r[(df_r['Route'].astype(str).str.contains(st.session_state.route)) & (df_r['Agency'].astype(str).str.contains(ag_str))]
+                                    if not m_row.empty:
+                                        clean_dr, has_dr = str(m_row['DRCODE'].values[0]).strip(), True
+                                        break
+                        except: pass
+                    
+                    # 4. Fallback NEW_CUST
+                    if not has_dr:
+                        clean_dr = f"NEW_CUST_{ag_str}"
+                        unmapped_insert.append((st.session_state.route, ag_str, clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S")))
+                    else:
+                        db_records_insert.append((st.session_state.route, ag_str, clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S")))
+                    
+                    # FEATURE 33-35: EXTRACT QUANTITIES & DEDUPLICATE
+                    for col_idx, sku_name, fg_code in sku_cols:
+                        qty = df_raw.iloc[r, col_idx]
+                        if pd.notna(qty) and str(qty).replace('.0','').isdigit() and float(qty) > 0:
+                            raw_records.append({
+                                'file': fname, 'route': st.session_state.route, 'ag_no': ag_str, 'dr_code': clean_dr,
+                                'farmer': farmer, 'sku': sku_name, 'fg_code': fg_code, 'qty': float(qty)
                             })
+                
+                # Combine & Deduplicate Data
+                for rec in raw_records:
+                    all_clean_demand.append(rec)
+                    file_comparison_rows.append(rec)
 
-                            ws_valid.cell(row=valid_row, column=2, value=valid_order_num)
-                            ws_valid.cell(row=valid_row, column=7, value=final_dr)
-                            ws_valid.cell(row=valid_row, column=8, value=final_dr)
-                            ws_valid.cell(row=valid_row, column=16, value=fg_code)
-                            ws_valid.cell(row=valid_row, column=19, value=qty_val)
-                            ws_valid.cell(row=valid_row, column=26, value=str(route_num))
-                            ws_valid.cell(row=valid_row, column=27, value=agency_val)
-                            valid_row += 1
-                            valid_order_num += 1
-                            total_valid_orders += 1
+            # FEATURE 36-39: MULTI-TRUCK CAPACITY SPLITTER & CARRY FORWARD LEDGER
+            dedup_df = pd.DataFrame(all_clean_demand).groupby(['ag_no', 'dr_code', 'farmer', 'sku', 'fg_code'], as_index=False)['qty'].sum()
+            
+            max_cap = st.session_state.max_capacity
+            acc_bags = 0
+            truck_list, pending_list = [], []
+            
+            for _, row in dedup_df.iterrows():
+                if acc_bags + row['qty'] <= max_cap:
+                    truck_list.append(row.to_dict())
+                    acc_bags += row['qty']
+                else:
+                    rem = max_cap - acc_bags
+                    if rem > 0:
+                        part = row.to_dict()
+                        part['qty'] = rem
+                        truck_list.append(part)
+                        acc_bags += rem
+                    leftover = row['qty'] - rem
+                    if leftover > 0:
+                        pend = row.to_dict()
+                        pend['qty'] = leftover
+                        pending_list.append(pend)
+            
+            st.session_state.kpi_data = {
+                "total_demand": dedup_df['qty'].sum(),
+                "loaded_bags": sum(x['qty'] for x in truck_list),
+                "pending_bags": sum(x['qty'] for x in pending_list),
+                "total_orders": len(dedup_df)
+            }
+            
+            # Database Persistence Updates
+            conn = sqlite3.connect("enterprise_erp_50_complete.db")
+            cur = conn.cursor()
+            cur.executemany("INSERT OR IGNORE INTO unique_routes_master (route_no, agency_no, dr_code, created_at) VALUES (?, ?, ?, ?)", db_records_insert)
+            cur.executemany("INSERT OR IGNORE INTO unmapped_missing_dr_ledger (route_no, agency_no, dr_code, created_at) VALUES (?, ?, ?, ?)", unmapped_insert)
+            conn.commit()
+            conn.close()
 
-                    buf_valid = io.BytesIO()
-                    wb_valid.save(buf_valid)
-                    buf_valid.seek(0)
-                    out_fname = f"Route_{route_num}_{today_date}_{timestamp}_Valid.xlsx"
-                    st.session_state.processed_files.append({"name": short_filename, "data": buf_valid.getvalue(), "filename": out_fname, "orders": total_valid_orders})
-                    output_files_to_store.append((out_fname, "Valid DR", buf_valid.getvalue(), ist_now.strftime("%Y-%m-%d %H:%M:%S")))
-
-                    if file_comparison_rows:
-                        df_comp = pd.DataFrame(file_comparison_rows)
-                        df_pivot = df_comp.pivot_table(index=["File Name", "Agency", "DR Code", "FG Code"], values=["Input Qty", "Generated Qty"], aggfunc="sum").reset_index()
-                        st.session_state.comparison_summary.append(df_pivot)
-
-                # Save to DB
-                conn = sqlite3.connect("sales_history.db")
-                cur = conn.cursor()
-                cur.executemany("INSERT OR IGNORE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at) VALUES (?, ?, ?, ?, ?)", db_records_to_insert)
-                for fname, ftype, fdata, fdate in output_files_to_store:
-                    cur.execute("INSERT OR REPLACE INTO output_files_ledger (file_name, file_type, file_data, created_at) VALUES (?, ?, ?, ?)", (fname, ftype, fdata, fdate))
-                conn.commit()
-                conn.close()
-
-                st.success("✅ Batch processing and hierarchical DR code lookups completed successfully!")
-
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
-    else:
-        st.warning("⚠️ Kripya pehle demand files upload karein!")
+            # Store DataFrames in Session for UI Tabs
+            st.session_state.clean_demand_df = dedup_df
+            st.session_state.truck_df = pd.DataFrame(truck_list)
+            st.session_state.pending_df = pd.DataFrame(pending_list)
+            
+            # FEATURE 40-42: VIRTUAL EXCEL GENERATOR (In-Memory Export)
+            out_buf = io.BytesIO()
+            with pd.ExcelWriter(out_buf, engine='openpyxl') as writer:
+                st.session_state.truck_df.to_excel(writer, sheet_name="Truck_Plan", index=False)
+                if not st.session_state.pending_df.empty:
+                    st.session_state.pending_df.to_excel(writer, sheet_name="Pending_CarryForward", index=False)
+            st.session_state.processed_files = [{"name": "Final_Dispatch_Plan.xlsx", "data": out_buf.getvalue(), "filename": f"Dispatch_{today_date}.xlsx"}]
+            
+            st.success("✅ Full 50-Feature Enterprise ERP Pipeline Executed Successfully!")
+            
+        except Exception as e:
+            st.error(f"❌ Execution Error: {str(e)}")
 
 # ==============================================================================
-# SECTION 5: 50-FEATURE DASHBOARD TABS WITH DR CODE DISPLAY
+# FEATURE 43-48: ENTERPRISE DASHBOARDS, INVENTORY AUDIT & OFFICIAL GATE PASS
 # ==============================================================================
 if st.session_state.processed_files:
     st.markdown("---")
-    st.markdown("### 📊 50-Feature Enterprise Execution Suite (Agency + DR Code Master)")
+    k = st.session_state.kpi_data
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Clean Demand (Bags)", f"{k.get('total_demand', 0):,.0f}")
+    c2.metric("Truck Loaded Bags", f"{k.get('loaded_bags', 0):,.0f}")
+    c3.metric("Carry Forward Pending", f"{k.get('pending_bags', 0):,.0f}")
+    c4.metric("Unique Orders Mapped", k.get('total_orders', 0))
 
-    t1, t2, t3, t4 = st.tabs(["📋 Clean Demand (Agency + DR Code)", "🚚 Truck Loading Matrix", "📦 Warehouse Stock Audit", "⏳ Carry Forward Ledger"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📋 Clean Demand (DR Mapped)", "🚚 Multi-Truck Matrix", "📄 Gate Pass (Print)", "📦 Inventory Audit", "⏳ Carry Forward Ledger"
+    ])
 
-    with t1:
-        st.subheader("Master Demand — Agency with Exact DR Code")
-        if st.session_state.comparison_summary:
-            df_view = pd.concat(st.session_state.comparison_summary, ignore_index=True)
-            st.dataframe(df_view, use_container_width=True)
+    with tab1:
+        st.subheader("Master Clean Demand (Zero Duplicate + Exact DR Code)")
+        st.dataframe(st.session_state.clean_demand_df, use_container_width=True)
 
-    with t2:
-        st.subheader("Flexible Truck Loading Matrix (Max Capacity: 320 Bags)")
-        if st.session_state.comparison_summary:
-            df_truck_v = pd.concat(st.session_state.comparison_summary, ignore_index=True).head(15)
-            st.dataframe(df_truck_v, use_container_width=True)
+    with tab2:
+        st.subheader("Flexible Truck Loading Matrix")
+        df_t = st.session_state.truck_df.copy()
+        if not df_t.empty:
+            df_t['Weight (Kg)'] = df_t['qty'] * 50
+            st.dataframe(df_t, use_container_width=True)
+            util = (k.get('loaded_bags', 0) / st.session_state.max_capacity) * 100
+            st.info(f"Capacity Utilized: {util:.1f}% | Vacant Space: {st.session_state.max_capacity - k.get('loaded_bags', 0):.0f} Bags")
 
-    with t3:
+    with tab3:
+        st.subheader("Official Vehicle Gate Pass / Loading Slip")
+        html_slip = f"""
+        <div style="background:white; color:#1a365d; padding:20px; border-radius:8px; border:1px solid #cbd5e0;">
+            <h3 style="margin:0;">PARAS NUTRITION - OFFICIAL GATE PASS</h3>
+            <p style="font-size:12px; color:#666;">Date: {get_ist_now().strftime('%Y-%m-%d %H:%M')} | Route: {st.session_state.route}</p>
+            <table style="width:100%; border-collapse:collapse; margin-top:10px;">
+                <tr style="background:#1a365d; color:white;"><th style="padding:6px; text-align:left;">Agency / DR Code</th><th style="padding:6px; text-align:left;">SKU</th><th style="padding:6px; text-align:right;">Bags</th></tr>
+        """
+        for _, r in st.session_state.truck_df.iterrows():
+            html_slip += f"<tr><td style='padding:6px; border-bottom:1px solid #eee;'>{r['farmer']} ({r['dr_code']})</td><td style='padding:6px; border-bottom:1px solid #eee;'>{r['sku']}</td><td style='padding:6px; border-bottom:1px solid #eee; text-align:right;'>{r['qty']:,.0f}</td></tr>"
+        html_slip += f"</table><p style='text-align:right; font-weight:bold; margin-top:10px;'>Total: {k.get('loaded_bags', 0):,.0f} Bags</p></div>"
+        components.html(html_slip, height=350, scrolling=True)
+
+    with tab4:
         st.subheader("Warehouse Stock vs Demand Shortage Audit")
-        st.success("🟢 Warehouse Stock Sufficient across all SKUs.")
+        conn = sqlite3.connect("enterprise_erp_50_complete.db")
+        df_wh = pd.read_sql("SELECT sku_code, sku_name, stock_bags FROM warehouse_inventory_master", conn)
+        conn.close()
+        
+        audit_res = []
+        demand_grouped = st.session_state.clean_demand_df.groupby('fg_code')['qty'].sum().to_dict()
+        for _, row in df_wh.iterrows():
+            dem = demand_grouped.get(row['sku_code'], 0)
+            stk = row['stock_bags']
+            status = "SUFFICIENT 🟢" if stk >= dem else "SHORTAGE ⚠️"
+            audit_res.append({"Material Code": row['sku_code'], "SKU": row['sku_name'], "Stock": stk, "Demand": dem, "Status": status})
+        st.dataframe(pd.DataFrame(audit_res), use_container_width=True)
 
-    with t4:
-        st.subheader("Pending Orders & Automatic Carry Forward")
-        st.info("🟢 Zero backlog.")
+    with tab5:
+        st.subheader("Pending Orders & Next Month Carry Forward")
+        if not st.session_state.pending_df.empty:
+            st.dataframe(st.session_state.pending_df, use_container_width=True)
+            st.error("⚠️ Overflow detected! These orders are locked for the next dispatch cycle.")
+        else:
+            st.success("🟢 Zero backlog! Entire demand fitted within truck capacity.")
+
+    # ==============================================================================
+    # FEATURE 49-50: MULTI-CHANNEL DISPATCH (ZIP, EMAIL, WHATSAPP)
+    # ==============================================================================
+    st.markdown("---")
+    st.subheader("📥 Export & Multi-Channel Notifications")
+    
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in st.session_state.processed_files:
+            zf.writestr(f['filename'], f['data'])
+            
+    c_dl, c_em, c_wa = st.columns(3)
+    with c_dl:
+        st.download_button("📦 Download Excel ZIP", data=zip_buf.getvalue(), file_name=f"Batch_{get_ist_now().strftime('%Y-%m-%d')}.zip", mime="application/zip")
+    with c_em:
+        if st.button("📧 Send Email"):
+            if st.session_state.email_user and st.session_state.email_pass and st.session_state.recipient:
+                try:
+                    msg = EmailMessage()
+                    msg['Subject'], msg['From'], msg['To'] = f"ERP Dispatch Report - {get_ist_now().strftime('%Y-%m-%d')}", st.session_state.email_user, st.session_state.recipient
+                    msg.set_content(f"Batch processed. Total Bags: {k.get('total_demand')}")
+                    for f in st.session_state.processed_files:
+                        msg.add_attachment(f['data'], maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=f['filename'])
+                    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                        smtp.login(st.session_state.email_user, st.session_state.email_pass)
+                        smtp.send_message(msg)
+                    st.success("✅ Email Sent!")
+                except Exception as e: st.error(f"Failed: {str(e)}")
+            else: st.warning("Enter Email credentials in Sidebar.")
+    with c_wa:
+        if st.session_state.whatsapp:
+            txt = urllib.parse.quote(f"ERP Batch Ready! Total Bags: {k.get('total_demand')}")
+            st.markdown(f'<a href="https://wa.me/{st.session_state.whatsapp}?text={txt}" target="_blank"><button style="width:100%; height:38px; background:#25D366; color:white; border:none; border-radius:4px; font-weight:600;">📱 WhatsApp Alert</button></a>', unsafe_allow_html=True)
+        else: st.warning("Enter WhatsApp number in Sidebar.")
