@@ -8,8 +8,10 @@ import re
 import zipfile
 import sqlite3
 import smtplib
+import json
 import urllib.parse
 from email.message import EmailMessage
+from fpdf import FPDF
 import streamlit.components.v1 as components
 import os
 import sys
@@ -144,29 +146,49 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
 
                 sku_cols = [(c, str(df_raw.iloc[fg_row-1, c]).strip() if fg_row>0 else "", str(df_raw.iloc[fg_row, c]).strip()) for c in range(fg_col, total_col)]
                 
-                # FEATURE 29-32: EXACT HIERARCHICAL DR CODE DETECTION ENGINE
-                agency_col = fg_col - 1 if fg_col > 0 else 0
-                dr_col = -1
-                for c in range(fg_col):
-                    if re.match(r'^DR\d+', str(df_raw.iloc[fg_row+1, c] if fg_row+1 < df_raw.shape[0] else "").strip().upper()):
-                        dr_col = c
+                # FEATURE 29-32: EXACT HIERARCHICAL DR CODE & AGENCY DETECTION ENGINE
+                
+                # 1. Smart Agency Detection Logic
+                agency_col = -1
+                for cSearch in range(fg_col - 1, -1, -1):
+                    valid_count = 0
+                    for rCheck in range(fg_row + 1, min(fg_row + 15, df_raw.shape[0])):
+                        v = df_raw.iloc[rCheck, cSearch]
+                        if pd.notna(v):
+                            s_val = str(v).replace('.0', '').strip()
+                            if s_val.isdigit() and 1 <= len(s_val) <= 5:  # Ensuring it's Agency No, not Phone No
+                                valid_count += 1
+                    if valid_count >= 3:
+                        agency_col = cSearch
                         break
+                if agency_col == -1: agency_col = 1 # Safe Fallback
+                
+                # 2. Strict DR Code Column Detection
+                dr_col = -1
+                for cSearch in range(fg_col - 1, -1, -1):
+                    for rCheck in range(fg_row + 1, min(fg_row + 5, df_raw.shape[0])):
+                        if re.match(r'^DR\d+', str(df_raw.iloc[rCheck, cSearch]).strip().upper()):
+                            dr_col = cSearch
+                            break
+                    if dr_col != -1: break
 
                 raw_records = []
                 for r in range(fg_row + 1, df_raw.shape[0]):
                     ag_val = df_raw.iloc[r, agency_col]
                     if pd.isna(ag_val) or str(ag_val).strip() == "": continue
                     ag_str = str(ag_val).replace('.0','').strip()
-                    if not ag_str.isdigit(): continue
+                    if not ag_str.isdigit(): continue  # Validates it's an agency number
                     
                     farmer = str(df_raw.iloc[r, agency_col+1] if agency_col+1 < fg_col else "Unknown").strip()
                     
-                    # 1. File Scan for DR
+                    # --- Exact Hierarchical DR Scan ---
                     clean_dr = ""
                     has_dr = False
+                    
+                    # 1. File Scan for DR
                     if dr_col >= 0:
                         s = str(df_raw.iloc[r, dr_col]).strip().upper()
-                        match = re.search(r'\bDR\d+\b', s)
+                        match = re.search(r'\bDR\d+\b', s) or re.search(r'DR\d+', s)
                         if match: clean_dr, has_dr = match.group(0), True
                     
                     # 2. SQLite DB Scan
@@ -198,7 +220,7 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                     else:
                         db_records_insert.append((st.session_state.route, ag_str, clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S")))
                     
-                    # FEATURE 33-35: EXTRACT QUANTITIES & DEDUPLICATE
+                    # FEATURE 33-35: EXTRACT QUANTITIES
                     for col_idx, sku_name, fg_code in sku_cols:
                         qty = df_raw.iloc[r, col_idx]
                         if pd.notna(qty) and str(qty).replace('.0','').isdigit() and float(qty) > 0:
@@ -207,10 +229,14 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                                 'farmer': farmer, 'sku': sku_name, 'fg_code': fg_code, 'qty': float(qty)
                             })
                 
-                # Combine & Deduplicate Data
                 for rec in raw_records:
                     all_clean_demand.append(rec)
                     file_comparison_rows.append(rec)
+
+            # --- EMPTY DATA SAFEGUARD ---
+            if not all_clean_demand:
+                st.error("❌ Execution Error: Could not find valid orders. Please check if Agency Numbers (1-5 digits) and FG columns exist in the file.")
+                st.stop()
 
             # FEATURE 36-39: MULTI-TRUCK CAPACITY SPLITTER & CARRY FORWARD LEDGER
             dedup_df = pd.DataFrame(all_clean_demand).groupby(['ag_no', 'dr_code', 'farmer', 'sku', 'fg_code'], as_index=False)['qty'].sum()
@@ -243,7 +269,7 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                 "total_orders": len(dedup_df)
             }
             
-            # Database Persistence Updates
+            # Database Updates
             conn = sqlite3.connect("enterprise_erp_50_complete.db")
             cur = conn.cursor()
             cur.executemany("INSERT OR IGNORE INTO unique_routes_master (route_no, agency_no, dr_code, created_at) VALUES (?, ?, ?, ?)", db_records_insert)
