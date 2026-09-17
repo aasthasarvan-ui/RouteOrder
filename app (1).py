@@ -1,6 +1,6 @@
 # ==============================================================================
 # ENTERPRISE LOGISTICS, DISPATCH ENGINE & SALES AUTOMATION SUITE
-# ENHANCED DISPATCH PLANNER WITH LIGHTNING FAST MASTER DR AUTO-LOOKUP & CRUD
+# ENHANCED DISPATCH PLANNER WITH DYNAMIC IN-APP DATABASE BUILDER & CRUD OPERATIONS
 # ==============================================================================
 
 import datetime
@@ -50,13 +50,6 @@ def get_ist_file_suffix():
     return get_ist_now().strftime("%H%M%S")
 
 DB_NAME = "enterprise_logistics_sales_hub.db"
-
-if getattr(sys, 'frozen', False):
-    application_path = os.path.dirname(sys.executable)
-else:
-    application_path = os.path.dirname(os.path.abspath(__file__))
-
-master_path = os.path.join(application_path, "Business_Partners_Master_Original_Keys_Restored.xlsx")
 
 # ==============================================================================
 # SECTION 2: 8 COMPLETE ENTERPRISE COLOR PALETTES
@@ -196,6 +189,7 @@ def init_all_enterprise_databases():
     conn = get_db_connection()
     cur = conn.cursor()
 
+    # 1. Route-Agency-DR Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS unique_routes_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -207,6 +201,8 @@ def init_all_enterprise_databases():
             UNIQUE(route_no, agency_no, dr_code)
         )
     """)
+
+    # 2. Uploaded Input File Archive
     cur.execute("""
         CREATE TABLE IF NOT EXISTS uploaded_files_archive (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -217,6 +213,8 @@ def init_all_enterprise_databases():
             batch_status TEXT
         )
     """)
+
+    # 3. Pending Orders Database
     cur.execute("""
         CREATE TABLE IF NOT EXISTS pending_orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -233,6 +231,8 @@ def init_all_enterprise_databases():
             uploaded_at TEXT
         )
     """)
+
+    # 4. Transporter Fleet Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS fleet_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -246,6 +246,8 @@ def init_all_enterprise_databases():
             status TEXT DEFAULT 'Available'
         )
     """)
+
+    # 5. Plant Loading Bays Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS loading_bays (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -254,6 +256,8 @@ def init_all_enterprise_databases():
             status TEXT DEFAULT 'Open'
         )
     """)
+
+    # 6. Trip Loading Slips Master
     cur.execute("""
         CREATE TABLE IF NOT EXISTS trip_loading_slips (
             trip_id TEXT PRIMARY KEY,
@@ -271,6 +275,8 @@ def init_all_enterprise_databases():
             created_at TEXT
         )
     """)
+
+    # 7. Trip Order Items Manifest Sequence
     cur.execute("""
         CREATE TABLE IF NOT EXISTS trip_order_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -287,6 +293,8 @@ def init_all_enterprise_databases():
             FOREIGN KEY (trip_id) REFERENCES trip_loading_slips(trip_id) ON DELETE CASCADE
         )
     """)
+
+    # 8. Daily Dispatch Sale Register
     cur.execute("""
         CREATE TABLE IF NOT EXISTS daily_dispatch_register (
             register_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -305,6 +313,8 @@ def init_all_enterprise_databases():
             dispatched_at TEXT
         )
     """)
+
+    # 9. Partial / Remaining Pending Dispatch Database
     cur.execute("""
         CREATE TABLE IF NOT EXISTS partial_dispatch_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -322,6 +332,8 @@ def init_all_enterprise_databases():
             created_at TEXT
         )
     """)
+
+    # 10. Unmapped Missing DR Fallback Ledger
     cur.execute("""
         CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -333,6 +345,8 @@ def init_all_enterprise_databases():
             UNIQUE(route_no, agency_no)
         )
     """)
+
+    # 11. Generated Output Files Storage Ledger (BLOB Storage)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS output_files_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -342,6 +356,8 @@ def init_all_enterprise_databases():
             created_at TEXT
         )
     """)
+
+    # 12. Traceability Ledger
     cur.execute("""
         CREATE TABLE IF NOT EXISTS input_output_traceability (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -355,6 +371,8 @@ def init_all_enterprise_databases():
             created_at TEXT
         )
     """)
+
+    # 13. Discrepancy Audit Ledger
     cur.execute("""
         CREATE TABLE IF NOT EXISTS discrepancy_audit_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -369,6 +387,8 @@ def init_all_enterprise_databases():
             logged_at TEXT
         )
     """)
+
+    # 14. System Audit History Logs
     cur.execute("""
         CREATE TABLE IF NOT EXISTS history_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -516,12 +536,11 @@ with st.sidebar:
 
 # ==============================================================================
 # MODULE 1: INBOUND DEMAND & SALES ORDER AUTOMATION ENGINE
-# (WITH LIGHTNING-FAST RAM CACHED MASTER FILE DR AUTO-LOOKUP)
 # ==============================================================================
 
 if main_menu == "⚡ Inbound Demand & Sales Order Engine":
     st.title("⚡ Enterprise Inbound Demand & Sales Order Processing Engine")
-    st.markdown("Upload multiple **Demand Workbooks** to execute **Master File DR Auto-Lookup** instantly, eliminate duplicate orders, generate structured `Output.xlsx` files, and sync pending demand.")
+    st.markdown("Upload multiple **Demand Workbooks** to execute DR auto-lookup, eliminate duplicate orders, generate structured `Output.xlsx` files, and sync pending demand.")
 
     with st.expander("⚙️ SKU, Route & Multi-Channel Dispatch Settings", expanded=False):
         c1, c2, c3 = st.columns(3)
@@ -583,31 +602,6 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
         except FileNotFoundError:
             template_bytes = None
 
-        # --- 🔥 LIGHTNING-FAST O(1) RAM CACHING FOR MASTER LOOKUPS ---
-        sql_lookup_dict = {}
-        df_sql = pd.read_sql("SELECT route_no, agency_no, dr_code FROM unique_routes_master", conn)
-        for _, r in df_sql.iterrows():
-            sql_lookup_dict[(str(r['route_no']).strip(), str(r['agency_no']).strip())] = str(r['dr_code']).strip()
-
-        master_lookup_dict = {}
-        if os.path.exists(master_path):
-            try:
-                xls = pd.ExcelFile(master_path)
-                for s_name in xls.sheet_names:
-                    if s_name.startswith("Route_"):
-                        df_r = pd.read_excel(xls, sheet_name=s_name, header=2)
-                        df_r.columns = df_r.columns.astype(str).str.strip()
-                        if 'Route' in df_r.columns and 'Agency' in df_r.columns and 'DRCODE' in df_r.columns:
-                            for _, mr in df_r.iterrows():
-                                rt_val = str(mr['Route']).replace('.0', '').strip()
-                                ag_val = str(mr['Agency']).replace('.0', '').strip()
-                                dr_val = str(mr['DRCODE']).strip()
-                                if dr_val and dr_val.upper() not in ["NAN", "NONE", ""]:
-                                    master_lookup_dict[(rt_val, ag_val)] = dr_val
-            except Exception as ex:
-                st.warning(f"Master file warning: {ex}")
-        # -------------------------------------------------------------
-
         pending_records_to_insert = []
         master_routes_to_insert = []
         unmapped_records_to_insert = []
@@ -622,6 +616,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
             if short_fname.lower() == "output.xlsx":
                 continue
 
+            # Anti-Duplicate Guard: Skip if file was already uploaded and archived
             cur.execute("SELECT id FROM uploaded_files_archive WHERE file_name=?", (short_fname,))
             if cur.fetchone():
                 st.warning(f"⚠️ '{short_fname}' pehle se process ho chuki hai. Duplicate upload skip kiya gaya.")
@@ -658,7 +653,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                 st.error(f"❌ '{short_fname}' me FG / SKU header row detect nahi hui.")
                 continue
 
-            # 2. Strict Total Column Cutoff
+            # 2. Strict Total Column Cutoff (Formula & Summary Header Guard)
             total_col = df_input.shape[1]
             for c_s in range(fg_col, df_input.shape[1]):
                 val_header = str(df_input.iloc[fg_row, c_s]).strip().upper()
@@ -719,6 +714,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
             file_input_qty = 0.0
 
             for r in range(fg_row + 1, df_input.shape[0]):
+                # SUMMARY ROW EXCLUSION
                 row_raw_values = [str(val).strip().upper() for val in df_input.iloc[r, :min(total_col, 15)] if pd.notna(val)]
                 if any(any(kw in cell_str for kw in ["TOTAL", "SUM", "GRAND TOTAL", "GR. TOTAL", "NET TOTAL", "TOTAL QTY"]) for cell_str in row_raw_values):
                     continue
@@ -737,25 +733,26 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
 
                 agency_val = int(agency_str)
 
-                # --- INSTANT RAM LOOKUP FOR DR CODE ---
                 clean_dr = ""
                 if dr_code_col >= 0:
                     raw_dr = df_input.iloc[r, dr_code_col]
                     if pd.notna(raw_dr) and "DR" in str(raw_dr).upper():
                         clean_dr = str(raw_dr).strip()
 
-                lookup_key = (resolved_route, str(agency_val))
-                if not clean_dr and lookup_key in sql_lookup_dict:
-                    clean_dr = sql_lookup_dict[lookup_key]
-                if not clean_dr and lookup_key in master_lookup_dict:
-                    clean_dr = master_lookup_dict[lookup_key]
-
                 if not clean_dr:
-                    clean_dr = f"NEW_CUST_{agency_val}"
-                    unmapped_records_to_insert.append((short_fname, resolved_route, str(agency_val), clean_dr, batch_ts))
-                    st.session_state.unmapped_current_batch.append({
-                        "File Name": short_fname, "Route": resolved_route, "Agency": agency_val, "Fallback DR": clean_dr
-                    })
+                    cur.execute(
+                        "SELECT dr_code FROM unique_routes_master WHERE route_no=? AND agency_no=?",
+                        (resolved_route, str(agency_val))
+                    )
+                    match = cur.fetchone()
+                    if match:
+                        clean_dr = match[0]
+                    else:
+                        clean_dr = f"NEW_CUST_{agency_val}"
+                        unmapped_records_to_insert.append((short_fname, resolved_route, str(agency_val), clean_dr, batch_ts))
+                        st.session_state.unmapped_current_batch.append({
+                            "File Name": short_fname, "Route": resolved_route, "Agency": agency_val, "Fallback DR": clean_dr
+                        })
 
                 is_valid_dr = clean_dr.upper().startswith("DR")
                 if is_valid_dr:
@@ -785,6 +782,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                                 if (agency_val, c_idx) in agency_override_dict:
                                     current_fg = agency_override_dict[(agency_val, c_idx)]
 
+                                # Order uniqueness check
                                 cur.execute("""
                                     SELECT id FROM pending_orders 
                                     WHERE route_no=? AND agency_no=? AND fg_code=? AND status='Pending' AND bags_qty=?
@@ -991,7 +989,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
             st.download_button(f"📥 Download {f_itm['name']}", f_itm["data"], f_itm["filename"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_indiv_{idx_f}")
 
 # ==============================================================================
-# MODULE 2: ROUTE DISPATCH TRIP PLANNER
+# MODULE 2: ROUTE DISPATCH TRIP PLANNER (SKU-LEVEL PARTIAL DISPATCH & OVERLOAD CONFIRMATION)
 # ==============================================================================
 
 elif main_menu == "🚚 Route Dispatch Trip Planner":
@@ -1031,8 +1029,11 @@ elif main_menu == "🚚 Route Dispatch Trip Planner":
 
         st.markdown("---")
         st.subheader("📦 5. Agency & SKU Level Quantity Modification (Include/Exclude/Partial Split):")
+        st.markdown("Har Agency ke specific SKU ko include karein ya quantity modify karein (e.g. 30 ki jagah 20 ya 35 bhej sakte hain). Jo quantity bachegi wo automatically **Partial Dispatch Database** me chali jayegi.")
+
         filtered_route_df = route_df[route_df["agency_no"].isin(selected_agencies)].copy()
 
+        # Prepare Interactive Editor Table
         filtered_route_df["Include in Trip"] = True
         filtered_route_df["Dispatch Bags"] = filtered_route_df["bags_qty"]
 
@@ -1054,10 +1055,32 @@ elif main_menu == "🚚 Route Dispatch Trip Planner":
             key="trip_sku_editor"
         )
 
+        # Calculate Trip Aggregates
         active_trip_items = edited_orders[edited_orders["Include in Trip"] == True].copy()
         trip_bags = active_trip_items["Dispatch Bags"].sum()
         trip_mt = round(trip_bags * 0.05, 2)
 
+        # Dynamic Color Status Badging
+        partial_agencies = []
+        for ag, group in edited_orders.groupby("agency_no"):
+            orig = group["bags_qty"].sum()
+            disp = group[group["Include in Trip"] == True]["Dispatch Bags"].sum()
+            if disp < orig:
+                partial_agencies.append(str(ag))
+
+        if partial_agencies:
+            st.markdown(f"""
+                <div style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 10px; border-radius: 6px; margin: 10px 0;">
+                    <span style="color: #b45309; font-weight: bold;">⚠️ PARTIAL / SPLIT AGENCIES DETECTED:</span> 
+                    <span style="background: #fde68a; color: #92400e; padding: 2px 8px; border-radius: 4px; font-weight: bold;">
+                        {', '.join(partial_agencies)}
+                    </span> 
+                    <br><small style="color: #78350f;">In agencies ka remaining balance automatically alag Partial Dispatch Database me update ho jayega.</small>
+                </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+        # Overload Handling Logic
         cap_bags = 0
         is_overloaded = False
         if sel_vehicle != "No Vehicles Available":
@@ -1072,10 +1095,14 @@ elif main_menu == "🚚 Route Dispatch Trip Planner":
 
             if trip_bags > cap_bags:
                 is_overloaded = True
-                st.error(f"🚨 **VEHICLE OVERLOAD WARNING:** Truck capacity exceeded by {trip_bags - cap_bags:,.0f} bags!")
+                st.error(f"🚨 **VEHICLE OVERLOAD WARNING:** Truck capacity exceeded by {trip_bags - cap_bags:,.0f} bags ({trip_mt - v_info['capacity_mt']:.2f} MT)!")
                 confirm_overload = st.checkbox("⚠️ Check this box to CONFIRM and OVERRIDE vehicle capacity limits for this trip.")
             else:
                 confirm_overload = True
+                if util_pct < 70:
+                    st.warning("⚠️ **Low Utilization Warning:** Truck capacity 70% se kam hai.")
+                else:
+                    st.success("🟢 **Optimal Load Allocation!**")
 
         st.markdown("---")
         submit_disabled = (sel_vehicle == "No Vehicles Available") or active_trip_items.empty or (is_overloaded and not confirm_overload)
@@ -1088,11 +1115,13 @@ elif main_menu == "🚚 Route Dispatch Trip Planner":
             v_info = avail_fleet[avail_fleet["vehicle_no"] == v_num].iloc[0]
             bay_code = sel_bay.split(" - ")[0]
 
+            # 1. Insert Trip Master
             cur.execute("""
                 INSERT INTO trip_loading_slips (trip_id, trip_date, route_no, vehicle_no, transporter_name, driver_name, driver_phone, loading_bay, total_bags, total_weight_mt, capacity_utilization_pct, status, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Planned', ?)
             """, (trip_id, now_ist.strftime("%Y-%m-%d"), str(sel_route), v_num, v_info["transporter_name"], v_info["driver_name"], v_info["driver_phone"], bay_code, trip_bags, trip_mt, round((trip_bags/v_info["capacity_bags"]*100), 2), now_ist.strftime("%Y-%m-%d %H:%M:%S")))
 
+            # 2. Process Items & Split Partials
             seq = 1
             for _, r_val in edited_orders.iterrows():
                 item_id = r_val["id"]
@@ -1118,158 +1147,1184 @@ elif main_menu == "🚚 Route Dispatch Trip Planner":
                     """, (trip_id, item_row["source_file"], item_row["order_no"], item_row["route_no"], item_row["agency_no"], item_row["dr_code"], item_row["fg_code"], orig_qty, disp_qty, rem_qty, now_ist.strftime("%Y-%m-%d %H:%M:%S")))
                 elif rem_qty == 0 and inc:
                     cur.execute("UPDATE pending_orders SET status='Assigned' WHERE id=?", (item_id,))
+                elif rem_qty < 0:
+                    cur.execute("UPDATE pending_orders SET status='Assigned' WHERE id=?", (item_id,))
+                    cur.execute("""
+                        INSERT INTO partial_dispatch_ledger (trip_id, source_file, order_no, route_no, agency_no, dr_code, fg_code, original_bags, dispatched_bags, remaining_bags, status, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Excess Dispatched', ?)
+                    """, (trip_id, item_row["source_file"], item_row["order_no"], item_row["route_no"], item_row["agency_no"], item_row["dr_code"], item_row["fg_code"], orig_qty, disp_qty, 0, now_ist.strftime("%Y-%m-%d %H:%M:%S")))
 
             cur.execute("UPDATE fleet_master SET status='Assigned to Trip' WHERE vehicle_no=?", (v_num,))
             conn.commit()
-            st.success(f"🎉 Trip '{trip_id}' Created Successfully!")
+            st.success(f"🎉 Trip '{trip_id}' Created Successfully! Partials updated in Partial Dispatch Database.")
             st.rerun()
     conn.close()
 
 # ==============================================================================
-# MODULE 3: LIVE INVENTORY STOCK & ERP DEMAND MATCHER
-# ==============================================================================
-
-elif main_menu == "📦 Live Inventory Stock & ERP Demand Matcher":
-    st.title("📦 Live Plant Stock & Inventory Ledger")
-    conn = get_db_connection()
-    df_stk = pd.read_sql("SELECT * FROM plant_inventory_stock", conn)
-    st.dataframe(df_stk, use_container_width=True)
-    conn.close()
-
-# ==============================================================================
-# MODULE 4: LOADING SLIPS & ACTIVE TRIPS
+# MODULE 3: LOADING SLIPS & ACTIVE TRIPS
 # ==============================================================================
 
 elif main_menu == "📋 Loading Slips & Active Trips":
-    st.title("📋 Trip Loading Slips & Active Trips")
+    st.title("📋 Trip Slips & Active Vehicle Dispatches")
+
     conn = get_db_connection()
     df_trips = pd.read_sql("SELECT * FROM trip_loading_slips ORDER BY created_at DESC", conn)
+
+    search_q = st.text_input("🔍 Search Trips (Trip ID, Vehicle, Route, Transporter):", "")
+    if search_q:
+        df_trips = df_trips[df_trips.apply(lambda r: r.astype(str).str.contains(search_q, case=False).any(), axis=1)]
+
     st.dataframe(df_trips, use_container_width=True)
+
+    c_t1, c_t2 = st.columns([1, 2])
+    with c_t1:
+        if not df_trips.empty:
+            st.download_button("📥 Export Trips to Excel", to_excel_download_bytes(df_trips, "Trips"), "Dispatch_Trips.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    with c_t2:
+        with st.expander("🗑️ Multi-Select Delete Trips"):
+            del_t_ids = st.multiselect("Select Trip IDs to Delete:", df_trips["trip_id"].tolist() if not df_trips.empty else [])
+            if st.button("Delete Selected Trips"):
+                cur = conn.cursor()
+                for tid in del_t_ids:
+                    v = cur.execute("SELECT vehicle_no FROM trip_loading_slips WHERE trip_id=?", (tid,)).fetchone()
+                    if v:
+                        cur.execute("UPDATE fleet_master SET status='Available' WHERE vehicle_no=?", (v[0],))
+                    cur.execute("DELETE FROM trip_order_items WHERE trip_id=?", (tid,))
+                    cur.execute("DELETE FROM trip_loading_slips WHERE trip_id=?", (tid,))
+                conn.commit()
+                st.success("Trips deleted & vehicles released.")
+                st.rerun()
+
     if not df_trips.empty:
-        sel_trip = st.selectbox("Select Trip ID to inspect:", df_trips["trip_id"].tolist())
+        st.markdown("---")
+        st.subheader("📄 Inspect Manifest, Generate PDF & Gate Out")
+        sel_trip = st.selectbox("Select Trip ID:", df_trips["trip_id"].tolist())
         trip_row = df_trips[df_trips["trip_id"] == sel_trip].iloc[0]
-        items_df = pd.read_sql("SELECT * FROM trip_order_items WHERE trip_id=?", conn, params=(sel_trip,))
+        items_df = pd.read_sql("SELECT * FROM trip_order_items WHERE trip_id=? ORDER BY delivery_seq ASC", conn, params=(sel_trip,))
+
         st.dataframe(items_df, use_container_width=True)
-        pdf_bytes = build_pdf_loading_slip(trip_row.to_dict(), items_df)
-        st.download_button("📄 Download PDF Loading Slip", pdf_bytes, f"Loading_Slip_{sel_trip}.pdf", "application/pdf")
+
+        btn_c1, btn_c2, btn_c3 = st.columns(3)
+        with btn_c1:
+            pdf_slip = build_pdf_loading_slip(trip_row.to_dict(), items_df)
+            st.download_button("📄 Download PDF Loading Slip", pdf_slip, f"Loading_Slip_{sel_trip}.pdf", "application/pdf")
+        with btn_c2:
+            wa_text = f"Enterprise Dispatch: Trip {trip_row['trip_id']} | Vehicle {trip_row['vehicle_no']} | Route {trip_row['route_no']} | Bags {trip_row['total_bags']}"
+            st.markdown(f'<a href="https://wa.me/{st.session_state.whatsapp_num}?text={urllib.parse.quote(wa_text)}" target="_blank"><button style="width:100%; height:38px; background:#25D366; color:white; border:none; border-radius:4px; font-weight:600;">📱 WhatsApp Alert</button></a>', unsafe_allow_html=True)
+        with btn_c3:
+            if trip_row["status"] != "Dispatched" and st.button("🏁 Gate Out / Dispatched", type="primary"):
+                cur = conn.cursor()
+                for _, it in items_df.iterrows():
+                    cur.execute("""
+                        INSERT INTO daily_dispatch_register (dispatch_date, trip_id, vehicle_no, transporter_name, route_no, agency_no, order_no, dr_code, fg_code, dispatched_bags, dispatched_weight_mt, bay_no, dispatched_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (trip_row["trip_date"], trip_row["trip_id"], trip_row["vehicle_no"], trip_row["transporter_name"], trip_row["route_no"], it["agency_no"], it["order_no"], it["dr_code"], it["fg_code"], it["allocated_bags"], it["allocated_weight_mt"], trip_row["loading_bay"], get_ist_timestamp_full()))
+                cur.execute("UPDATE trip_loading_slips SET status='Dispatched' WHERE trip_id=?", (sel_trip,))
+                cur.execute("UPDATE fleet_master SET status='Available' WHERE vehicle_no=?", (trip_row["vehicle_no"],))
+                conn.commit()
+                st.success("✅ Dispatched & recorded in Daily Dispatch Register!")
+                st.rerun()
     conn.close()
 
 # ==============================================================================
-# MODULE 5: DAILY DISPATCH SALE REGISTER
+# MODULE 4: DAILY DISPATCH SALE REGISTER
 # ==============================================================================
 
 elif main_menu == "📖 Daily Dispatch Sale Register":
-    st.title("📖 Daily Dispatch Sale Register")
+    st.title("📖 Daily Dispatch Sale Register Database")
+
     conn = get_db_connection()
-    st.dataframe(pd.read_sql("SELECT * FROM daily_dispatch_register", conn), use_container_width=True)
+    df_reg = pd.read_sql("SELECT * FROM daily_dispatch_register ORDER BY register_id DESC", conn)
+
+    search_r = st.text_input("🔍 Search Register (Agency, Route, Vehicle, DR Code, Order No):", "")
+    if search_r:
+        df_reg = df_reg[df_reg.apply(lambda r: r.astype(str).str.contains(search_r, case=False).any(), axis=1)]
+
+    st.markdown("##### ✏️ Cell Editing Table (Direct edit karein aur neeche Save button dabayein):")
+    edited_reg = st.data_editor(df_reg, use_container_width=True, num_rows="dynamic", key="editor_reg")
+
+    c1, c2, c3 = st.columns([1, 1, 2])
+    with c1:
+        if st.button("💾 Save Register Changes", type="primary"):
+            conn = get_db_connection()
+            cur = conn.cursor()
+            for _, row in edited_reg.iterrows():
+                cur.execute("""
+                    UPDATE daily_dispatch_register 
+                    SET dispatch_date=?, trip_id=?, vehicle_no=?, transporter_name=?, route_no=?, agency_no=?, order_no=?, dr_code=?, fg_code=?, dispatched_bags=?, dispatched_weight_mt=?, bay_no=?
+                    WHERE register_id=?
+                """, (row['dispatch_date'], row['trip_id'], row['vehicle_no'], row['transporter_name'], str(row['route_no']), str(row['agency_no']), str(row['order_no']), str(row['dr_code']), str(row['fg_code']), float(row['dispatched_bags']), float(row['dispatched_weight_mt']), str(row['bay_no']), row['register_id']))
+            conn.commit()
+            conn.close()
+            st.success("✅ Register changes successfully saved!")
+            st.rerun()
+
+    with c2:
+        if not df_reg.empty:
+            st.download_button("📥 Export Register to Excel", to_excel_download_bytes(df_reg, "DailyRegister"), "Daily_Dispatch_Sale_Register.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    with c3:
+        with st.expander("🗑️ Delete Options (Multiple IDs / Route / Date / Purge)"):
+            del_mode = st.radio("Choose Delete Mode:", ["Select by IDs", "By Route No", "By Dispatch Date", "⚠️ Purge Complete Register"], horizontal=True)
+            if del_mode == "Select by IDs":
+                del_r_ids = st.multiselect("Select Register IDs to Delete:", df_reg["register_id"].tolist() if not df_reg.empty else [])
+                if st.button("Delete Selected IDs"):
+                    cur = conn.cursor()
+                    cur.executemany("DELETE FROM daily_dispatch_register WHERE register_id=?", [(i,) for i in del_r_ids])
+                    conn.commit()
+                    st.success("Selected records deleted.")
+                    st.rerun()
+            elif del_mode == "By Route No":
+                r_to_del = st.text_input("Enter Route No to delete from Register:")
+                if st.button("Delete by Route"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM daily_dispatch_register WHERE route_no=?", (r_to_del,))
+                    conn.commit()
+                    st.success(f"Route {r_to_del} records deleted.")
+                    st.rerun()
+            elif del_mode == "By Dispatch Date":
+                d_to_del = st.text_input("Enter Date (YYYY-MM-DD) to delete:")
+                if st.button("Delete by Date"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM daily_dispatch_register WHERE dispatch_date=?", (d_to_del,))
+                    conn.commit()
+                    st.success(f"Date {d_to_del} records deleted.")
+                    st.rerun()
+            elif del_mode == "⚠️ Purge Complete Register":
+                if st.button("🔥 Confirm Wipe Register"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM daily_dispatch_register")
+                    cur.execute("DELETE FROM sqlite_sequence WHERE name='daily_dispatch_register'")
+                    conn.commit()
+                    st.success("Register completely wiped!")
+                    st.rerun()
     conn.close()
 
 # ==============================================================================
-# MODULE 6: PARTIAL / SPLIT DISPATCH DATABASE
+# MODULE 5: PARTIAL / SPLIT DISPATCH DATABASE
 # ==============================================================================
 
 elif main_menu == "🧩 Partial / Split Dispatch Database":
-    st.title("🧩 Partial / Split Dispatch Database")
+    st.title("🧩 Partial & Split Dispatch Database")
+    st.markdown("Jo orders kisi trip me **partially dispatch** hue hain ya jinka remaining balance bach gaya hai, unka complete historical audit ledger.")
+
     conn = get_db_connection()
-    st.dataframe(pd.read_sql("SELECT * FROM partial_dispatch_ledger", conn), use_container_width=True)
+    df_part = pd.read_sql("SELECT * FROM partial_dispatch_ledger ORDER BY id DESC", conn)
+
+    search_part = st.text_input("🔍 Search Partial Ledger (Trip ID, Agency, Route, FG Code):", "")
+    if search_part:
+        df_part = df_part[df_part.apply(lambda r: r.astype(str).str.contains(search_part, case=False).any(), axis=1)]
+
+    st.markdown("##### ✏️ Cell Editing Partial Table:")
+    edited_part = st.data_editor(df_part, use_container_width=True, num_rows="dynamic", key="editor_part")
+
+    c1, c2, c3 = st.columns([1, 1, 2])
+    with c1:
+        if st.button("💾 Save Partial Changes", type="primary"):
+            conn = get_db_connection()
+            cur = conn.cursor()
+            for _, row in edited_part.iterrows():
+                cur.execute("""
+                    UPDATE partial_dispatch_ledger 
+                    SET trip_id=?, route_no=?, agency_no=?, dr_code=?, fg_code=?, original_bags=?, dispatched_bags=?, remaining_bags=?, status=?
+                    WHERE id=?
+                """, (row['trip_id'], str(row['route_no']), str(row['agency_no']), str(row['dr_code']), str(row['fg_code']), float(row['original_bags']), float(row['dispatched_bags']), float(row['remaining_bags']), str(row['status']), row['id']))
+            conn.commit()
+            conn.close()
+            st.success("✅ Partial ledger changes saved!")
+            st.rerun()
+
+    with c2:
+        if not df_part.empty:
+            st.download_button("📥 Export Partials to Excel", to_excel_download_bytes(df_part, "Partials"), "Partial_Dispatch_Ledger.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    with c3:
+        with st.expander("🗑️ Delete Partial Records"):
+            del_part_ids = st.multiselect("Select Partial IDs to Delete:", df_part["id"].tolist() if not df_part.empty else [])
+            if st.button("Delete Selected Partials"):
+                cur = conn.cursor()
+                cur.executemany("DELETE FROM partial_dispatch_ledger WHERE id=?", [(i,) for i in del_part_ids])
+                conn.commit()
+                st.success("Selected partial records deleted.")
+                st.rerun()
+            if st.button("🔥 Purge Partial Database"):
+                cur = conn.cursor()
+                cur.execute("DELETE FROM partial_dispatch_ledger")
+                cur.execute("DELETE FROM sqlite_sequence WHERE name='partial_dispatch_ledger'")
+                conn.commit()
+                st.success("Partial ledger wiped.")
+                st.rerun()
     conn.close()
 
 # ==============================================================================
-# MODULE 7: PENDING ORDERS LEDGER
+# MODULE 6: PENDING ORDERS LEDGER
 # ==============================================================================
 
 elif main_menu == "⏳ Pending Orders Ledger":
-    st.title("⏳ Pending Orders Ledger")
+    st.title("⏳ Pending Orders Database")
+
     conn = get_db_connection()
-    st.dataframe(pd.read_sql("SELECT * FROM pending_orders", conn), use_container_width=True)
+    df_p = pd.read_sql("SELECT * FROM pending_orders ORDER BY id DESC", conn)
+
+    search_p = st.text_input("🔍 Search Pending Orders (Order No, Route, Agency, FG Code, DR Code):", "")
+    if search_p:
+        df_p = df_p[df_p.apply(lambda r: r.astype(str).str.contains(search_p, case=False).any(), axis=1)]
+
+    st.markdown("##### ✏️ Cell Editing Table (Direct edit karein aur neeche Save button dabayein):")
+    edited_p = st.data_editor(df_p, use_container_width=True, num_rows="dynamic", key="editor_pending")
+
+    c1, c2, c3 = st.columns([1, 1, 2])
+    with c1:
+        if st.button("💾 Save Pending Order Changes", type="primary"):
+            conn = get_db_connection()
+            cur = conn.cursor()
+            for _, row in edited_p.iterrows():
+                cur.execute("""
+                    UPDATE pending_orders 
+                    SET order_no=?, route_no=?, agency_no=?, dr_code=?, fg_code=?, bags_qty=?, weight_mt=?, status=?
+                    WHERE id=?
+                """, (str(row['order_no']), str(row['route_no']), str(row['agency_no']), str(row['dr_code']), str(row['fg_code']), float(row['bags_qty']), float(row['weight_mt']), str(row['status']), row['id']))
+            conn.commit()
+            conn.close()
+            st.success("✅ Pending orders successfully saved!")
+            st.rerun()
+
+    with c2:
+        if not df_p.empty:
+            st.download_button("📥 Export Pending to Excel", to_excel_download_bytes(df_p, "PendingOrders"), "Pending_Orders.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    with c3:
+        with st.expander("🗑️ Delete Options (Multiple IDs / Route / Source File / Purge)"):
+            del_p_mode = st.radio("Choose Delete Mode:", ["Select by IDs", "By Route No", "By Source File", "⚠️ Purge All Pending"], horizontal=True)
+            if del_p_mode == "Select by IDs":
+                del_p_ids = st.multiselect("Select Order IDs to Delete:", df_p["id"].tolist() if not df_p.empty else [])
+                if st.button("Delete Selected Orders"):
+                    cur = conn.cursor()
+                    cur.executemany("DELETE FROM pending_orders WHERE id=?", [(i,) for i in del_p_ids])
+                    conn.commit()
+                    st.success("Selected orders deleted.")
+                    st.rerun()
+            elif del_p_mode == "By Route No":
+                r_del = st.text_input("Enter Route No to delete from Pending:")
+                if st.button("Delete Pending by Route"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM pending_orders WHERE route_no=?", (r_del,))
+                    conn.commit()
+                    st.success(f"Route {r_del} pending orders deleted.")
+                    st.rerun()
+            elif del_p_mode == "By Source File":
+                f_del = st.selectbox("Select File to purge:", df_p["source_file"].unique().tolist() if not df_p.empty else ["None"])
+                if st.button("Delete File Orders"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM pending_orders WHERE source_file=?", (f_del,))
+                    conn.commit()
+                    st.success(f"File {f_del} orders removed.")
+                    st.rerun()
+            elif del_p_mode == "⚠️ Purge All Pending":
+                if st.button("🔥 Confirm Wipe All Pending"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM pending_orders")
+                    cur.execute("DELETE FROM sqlite_sequence WHERE name='pending_orders'")
+                    conn.commit()
+                    st.success("All pending orders wiped!")
+                    st.rerun()
     conn.close()
 
 # ==============================================================================
-# MODULE 8: FILE UPLOAD ARCHIVE
+# MODULE 7: FILE UPLOAD ARCHIVE
 # ==============================================================================
 
 elif main_menu == "🗄️ File Upload Archive":
     st.title("🗄️ Uploaded Input File Archive")
+
     conn = get_db_connection()
-    st.dataframe(pd.read_sql("SELECT * FROM uploaded_files_archive", conn), use_container_width=True)
+    df_a = pd.read_sql("SELECT * FROM uploaded_files_archive ORDER BY id DESC", conn)
+
+    search_a = st.text_input("🔍 Search Archive Logs:", "")
+    if search_a:
+        df_a = df_a[df_a.apply(lambda r: r.astype(str).str.contains(search_a, case=False).any(), axis=1)]
+
+    st.dataframe(df_a, use_container_width=True)
+
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        if not df_a.empty:
+            st.download_button("📥 Export Archive to Excel", to_excel_download_bytes(df_a, "ArchiveLogs"), "Uploaded_Archive_Logs.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    with c2:
+        with st.expander("🗑️ Delete Archive Options"):
+            del_a_ids = st.multiselect("Select File IDs to Delete:", df_a["id"].tolist() if not df_a.empty else [])
+            if st.button("Delete Selected Archive Logs"):
+                cur = conn.cursor()
+                cur.executemany("DELETE FROM uploaded_files_archive WHERE id=?", [(i,) for i in del_a_ids])
+                conn.commit()
+                st.success("Logs deleted.")
+                st.rerun()
+            if st.button("🔥 Purge All Archive"):
+                cur = conn.cursor()
+                cur.execute("DELETE FROM uploaded_files_archive")
+                cur.execute("DELETE FROM sqlite_sequence WHERE name='uploaded_files_archive'")
+                conn.commit()
+                st.success("Archive wiped.")
+                st.rerun()
     conn.close()
 
 # ==============================================================================
-# MODULE 9: MASTER DB & UNMAPPED LEDGER
+# MODULE 8: MASTER DB & UNMAPPED LEDGER (WITH BULK EXCEL IMPORTER)
 # ==============================================================================
 
 elif main_menu == "📋 Master DB & Unmapped Ledger":
-    st.title("📋 Master DB & Unmapped Ledger")
+    st.title("📋 Unique Master Mapping DB & Unmapped Fallback Ledger")
+
     conn = get_db_connection()
-    t1, t2 = st.tabs(["Master DB", "Unmapped Ledger"])
-    with t1: st.dataframe(pd.read_sql("SELECT * FROM unique_routes_master", conn), use_container_width=True)
-    with t2: st.dataframe(pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger", conn), use_container_width=True)
+    df_m = pd.read_sql("SELECT * FROM unique_routes_master ORDER BY id DESC", conn)
+    df_u = pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger ORDER BY id DESC", conn)
+
+    t1, t2 = st.tabs(["📋 Unique Master Mapping DB", "🚨 Unmapped Missing DR Ledger"])
+
+    with t1:
+        # DATA IMPORT OPTION FOR MASTER ROUTES
+        with st.expander("📥 Import Master Routes via Excel / CSV File"):
+            up_master = st.file_uploader("Upload Master Routes File (Must contain route_no, agency_no, dr_code)", type=["xlsx", "csv"], key="master_file_import")
+            if up_master and st.button("🚀 Process & Import Master File"):
+                try:
+                    if up_master.name.endswith('.csv'):
+                        df_imp = pd.read_csv(up_master)
+                    else:
+                        df_imp = pd.read_excel(up_master)
+
+                    df_imp.columns = [str(c).strip().lower().replace(' ', '_') for c in df_imp.columns]
+                    if all(req in df_imp.columns for req in ['route_no', 'agency_no', 'dr_code']):
+                        imp_records = []
+                        now_ts = get_ist_timestamp_full()
+                        for _, row in df_imp.iterrows():
+                            imp_records.append((up_master.name, str(row['route_no']).strip(), str(row['agency_no']).replace('.0','').strip(), str(row['dr_code']).strip(), now_ts))
+
+                        cur = conn.cursor()
+                        cur.executemany("INSERT OR REPLACE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at) VALUES (?, ?, ?, ?, ?)", imp_records)
+                        conn.commit()
+                        st.success(f"✅ Successfully imported {len(imp_records)} master records!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Required columns missing! File must have: 'route_no', 'agency_no', 'dr_code'")
+                except Exception as ex:
+                    st.error(f"Import Error: {str(ex)}")
+
+        sm = st.text_input("🔍 Search Master Database:", "", key="search_m")
+        if sm:
+            df_m = df_m[df_m.apply(lambda r: r.astype(str).str.contains(sm, case=False).any(), axis=1)]
+
+        st.markdown("##### ✏️ Cell Editing Table (Direct edit karein aur neeche Save button dabayein):")
+        edited_m = st.data_editor(df_m, use_container_width=True, num_rows="dynamic", key="editor_master")
+
+        c1, c2, c3 = st.columns([1, 1, 2])
+        with c1:
+            if st.button("💾 Save Master DB Changes", type="primary"):
+                cur = conn.cursor()
+                for _, row in edited_m.iterrows():
+                    cur.execute("""
+                        UPDATE unique_routes_master 
+                        SET route_no=?, agency_no=?, dr_code=?
+                        WHERE id=?
+                    """, (str(row['route_no']), str(row['agency_no']), str(row['dr_code']), row['id']))
+                conn.commit()
+                st.success("✅ Master DB changes saved!")
+                st.rerun()
+        with c2:
+            st.download_button("📥 Export Master to Excel", to_excel_download_bytes(df_m, "MasterRoutes"), "Unique_Routes_Master.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        with c3:
+            with st.expander("🗑️ Delete Master Options"):
+                del_m = st.multiselect("Select IDs to Delete:", df_m["id"].tolist() if not df_m.empty else [])
+                if st.button("Delete Master Records"):
+                    cur = conn.cursor()
+                    cur.executemany("DELETE FROM unique_routes_master WHERE id=?", [(i,) for i in del_m])
+                    conn.commit()
+                    st.success("Master records deleted.")
+                    st.rerun()
+                if st.button("🔥 Purge All Master DB"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM unique_routes_master")
+                    cur.execute("DELETE FROM sqlite_sequence WHERE name='unique_routes_master'")
+                    conn.commit()
+                    st.success("Master DB wiped.")
+                    st.rerun()
+
+        with st.expander("➕ Add Single Record to Master DB"):
+            m_c1, m_c2, m_c3 = st.columns(3)
+            with m_c1: man_r = st.text_input("Route No", "10")
+            with m_c2: man_a = st.text_input("Agency No", "")
+            with m_c3: man_dr = st.text_input("DR Code", "")
+            if st.button("Save Master Record"):
+                if man_r and man_a and man_dr:
+                    cur = conn.cursor()
+                    cur.execute("INSERT OR REPLACE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at) VALUES ('Manual_Entry', ?, ?, ?, ?)", (man_r, man_a, man_dr, get_ist_timestamp_full()))
+                    conn.commit()
+                    st.success("Saved!")
+                    st.rerun()
+
+    with t2:
+        su = st.text_input("🔍 Search Unmapped Ledger:", "", key="search_u")
+        if su:
+            df_u = df_u[df_u.apply(lambda r: r.astype(str).str.contains(su, case=False).any(), axis=1)]
+        st.dataframe(df_u, use_container_width=True)
+
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            st.download_button("📥 Export Unmapped to Excel", to_excel_download_bytes(df_u, "UnmappedDR"), "Unmapped_Missing_DR.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        with c2:
+            with st.expander("🗑️ Delete Unmapped Options"):
+                del_u = st.multiselect("Select Unmapped IDs:", df_u["id"].tolist() if not df_u.empty else [])
+                if st.button("Delete Unmapped Records"):
+                    cur = conn.cursor()
+                    cur.executemany("DELETE FROM unmapped_missing_dr_ledger WHERE id=?", [(i,) for i in del_u])
+                    conn.commit()
+                    st.success("Unmapped records deleted.")
+                    st.rerun()
+                if st.button("🔥 Purge Unmapped Ledger"):
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM unmapped_missing_dr_ledger")
+                    cur.execute("DELETE FROM sqlite_sequence WHERE name='unmapped_missing_dr_ledger'")
+                    conn.commit()
+                    st.success("Unmapped Ledger wiped.")
+                    st.rerun()
     conn.close()
 
 # ==============================================================================
-# MODULE 10: FLEET & LOADING BAY MASTER
+# MODULE 9: FLEET & LOADING BAY MASTER (WITH BULK EXCEL IMPORTER)
 # ==============================================================================
 
 elif main_menu == "🚛 Fleet & Loading Bay Master":
-    st.title("🚛 Fleet & Loading Bay Master")
+    st.title("🚛 Transporter Fleet Master & Loading Bay Configurations")
+
     conn = get_db_connection()
-    f1, f2 = st.tabs(["Fleet Master", "Loading Bays"])
-    with f1: st.dataframe(pd.read_sql("SELECT * FROM fleet_master", conn), use_container_width=True)
-    with f2: st.dataframe(pd.read_sql("SELECT * FROM loading_bays", conn), use_container_width=True)
+    df_f = pd.read_sql("SELECT * FROM fleet_master", conn)
+    df_b = pd.read_sql("SELECT * FROM loading_bays", conn)
+
+    tab1, tab2 = st.tabs(["🚛 Fleet Master", "🏭 Loading Bays"])
+
+    with tab1:
+        # DATA IMPORT OPTION FOR FLEET MASTER
+        with st.expander("📥 Import Vehicle Master List via Excel / CSV File"):
+            up_fleet = st.file_uploader("Upload Fleet Master List (Columns: vehicle_no, vehicle_type, capacity_bags, capacity_mt, transporter_name, driver_name, driver_phone)", type=["xlsx", "csv"], key="fleet_import_file")
+            if up_fleet and st.button("🚀 Process & Import Fleet Master"):
+                try:
+                    if up_fleet.name.endswith('.csv'):
+                        df_fl_imp = pd.read_csv(up_fleet)
+                    else:
+                        df_fl_imp = pd.read_excel(up_fleet)
+
+                    df_fl_imp.columns = [str(c).strip().lower().replace(' ', '_') for c in df_fl_imp.columns]
+                    if all(req in df_fl_imp.columns for req in ['vehicle_no', 'capacity_bags']):
+                        cur = conn.cursor()
+                        for _, row in df_fl_imp.iterrows():
+                            v_no = str(row['vehicle_no']).strip()
+                            v_type = str(row.get('vehicle_type', '10 Wheeler Truck')).strip()
+                            cap_b = int(row['capacity_bags'])
+                            cap_m = float(row.get('capacity_mt', cap_b * 0.05))
+                            trans = str(row.get('transporter_name', 'National Logistics')).strip()
+                            driver = str(row.get('driver_name', 'Driver')).strip()
+                            phone = str(row.get('driver_phone', '9876543210')).replace('.0','').strip()
+
+                            cur.execute("""
+                                INSERT OR REPLACE INTO fleet_master (vehicle_no, vehicle_type, capacity_bags, capacity_mt, transporter_name, driver_name, driver_phone, status)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, 'Available')
+                            """, (v_no, v_type, cap_b, cap_m, trans, driver, phone))
+                        conn.commit()
+                        st.success(f"✅ Successfully imported {len(df_fl_imp)} vehicles into Fleet Master!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Required columns missing! File must have at least: 'vehicle_no', 'capacity_bags'")
+                except Exception as ex:
+                    st.error(f"Fleet Import Error: {str(ex)}")
+
+        st.markdown("##### ✏️ Cell Editing Fleet Table (Direct edit karein aur neeche Save button dabayein):")
+        edited_f = st.data_editor(df_f, use_container_width=True, num_rows="dynamic", key="editor_fleet")
+
+        c1, c2, c3 = st.columns([1, 1, 2])
+        with c1:
+            if st.button("💾 Save Fleet Changes", type="primary"):
+                cur = conn.cursor()
+                for _, row in edited_f.iterrows():
+                    cur.execute("""
+                        UPDATE fleet_master 
+                        SET vehicle_no=?, vehicle_type=?, capacity_bags=?, capacity_mt=?, transporter_name=?, driver_name=?, driver_phone=?, status=?
+                        WHERE id=?
+                    """, (str(row['vehicle_no']), str(row['vehicle_type']), int(row['capacity_bags']), float(row['capacity_mt']), str(row['transporter_name']), str(row['driver_name']), str(row['driver_phone']), str(row['status']), row['id']))
+                conn.commit()
+                st.success("✅ Fleet master changes saved!")
+                st.rerun()
+        with c2:
+            st.download_button("📥 Export Fleet to Excel", to_excel_download_bytes(df_f, "Fleet"), "Fleet_Master.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        with c3:
+            with st.expander("🗑️ Delete Vehicles"):
+                del_f = st.multiselect("Select Vehicle IDs:", df_f["id"].tolist() if not df_f.empty else [])
+                if st.button("Delete Vehicles"):
+                    cur = conn.cursor()
+                    cur.executemany("DELETE FROM fleet_master WHERE id=?", [(i,) for i in del_f])
+                    conn.commit()
+                    st.rerun()
+
+        with st.expander("➕ Add Single Vehicle"):
+            v1, v2, v3 = st.columns(3)
+            with v1:
+                v_num = st.text_input("Vehicle No (e.g. PB-10-AZ-9988)")
+                v_type = st.selectbox("Vehicle Type", ["10 Wheeler Truck", "12 Wheeler Multi-Axle", "14 Wheeler Heavy", "Canter / Eicher"])
+            with v2:
+                v_bags = st.number_input("Capacity (Bags)", value=500, step=50)
+                v_mt = st.number_input("Capacity (MT)", value=25.0, step=1.0)
+            with v3:
+                v_trans = st.text_input("Transporter Name")
+                v_driver = st.text_input("Driver Name")
+                v_phone = st.text_input("Driver Phone")
+            if st.button("Save Vehicle"):
+                if v_num:
+                    cur = conn.cursor()
+                    cur.execute("INSERT OR REPLACE INTO fleet_master (vehicle_no, vehicle_type, capacity_bags, capacity_mt, transporter_name, driver_name, driver_phone, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Available')", (v_num, v_type, v_bags, v_mt, v_trans, v_driver, v_phone))
+                    conn.commit()
+                    st.rerun()
+
+    with tab2:
+        st.markdown("##### ✏️ Cell Editing Loading Bays Table:")
+        edited_b = st.data_editor(df_b, use_container_width=True, num_rows="dynamic", key="editor_bays")
+
+        c1, c2, c3 = st.columns([1, 1, 2])
+        with c1:
+            if st.button("💾 Save Bays Changes", type="primary"):
+                cur = conn.cursor()
+                for _, row in edited_b.iterrows():
+                    cur.execute("""
+                        UPDATE loading_bays 
+                        SET bay_no=?, bay_name=?, status=?
+                        WHERE id=?
+                    """, (str(row['bay_no']), str(row['bay_name']), str(row['status']), row['id']))
+                conn.commit()
+                st.success("✅ Loading bays changes saved!")
+                st.rerun()
+        with c2:
+            st.download_button("📥 Export Bays to Excel", to_excel_download_bytes(df_b, "Bays"), "Loading_Bays.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        with c3:
+            with st.expander("🗑️ Delete Bays"):
+                del_b = st.multiselect("Select Bay IDs:", df_b["id"].tolist() if not df_b.empty else [])
+                if st.button("Delete Bays"):
+                    cur = conn.cursor()
+                    cur.executemany("DELETE FROM loading_bays WHERE id=?", [(i,) for i in del_b])
+                    conn.commit()
+                    st.rerun()
+
+        with st.expander("➕ Add Bay"):
+            b1, b2 = st.columns(2)
+            with b1: bay_no = st.text_input("Bay Code (e.g. BAY-04)")
+            with b2: bay_name = st.text_input("Location Name")
+            if st.button("Save Bay"):
+                if bay_no:
+                    cur = conn.cursor()
+                    cur.execute("INSERT OR REPLACE INTO loading_bays (bay_no, bay_name, status) VALUES (?, ?, 'Open')", (bay_no, bay_name))
+                    conn.commit()
+                    st.rerun()
     conn.close()
 
 # ==============================================================================
-# MODULE 11: TRACEABILITY & AUDIT LEDGERS
+# MODULE 10: TRACEABILITY & AUDIT LEDGERS
 # ==============================================================================
 
 elif main_menu == "🔍 Traceability & Audit Ledgers":
-    st.title("🔍 Traceability & Audit Ledgers")
+    st.title("🔍 Input-Output Traceability, Discrepancies & Stored Outputs")
+
     conn = get_db_connection()
-    st.dataframe(pd.read_sql("SELECT * FROM input_output_traceability", conn), use_container_width=True)
+    df_trace = pd.read_sql("SELECT id, batch_timestamp, input_file_name, total_input_qty, generated_output_file, output_type, version_no FROM input_output_traceability ORDER BY id DESC", conn)
+    df_stored = pd.read_sql("SELECT id, file_name, file_type, created_at FROM output_files_ledger ORDER BY id DESC", conn)
+    df_disc = pd.read_sql("SELECT * FROM discrepancy_audit_ledger ORDER BY id DESC", conn)
+
+    t_tab1, t_tab2, t_tab3 = st.tabs(["🔗 Input-Output Traceability", "📦 Stored Output Files", "🔍 Discrepancy Audit"])
+
+    with t_tab1:
+        st.dataframe(df_trace, use_container_width=True)
+        if not df_trace.empty:
+            st.download_button("📥 Export Traceability to Excel", to_excel_download_bytes(df_trace, "Traceability"), "Traceability_Ledger.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            with st.expander("🗑️ Multi-Delete Traceability"):
+                del_tr = st.multiselect("Select IDs:", df_trace["id"].tolist())
+                if st.button("Delete Traceability"):
+                    cur = conn.cursor()
+                    cur.executemany("DELETE FROM input_output_traceability WHERE id=?", [(i,) for i in del_tr])
+                    conn.commit()
+                    st.rerun()
+
+    with t_tab2:
+        st.dataframe(df_stored, use_container_width=True)
+        if not df_stored.empty:
+            sel_out_id = st.number_input("Enter Stored Output ID to Download", min_value=1, step=1)
+            if st.button("Download Stored File"):
+                cur = conn.cursor()
+                res = cur.execute("SELECT file_name, file_data FROM output_files_ledger WHERE id=?", (sel_out_id,)).fetchone()
+                if res:
+                    st.download_button(f"💾 Save {res[0]}", res[1], res[0], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                else:
+                    st.warning("File not found.")
+
+    with t_tab3:
+        st.dataframe(df_disc, use_container_width=True)
+        if df_disc.empty:
+            st.success("🟢 No discrepancies logged.")
     conn.close()
 
 # ==============================================================================
-# MODULE 12: EXECUTIVE KPI & VISUAL ANALYTICS
+# MODULE 11: EXECUTIVE KPI & VISUAL ANALYTICS
 # ==============================================================================
 
 elif main_menu == "📊 Executive KPI & Visual Analytics":
     st.title("📊 Supply Chain & Dispatch KPI Analytics Dashboard")
+
     conn = get_db_connection()
-    df_t = pd.read_sql("SELECT * FROM trip_loading_slips", conn)
-    st.metric("Total Trips Planned", len(df_t))
+    df_trips = pd.read_sql("SELECT * FROM trip_loading_slips", conn)
+    df_pending = pd.read_sql("SELECT * FROM pending_orders", conn)
+    df_reg = pd.read_sql("SELECT * FROM daily_dispatch_register", conn)
+    df_part = pd.read_sql("SELECT * FROM partial_dispatch_ledger", conn)
     conn.close()
 
-# ==============================================================================
-# MODULE 13: UNIVERSAL DATE & MULTI-FIELD FILTER CENTER
-# ==============================================================================
+    col_k1, col_k2, col_k3, col_k4 = st.columns(4)
+    tot_trips = len(df_trips)
+    tot_dispatched_bags = df_reg["dispatched_bags"].sum() if not df_reg.empty else 0.0
+    avg_util = df_trips["capacity_utilization_pct"].mean() if not df_trips.empty else 0.0
+    active_pending_bags = df_pending[df_pending["status"] == "Pending"]["bags_qty"].sum() if not df_pending.empty else 0.0
 
-elif main_menu == "🎯 Universal Date & Multi-Field Filter Center":
-    st.title("🎯 Universal Date & Multi-Field Filter Center")
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-    tbls = [r[0] for r in cur.fetchall()]
-    sel_t = st.selectbox("Select Table to Inspect:", tbls)
-    if sel_t:
-        st.dataframe(pd.read_sql(f"SELECT * FROM {sel_t}", conn), use_container_width=True)
-    conn.close()
+    col_k1.metric("Total Trips Planned", tot_trips)
+    col_k2.metric("Dispatched Bags", f"{tot_dispatched_bags:,.0f}")
+    col_k3.metric("Avg Fleet Utilization", f"{avg_util:.1f}%")
+    col_k4.metric("Active Pending Load", f"{active_pending_bags:,.0f} Bags")
+
+    st.markdown("---")
+    c_ch1, c_ch2 = st.columns(2)
+    with c_ch1:
+        st.markdown("##### 🚛 Route-wise Dispatched Load (MT)")
+        if not df_reg.empty:
+            st.bar_chart(df_reg.groupby("route_no")["dispatched_weight_mt"].sum())
+        else:
+            st.info("No dispatched register records.")
+    with c_ch2:
+        st.markdown("##### 🧩 Partial / Split Orders Breakdown")
+        if not df_part.empty:
+            st.bar_chart(df_part.groupby("agency_no")["remaining_bags"].sum())
+        else:
+            st.info("No partial orders recorded yet.")
 
 # ==============================================================================
-# MODULE 14: SMART MULTI-TRUCK LOAD OPTIMIZER PRO
-# ==============================================================================
-
-elif main_menu == "⚡ Smart Multi-Truck Load Optimizer Pro":
-    st.title("⚡ Smart Multi-Truck Load Optimizer Pro")
-    st.markdown("Automated Bin-Packing Algorithm for Route Truck Load Distribution.")
-
-# ==============================================================================
-# MODULE 15: IN-APP DATABASE BUILDER & DYNAMIC LINKER
+# MODULE 12: IN-APP DATABASE BUILDER & DYNAMIC LINKER (NEW ADDED MODULE)
 # ==============================================================================
 
 elif main_menu == "🗄️ In-App Database Builder & Dynamic Linker":
     st.title("🗄️ In-App Dynamic Database Builder & Universal CRUD")
+    st.markdown("Create custom tables inside the application, add columns dynamically, insert/modify/delete records, and manage relational database schemas.")
+
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-    st.write([r[0] for r in cur.fetchall()])
+
+    tab_db1, tab_db2 = st.tabs(["🏗️ Create Table & Add Columns", "📋 Universal Table CRUD & Manager"])
+
+    with tab_db1:
+        st.markdown("##### ➕ Create New Custom Table")
+        new_tbl_name = st.text_input("New Table Name (e.g. vendor_master, quality_check)", "").strip().lower()
+        new_tbl_name = re.sub(r'[^a-z0-9_]', '', new_tbl_name)
+
+        link_to_existing = st.checkbox("Link with Existing Table (Foreign Key)")
+        parent_table = ""
+        if link_to_existing:
+            parent_table = st.selectbox("Select Parent Table", ["pending_orders", "fleet_master", "unique_routes_master"])
+
+        if st.button("🏗️ Build & Create Table", type="primary"):
+            if new_tbl_name:
+                try:
+                    if link_to_existing and parent_table:
+                        cur.execute(f"""
+                            CREATE TABLE IF NOT EXISTS {new_tbl_name} (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                linked_parent_id INTEGER,
+                                custom_key TEXT,
+                                custom_value TEXT,
+                                notes TEXT,
+                                created_at TEXT,
+                                FOREIGN KEY (linked_parent_id) REFERENCES {parent_table}(id) ON DELETE CASCADE
+                            )
+                        """)
+                    else:
+                        cur.execute(f"""
+                            CREATE TABLE IF NOT EXISTS {new_tbl_name} (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                custom_key TEXT,
+                                custom_value TEXT,
+                                notes TEXT,
+                                created_at TEXT
+                            )
+                        """)
+                    conn.commit()
+                    st.success(f"✅ Table '{new_tbl_name}' created successfully!")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Error: {ex}")
+
+        st.markdown("---")
+        st.markdown("##### ➕ Add New Column to Existing Table")
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        all_tables_list = [row[0] for row in cur.fetchall()]
+
+        col_target_tbl = st.selectbox("Select Table to Alter", all_tables_list, key="alter_tbl_sel")
+        new_col_name = st.text_input("New Column Name (e.g. priority_level, remarks)").strip().lower()
+        new_col_name = re.sub(r'[^a-z0-9_]', '', new_col_name)
+        new_col_type = st.selectbox("Column Data Type", ["TEXT", "REAL", "INTEGER"])
+
+        if st.button("➕ Add Column", type="primary"):
+            if col_target_tbl and new_col_name:
+                try:
+                    cur.execute(f"ALTER TABLE {col_target_tbl} ADD COLUMN {new_col_name} {new_col_type}")
+                    conn.commit()
+                    st.success(f"✅ Column '{new_col_name}' ({new_col_type}) added to '{col_target_tbl}' successfully!")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Error adding column: {ex}")
+
+    with tab_db2:
+        st.markdown("##### 📋 View, Edit, Modify & Delete Records")
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        all_tables_list = [row[0] for row in cur.fetchall()]
+
+        selected_tbl = st.selectbox("Select Table to View/Edit", all_tables_list, key="crud_tbl_sel")
+
+        if selected_tbl:
+            df_selected = pd.read_sql(f"SELECT * FROM {selected_tbl}", conn)
+            edited_custom_tbl = st.data_editor(df_selected, use_container_width=True, num_rows="dynamic", key=f"crud_{selected_tbl}")
+
+            col_act1, col_act2, col_act3 = st.columns(3)
+            with col_act1:
+                if st.button(f"💾 Save Changes in `{selected_tbl}`", type="primary"):
+                    try:
+                        for _, row in edited_custom_tbl.iterrows():
+                            row_dict = row.to_dict()
+                            row_id = row_dict.get('id')
+
+                            if pd.notna(row_id):
+                                cols_to_update = [k for k in row_dict.keys() if k != 'id']
+                                set_clause = ", ".join([f"{c}=?" for c in cols_to_update])
+                                vals = [row_dict[c] for c in cols_to_update] + [row_id]
+                                cur.execute(f"UPDATE {selected_tbl} SET {set_clause} WHERE id=?", vals)
+                            else:
+                                cols_to_insert = [k for k in row_dict.keys() if k != 'id' and pd.notna(row_dict[k])]
+                                placeholders = ", ".join(["?" for _ in cols_to_insert])
+                                cols_str = ", ".join(cols_to_insert)
+                                vals = [row_dict[c] for c in cols_to_insert]
+                                cur.execute(f"INSERT INTO {selected_tbl} ({cols_str}) VALUES ({placeholders})", vals)
+
+                        conn.commit()
+                        st.success(f"✅ Table `{selected_tbl}` updated!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed: {e}")
+
+            with col_act2:
+                if not df_selected.empty:
+                    st.download_button("📥 Export Table (.xlsx)", to_excel_download_bytes(df_selected, selected_tbl), f"{selected_tbl}_export.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+            with col_act3:
+                if st.button(f"🔥 Drop Table `{selected_tbl}`", type="secondary"):
+                    if selected_tbl not in ["pending_orders", "fleet_master", "unique_routes_master"]:
+                        cur.execute(f"DROP TABLE IF EXISTS {selected_tbl}")
+                        conn.commit()
+                        st.warning(f"⚠️ Table `{selected_tbl}` dropped.")
+                        st.rerun()
+                    else:
+                        st.error("❌ Core system tables cannot be dropped!")
+
     conn.close()
+
+# ==============================================================================
+# SECTION: THREE INTEGRATED EXTENSIONS (OPTIMIZER, FILTER & LIVE STOCK)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. SMART MULTI-TRUCK LOAD OPTIMIZER PRO
+# ------------------------------------------------------------------------------
+if main_menu == "⚡ Smart Multi-Truck Load Optimizer Pro":
+    st.title("⚡ Smart Multi-Vehicle Dispatch Optimizer Pro")
+    st.markdown("Automated **Bin-Packing Algorithm** jo pending route load ko truck capacity ke hisab se exact fit batches (Trip-1, Trip-2...) me auto-split karta hai.")
+
+    conn_opt = get_db_connection()
+    cur_opt = conn_opt.cursor()
+
+    df_p_all = pd.read_sql("SELECT * FROM pending_orders WHERE status='Pending'", conn_opt)
+    df_fleet_all = pd.read_sql("SELECT * FROM fleet_master WHERE status='Available'", conn_opt)
+    df_bays_all = pd.read_sql("SELECT * FROM loading_bays WHERE status='Open'", conn_opt)
+
+    if df_p_all.empty:
+        st.info("ℹ️ Koi pending demand nahi mili. Pehle Module 1 me demand files upload karein.")
+    else:
+        route_list = sorted(df_p_all["route_no"].unique().tolist())
+
+        c_r1, c_r2, c_r3 = st.columns([1, 1, 1])
+        with c_r1:
+            sel_opt_route = st.selectbox("1. Select Route to Auto-Optimize:", route_list, key="opt_route_sel_unified")
+
+        route_orders = df_p_all[df_p_all["route_no"] == str(sel_opt_route)].copy()
+        tot_route_bags = route_orders["bags_qty"].sum()
+        tot_route_mt = round(tot_route_bags * 0.05, 2)
+        tot_agencies = route_orders["agency_no"].nunique()
+
+        with c_r2:
+            st.metric("Total Route Load", f"{tot_route_bags:,.0f} Bags", f"{tot_route_mt:.2f} MT")
+        with c_r3:
+            st.metric("Agencies in Route", f"{tot_agencies} Dealers")
+
+        st.markdown("---")
+        st.subheader("🚛 2. Select Vehicles for Smart Load Distribution")
+
+        if df_fleet_all.empty:
+            st.warning("⚠️ Koi 'Available' vehicle nahi mili. Fleet Master me status check karein.")
+        else:
+            avail_truck_choices = [
+                f"{r['vehicle_no']} | {r['vehicle_type']} (Max: {r['capacity_bags']} Bags)" 
+                for _, r in df_fleet_all.iterrows()
+            ]
+
+            sel_trucks_multi = st.multiselect(
+                "Assign Available Trucks for this Route:",
+                avail_truck_choices,
+                default=avail_truck_choices[:min(3, len(avail_truck_choices))],
+                key="opt_trucks_multi_unified"
+            )
+
+            if sel_trucks_multi and st.button("🤖 Run Auto-Load Balancing & Pack Trucks", type="primary", key="btn_run_pack_unified"):
+                agency_grp = route_orders.groupby(["agency_no", "dr_code"]).agg({
+                    "bags_qty": "sum"
+                }).reset_index().sort_values(by="bags_qty", ascending=False)
+
+                trucks_pool = []
+                for t_str in sel_trucks_multi:
+                    v_num = t_str.split(" | ")[0]
+                    v_row = df_fleet_all[df_fleet_all["vehicle_no"] == v_num].iloc[0]
+                    trucks_pool.append({
+                        "vehicle_no": v_num,
+                        "vehicle_type": v_row["vehicle_type"],
+                        "transporter_name": v_row["transporter_name"],
+                        "driver_name": v_row["driver_name"],
+                        "driver_phone": v_row["driver_phone"],
+                        "capacity_bags": int(v_row["capacity_bags"]),
+                        "allocated_bags": 0.0,
+                        "allocated_agencies": [],
+                        "items": []
+                    })
+
+                unallocated_agencies = []
+                for _, ag_row in agency_grp.iterrows():
+                    ag_no = ag_row["agency_no"]
+                    ag_dr = ag_row["dr_code"]
+                    ag_bags = float(ag_row["bags_qty"])
+
+                    placed = False
+                    for trk in trucks_pool:
+                        if (trk["allocated_bags"] + ag_bags) <= trk["capacity_bags"]:
+                            trk["allocated_bags"] += ag_bags
+                            trk["allocated_agencies"].append(ag_no)
+                            sku_items = route_orders[route_orders["agency_no"] == ag_no].copy()
+                            for _, itm in sku_items.iterrows():
+                                trk["items"].append(itm)
+                            placed = True
+                            break
+                    if not placed:
+                        unallocated_agencies.append(ag_no)
+
+                st.session_state["optimized_plan"] = {
+                    "trucks": trucks_pool,
+                    "unallocated": unallocated_agencies,
+                    "route": sel_opt_route
+                }
+
+            if "optimized_plan" in st.session_state and st.session_state["optimized_plan"]["route"] == sel_opt_route:
+                plan = st.session_state["optimized_plan"]
+                st.markdown("---")
+                st.subheader("📋 Generated Optimal Trip Manifests")
+
+                trip_tabs = st.tabs([f"🚚 Trip {i+1}: {t['vehicle_no']} ({t['allocated_bags']:,.0f}/{t['capacity_bags']} Bags)" for i, t in enumerate(plan["trucks"])])
+
+                for idx, tab_ui in enumerate(trip_tabs):
+                    trk_info = plan["trucks"][idx]
+                    with tab_ui:
+                        util_pct = (trk_info["allocated_bags"] / trk_info["capacity_bags"] * 100) if trk_info["capacity_bags"] > 0 else 0
+
+                        m_c1, m_c2, m_c3 = st.columns(3)
+                        m_c1.metric("Load Assigned", f"{trk_info['allocated_bags']:,.0f} Bags", f"{util_pct:.1f}% Utilization")
+                        m_c2.metric("Total Weight", f"{trk_info['allocated_bags'] * 0.05:.2f} MT")
+                        m_c3.metric("Agencies Covered", f"{len(trk_info['allocated_agencies'])} Dealers")
+
+                        if util_pct > 100:
+                            st.error("🚨 Overloaded!")
+                        elif util_pct >= 85:
+                            st.success("🟢 Perfect Utilization!")
+                        else:
+                            st.warning("🟡 Capacity Under-utilized")
+
+                        if trk_info["items"]:
+                            trip_items_df = pd.DataFrame(trk_info["items"])[["agency_no", "dr_code", "fg_code", "bags_qty", "order_no"]]
+                            st.dataframe(trip_items_df, use_container_width=True)
+
+                            bay_sel = st.selectbox(f"Select Loading Bay for {trk_info['vehicle_no']}:", [f"{r['bay_no']} - {r['bay_name']}" for _, r in df_bays_all.iterrows()], key=f"bay_sel_opt_{idx}")
+
+                            if st.button(f"🚀 Confirm & Lock Load for Trip {idx+1} ({trk_info['vehicle_no']})", key=f"btn_cfm_trip_unified_{idx}"):
+                                now_dt = get_ist_now()
+                                trip_code = f"TRIP-{sel_opt_route}-{now_dt.strftime('%Y%m%d%H%M%S')}-{idx+1}"
+                                bay_id = bay_sel.split(" - ")[0]
+
+                                cur_opt.execute("""
+                                    INSERT INTO trip_loading_slips (trip_id, trip_date, route_no, vehicle_no, transporter_name, driver_name, driver_phone, loading_bay, total_bags, total_weight_mt, capacity_utilization_pct, status, created_at)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Planned', ?)
+                                """, (
+                                    trip_code, now_dt.strftime("%Y-%m-%d"), str(sel_opt_route),
+                                    trk_info["vehicle_no"], trk_info["transporter_name"], trk_info["driver_name"],
+                                    trk_info["driver_phone"], bay_id, trk_info["allocated_bags"],
+                                    round(trk_info["allocated_bags"] * 0.05, 2), round(util_pct, 2),
+                                    now_dt.strftime("%Y-%m-%d %H:%M:%S")
+                                ))
+
+                                d_seq = 1
+                                for itm_obj in trk_info["items"]:
+                                    cur_opt.execute("""
+                                        INSERT INTO trip_order_items (trip_id, order_no, agency_no, route_no, dr_code, fg_code, allocated_bags, allocated_weight_mt, delivery_seq, status)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Assigned')
+                                    """, (trip_code, itm_obj["order_no"], itm_obj["agency_no"], itm_obj["route_no"], itm_obj["dr_code"], itm_obj["fg_code"], itm_obj["bags_qty"], round(float(itm_obj["bags_qty"])*0.05, 2), d_seq))
+
+                                    cur_opt.execute("UPDATE pending_orders SET status='Assigned' WHERE id=?", (itm_obj["id"],))
+                                    d_seq += 1
+
+                                cur_opt.execute("UPDATE fleet_master SET status='Assigned to Trip' WHERE vehicle_no=?", (trk_info["vehicle_no"],))
+                                conn_opt.commit()
+                                st.success(f"🎉 {trip_code} successfully created!")
+                                del st.session_state["optimized_plan"]
+                                st.rerun()
+
+                if plan["unallocated"]:
+                    st.markdown("---")
+                    st.warning(f"⚠️ **Remaining Unpacked Load:** {len(plan['unallocated'])} Agencies could not fit in the selected trucks.")
+
+    conn_opt.close()
+
+
+# ------------------------------------------------------------------------------
+# 2. DYNAMIC AUTO-DISCOVERY DATE & MULTI-FIELD FILTER CENTER
+# ------------------------------------------------------------------------------
+
+def render_advanced_universal_data_hub(is_full_page=True, key_scope="univ_hub"):
+    conn_hub = get_db_connection()
+    cur_hub = conn_hub.cursor()
+
+    cur_hub.execute("""
+        SELECT name FROM sqlite_master 
+        WHERE type='table' 
+          AND name NOT LIKE 'sqlite_%' 
+        ORDER BY name ASC
+    """)
+    available_tables = [r[0] for r in cur_hub.fetchall()]
+
+    if not available_tables:
+        st.warning("⚠️ Database me abhi koi tables uplabdh nahi hain.")
+        conn_hub.close()
+        return
+
+    if is_full_page:
+        st.title("🎯 Enterprise Universal Data Hub & Dynamic Filter Center")
+        st.markdown("Sabhi modules, plant stock, sales orders aur dispatch registers ko **Date Range**, **Custom Filter Builder**, aur **Live Search** ke sath inspect aur export karein.")
+
+    TABLE_DISPLAY_NAMES = {
+        "daily_dispatch_register": "📖 Daily Dispatch Sale Register",
+        "plant_inventory_stock": "📦 Plant Stock & Inventory Ledger (50KG/25KG)",
+        "pending_orders": "⏳ Pending Orders Database",
+        "partial_dispatch_ledger": "🧩 Partial / Split Dispatch Database",
+        "trip_loading_slips": "📋 Trip Loading Slips & Gate Passes",
+        "trip_order_items": "📑 Trip Order Item Manifests",
+        "unique_routes_master": "🗺️ Route-Agency-DR Master DB",
+        "fleet_master": "🚛 Transporter Fleet Master",
+        "loading_bays": "🏭 Plant Loading Bays",
+        "input_output_traceability": "🔍 Input-Output Traceability Ledger",
+        "uploaded_files_archive": "🗄️ File Upload Archive History",
+        "unmapped_missing_dr_ledger": "🚨 Unmapped Missing DR Ledger"
+    }
+
+    def format_table_label(t):
+        return TABLE_DISPLAY_NAMES.get(t, f"🗄️ Custom Table: {t}")
+
+    sel_tbl = st.selectbox(
+        "1. Select Database Table / Module to Inspect:",
+        available_tables,
+        format_func=format_table_label,
+        key=f"{key_scope}_tbl_selector"
+    )
+
+    cur_hub.execute(f"PRAGMA table_info({sel_tbl})")
+    col_records = cur_hub.fetchall()
+    all_columns = [c[1] for c in col_records]
+
+    df_hub_raw = pd.read_sql(f"SELECT * FROM {sel_tbl}", conn_hub)
+
+    if df_hub_raw.empty:
+        st.info(f"ℹ️ Table `{sel_tbl}` create ho chuki hai par isme abhi koi records nahi hain.")
+        st.dataframe(pd.DataFrame(columns=all_columns), use_container_width=True)
+        conn_hub.close()
+        return
+
+    df_hub_active = df_hub_raw.copy()
+
+    date_candidates = [
+        c for c in all_columns 
+        if any(k in c.lower() for k in ["date", "time", "created", "logged", "upload", "at", "dispatch"])
+    ]
+
+    st.markdown("---")
+    st.subheader("📅 1. Date Range Filtering")
+
+    if date_candidates:
+        c_dt1, c_dt2, c_dt3 = st.columns([1, 1, 1])
+        with c_dt1:
+            active_date_col = st.selectbox("Active Date Column:", date_candidates, key=f"{key_scope}_dt_col_{sel_tbl}")
+
+        df_hub_active["_temp_eval_dt"] = pd.to_datetime(df_hub_active[active_date_col].astype(str).str[:10], errors="coerce")
+        valid_dates = df_hub_active["_temp_eval_dt"].dropna()
+
+        if not valid_dates.empty:
+            with c_dt2:
+                from_dt_pick = st.date_input("From Date (IST):", valid_dates.min().date(), key=f"{key_scope}_from_{sel_tbl}")
+            with c_dt3:
+                to_dt_pick = st.date_input("To Date (IST):", valid_dates.max().date(), key=f"{key_scope}_to_{sel_tbl}")
+
+            if from_dt_pick and to_dt_pick:
+                if from_dt_pick <= to_dt_pick:
+                    date_mask = (df_hub_active["_temp_eval_dt"].dt.date >= from_dt_pick) & (df_hub_active["_temp_eval_dt"].dt.date <= to_dt_pick)
+                    df_hub_active = df_hub_active[date_mask]
+                else:
+                    st.error("⚠️ 'From Date' must be before or equal to 'To Date'.")
+
+        df_hub_active.drop(columns=["_temp_eval_dt"], errors="ignore", inplace=True)
+    else:
+        st.info("ℹ️ Is table me date field nahi hai (Static Master).")
+
+    st.markdown("---")
+    st.subheader("🔍 2. Dynamic Column Filters & Custom Filter Builder")
+
+    eligible_cols = [
+        c for c in all_columns 
+        if c not in ["id", "file_blob", "input_file_blob", "file_data", "file_hash", "upload_batch_id"]
+    ]
+
+    default_active_filters = eligible_cols[:min(4, len(eligible_cols))]
+    user_chosen_filter_cols = st.multiselect(
+        "➕ Choose columns to generate Filter Dropdowns:",
+        eligible_cols,
+        default=default_active_filters,
+        key=f"{key_scope}_chosen_flts_{sel_tbl}"
+    )
+
+    if user_chosen_filter_cols:
+        grid_width = min(len(user_chosen_filter_cols), 3)
+        flt_grid_cols = st.columns(grid_width)
+
+        for idx_f, col_f in enumerate(user_chosen_filter_cols):
+            with flt_grid_cols[idx_f % grid_width]:
+                distinct_options = sorted([str(x) for x in df_hub_raw[col_f].dropna().unique() if str(x).strip() != ""])
+
+                if len(distinct_options) > 0 and len(distinct_options) <= 200:
+                    picked_vals = st.multiselect(
+                        f"Filter by {col_f.replace('_', ' ').title()}:",
+                        distinct_options,
+                        key=f"{key_scope}_flt_{sel_tbl}_{col_f}"
+                    )
+                    if picked_vals:
+                        df_hub_active = df_hub_active[df_hub_active[col_f].astype(str).isin(picked_vals)]
+                else:
+                    manual_match = st.text_input(f"Match {col_f.replace('_', ' ').title()}:", "", key=f"{key_scope}_manual_{sel_tbl}_{col_f}")
+                    if manual_match:
+                        df_hub_active = df_hub_active[df_hub_active[col_f].astype(str).str.contains(manual_match, case=False)]
+
+    numeric_columns = df_hub_raw.select_dtypes(include=['float', 'int']).columns.tolist()
+    numeric_columns = [c for c in numeric_columns if c not in ['id', 'delivery_seq', 'version_no']]
+
+    if numeric_columns:
+        with st.expander("🧮 Numeric Range & Operator Filter (> , < , =)", expanded=False):
+            n_c1, n_c2, n_c3 = st.columns(3)
+            with n_c1:
+                target_num_col = st.selectbox("Select Numeric Column:", numeric_columns, key=f"{key_scope}_num_col_{sel_tbl}")
+            with n_c2:
+                num_operator = st.selectbox("Operator:", ["Greater than or equal (>=)", "Less than or equal (<=)", "Exactly equal (==)"], key=f"{key_scope}_op_{sel_tbl}")
+            with n_c3:
+                threshold_val = st.number_input("Threshold Value:", value=0.0, step=10.0, key=f"{key_scope}_thresh_{sel_tbl}")
+
+            if threshold_val > 0:
+                if "Greater" in num_operator:
+                    df_hub_active = df_hub_active[df_hub_active[target_num_col] >= threshold_val]
+                elif "Less" in num_operator:
+                    df_hub_active = df_hub_active[df_hub_active[target_num_col] <= threshold_val]
+                else:
+                    df_hub_active = df_hub_active[df_hub_active[target_num_col] == threshold_val]
+
+    st.markdown("---")
+    keyword_query = st.text_input("🔎 Search text / keyword across all columns:", "", key=f"{key_scope}_kw_search_{sel_tbl}")
+    if keyword_query:
+        df_hub_active = df_hub_active[df_hub_active.apply(
+            lambda row: row.astype(str).str.contains(keyword_query, case=False).any(), axis=1
+        )]
+
+    st.markdown("---")
+    st.subheader("📊 3. Live Aggregation Metrics")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Filtered Records", f"{len(df_hub_active):,} of {len(df_hub_raw):,}")
+
+    if "dispatched_bags" in df_hub_active.columns:
+        m2.metric("Dispatched Bags", f"{df_hub_active['dispatched_bags'].sum():,.0f}")
+        m3.metric("Dispatched Weight (MT)", f"{df_hub_active['dispatched_weight_mt'].sum():,.2f} MT")
+    elif "plant_stock_qty" in df_hub_active.columns:
+        tot_bags = df_hub_active['plant_stock_qty'].sum()
+        tot_mt = (df_hub_active['plant_stock_qty'] * df_hub_active['unit_weight_mt']).sum() if 'unit_weight_mt' in df_hub_active.columns else (tot_bags * 0.05)
+        m2.metric("Plant Stock Bags", f"{tot_bags:,.0f}")
+        m3.metric("Stock Tonnage (MT)", f"{tot_mt:,.2f} MT")
+    elif "bags_qty" in df_hub_active.columns:
+        m2.metric("Demand Bags", f"{df_hub_active['bags_qty'].sum():,.0f}")
+        m3.metric("Demand Weight (MT)", f"{df_hub_active['weight_mt'].sum():,.2f} MT")
+    elif "remaining_bags" in df_hub_active.columns:
+        m2.metric("Remaining Bags", f"{df_hub_active['remaining_bags'].sum():,.0f}")
+        m3.metric("Dispatched Bags", f"{df_hub_active['dispatched_bags'].sum():,.0f}")
+    else:
+        match_rate = (len(df_hub_active) / len(df_hub_raw) * 100) if len(df_hub_raw) > 0 else 0
+        m2.metric("Match Rate", f"{match_rate:.1f}%")
+        m3.metric("Columns Present", len(all_columns))
+
+    if "route_no" in df_hub_active.columns:
+        m4.metric("Active Routes", f"{df_hub_active['route_no'].nunique():,}")
+    elif "vehicle_no" in df_hub_active.columns:
+        m4.metric("Active Vehicles", f"{df_hub_active['vehicle_no'].nunique():,}")
+    else:
+        m4.metric("Status", "🟢 Real-time Synced")
+
+    st.markdown(f"##### 📋 Live Filtered Result Table (`{sel_tbl}`):")
+    st.dataframe(df_hub_active, use_container_width=True)
+
+    exp_col1, exp_col2 = st.columns(2)
+    with exp_col1:
+        st.download_button(
+            "📥 Export Filtered Excel (.xlsx)",
+            to_excel_download_bytes(df_hub_active, sel_tbl),
+            f"{sel_tbl}_Filtered_{get_ist_date_str()}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"{key_scope}_btn_excel_{sel_tbl}"
+        )
+    with exp_col2:
+        st.download_button(
+            "📄 Export Filtered CSV (.csv)",
+            df_hub_active.to_csv(index=False).encode('utf-8'),
+            f"{sel_tbl}_Filtered_{get_ist_date_str()}.csv",
+            "text/csv",
+            key=f"{key_scope}_btn_csv_{sel_tbl}"
+        )
+
+    conn_hub.close()
+
+
+if any(term in str(main_menu).lower() for term in ["universal date", "filter center", "filter engine", "multi-field"]):
+    render_advanced_universal_data_hub(is_full_page=True, key_scope="fullpage_hub")
+
+st.markdown("---")
+with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
+    render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
+
+
+
+
+Iss code me masterfile se drcode put karne wala fast wala chahiye jo pahle wala code me apne diya tha fast processing wala
