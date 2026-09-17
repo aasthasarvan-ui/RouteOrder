@@ -535,88 +535,60 @@ with st.sidebar:
     st.session_state.whatsapp_num = st.text_input("WhatsApp Alert Mobile No", value=st.session_state.whatsapp_num)
 
 # ==============================================================================
+# ==============================================================================
 # MODULE 1: INBOUND DEMAND & SALES ORDER AUTOMATION ENGINE
+# (WITH LIGHTNING-FAST RAM CACHED MASTER FILE DR AUTO-LOOKUP & MULTI-TRUCK SPLIT)
 # ==============================================================================
 
-if main_menu == "⚡ Inbound Demand & Sales Order Engine":
+elif main_menu == "⚡ Inbound Demand & Sales Order Engine":
     st.title("⚡ Enterprise Inbound Demand & Sales Order Processing Engine")
-    st.markdown("Upload multiple **Demand Workbooks** to execute DR auto-lookup, eliminate duplicate orders, generate structured `Output.xlsx` files, and sync pending demand.")
+    st.markdown("Upload multiple **Demand Workbooks** to execute **Master File DR Auto-Lookup** instantly, eliminate duplicate orders, and generate multi-truck loading schedules.")
 
-    with st.expander("⚙️ SKU, Route & Multi-Channel Dispatch Settings", expanded=False):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.session_state.fg_code = st.text_input("Default Fallback FG Code", value=st.session_state.fg_code)
-            st.session_state.route = st.text_input("Default Route Fallback", value=st.session_state.route)
-        with c2:
-            st.session_state.col_map = st.text_area("Column Index Mapping (Col:FG)", value=st.session_state.col_map, height=80)
-        with c3:
-            st.session_state.agency_override = st.text_area("Agency SKU Overrides (Agency:Col:FG)", value=st.session_state.agency_override, height=80)
+    uploaded_files = st.file_uploader("Upload Inbound Demand Excel Workbooks", type=["xlsx", "xls"], accept_multiple_files=True)
 
-        st.markdown("---")
-        c4, c5 = st.columns(2)
-        with c4:
-            st.session_state.email_user = st.text_input("Sender Gmail ID", value=st.session_state.email_user)
-            st.session_state.email_pass = st.text_input("Gmail App Password", type="password", value=st.session_state.email_pass)
-        with c5:
-            st.session_state.recipient = st.text_input("Recipient Email", value=st.session_state.recipient)
-
-    # Parse Mappings
-    col_map_dict = {}
-    for line in st.session_state.col_map.split("\n"):
-        if ":" in line:
-            parts = line.split(":")
-            if parts[0].strip().isdigit():
-                col_map_dict[int(parts[0].strip())] = parts[1].strip()
-
-    agency_override_dict = {}
-    for line in st.session_state.agency_override.split("\n"):
-        parts = line.split(":")
-        if len(parts) == 3 and parts[0].strip().isdigit() and parts[1].strip().isdigit():
-            agency_override_dict[(int(parts[0].strip()), int(parts[1].strip()))] = parts[2].strip()
-
-    uploaded_files = st.file_uploader(
-        "Upload Inbound Demand Excel Workbooks",
-        type=["xlsx", "xls"],
-        accept_multiple_files=True
-    )
-
-    if uploaded_files and st.button("🚀 Process Batch Orders & Ingest to Pending Database", type="primary"):
-        st.session_state.processed_files = []
-        st.session_state.comparison_summary = []
-        st.session_state.skipped_rows_log = []
-        st.session_state.anomaly_logs = []
-        st.session_state.unmapped_current_batch = []
-
-        total_in_qty = 0.0
-        total_gen_qty = 0.0
-        total_valid = 0
-        total_missing = 0
-        total_skipped = 0
-
+    if uploaded_files and st.button("🚀 Process Batch Orders & Auto-Lookup DR Codes", type="primary"):
         conn = get_db_connection()
         cur = conn.cursor()
 
-        try:
-            with open("Output.xlsx", "rb") as f:
-                template_bytes = f.read()
-        except FileNotFoundError:
-            template_bytes = None
+        # --- 🔥 LIGHTNING-FAST O(1) RAM CACHING FOR MASTER LOOKUPS ---
+        sql_lookup_dict = {}
+        df_sql = pd.read_sql("SELECT route_no, agency_no, dr_code FROM unique_routes_master", conn)
+        for _, r in df_sql.iterrows():
+            sql_lookup_dict[(str(r['route_no']).strip(), str(r['agency_no']).strip())] = str(r['dr_code']).strip()
 
-        pending_records_to_insert = []
-        master_routes_to_insert = []
-        unmapped_records_to_insert = []
-        traceability_records = []
+        master_lookup_dict = {}
+        if os.path.exists(master_path):
+            try:
+                xls = pd.ExcelFile(master_path)
+                for s_name in xls.sheet_names:
+                    if s_name.startswith("Route_"):
+                        df_r = pd.read_excel(xls, sheet_name=s_name, header=2)
+                        df_r.columns = df_r.columns.astype(str).str.strip()
+                        if 'Route' in df_r.columns and 'Agency' in df_r.columns and 'DRCODE' in df_r.columns:
+                            for _, mr in df_r.iterrows():
+                                rt_val = str(mr['Route']).replace('.0', '').strip()
+                                ag_val = str(mr['Agency']).replace('.0', '').strip()
+                                dr_val = str(mr['DRCODE']).strip()
+                                if dr_val and dr_val.upper() not in ["NAN", "NONE", ""]:
+                                    master_lookup_dict[(rt_val, ag_val)] = dr_val
+            except Exception as ex:
+                st.warning(f"Master file warning: {ex}")
+        # -------------------------------------------------------------
 
         batch_ts = get_ist_timestamp_full()
         today_date = get_ist_date_str()
         time_suffix = get_ist_file_suffix()
+
+        all_raw_records = []
+        db_inserts = []
+        unmapped_inserts = []
+        total_in_qty = 0.0
 
         for up_file in uploaded_files:
             short_fname = up_file.name
             if short_fname.lower() == "output.xlsx":
                 continue
 
-            # Anti-Duplicate Guard: Skip if file was already uploaded and archived
             cur.execute("SELECT id FROM uploaded_files_archive WHERE file_name=?", (short_fname,))
             if cur.fetchone():
                 st.warning(f"⚠️ '{short_fname}' pehle se process ho chuki hai. Duplicate upload skip kiya gaya.")
@@ -653,7 +625,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                 st.error(f"❌ '{short_fname}' me FG / SKU header row detect nahi hui.")
                 continue
 
-            # 2. Strict Total Column Cutoff (Formula & Summary Header Guard)
+            # 2. Strict Total Column Cutoff
             total_col = df_input.shape[1]
             for c_s in range(fg_col, df_input.shape[1]):
                 val_header = str(df_input.iloc[fg_row, c_s]).strip().upper()
@@ -671,7 +643,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                     break
 
             # 3. Route Number Detection
-            route_num = st.session_state.route if st.session_state.route != "" else "22"
+            route_num = st.session_state.get("route", "22")
             for r in range(fg_row):
                 for c in range(min(total_col, 20)):
                     val = str(df_input.iloc[r, c]).replace('.0', '').strip()
@@ -682,7 +654,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
 
             resolved_route = "".join(ch for ch in str(route_num) if ch.isalnum() or ch in ('-', '_'))
 
-            # 4. Agency & DR Columns
+            # 4. Agency Column Detection
             agency_col = -1
             for c_s in range(fg_col - 1, -1, -1):
                 col_samples = df_input.iloc[fg_row + 1: fg_row + 15, c_s].dropna().astype(str).str.replace(r'\.0$', '', regex=True)
@@ -692,29 +664,17 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
             if agency_col == -1:
                 agency_col = fg_col - 1 if fg_col > 0 else 0
 
-            dr_code_col = -1
-            for c_s in range(fg_col - 1, -1, -1):
-                col_samples = df_input.iloc[fg_row + 1: fg_row + 15, c_s].dropna().astype(str).str.upper()
-                if col_samples.str.startswith("DR").sum() >= 1:
-                    dr_code_col = c_s
+            # 5. Clean SKU Columns (Skip Total/Remarks)
+            sku_cols = []
+            for c in range(fg_col, total_col):
+                h_val = str(df_input.iloc[max(0, fg_row-1), c]).strip().upper()
+                f_val = str(df_input.iloc[fg_row, c]).strip().upper()
+                if any(kw in h_val for kw in ["TOTAL", "SUM", "REMARK"]) or any(kw in f_val for kw in ["TOTAL", "SUM", "REMARK"]):
                     break
+                sku_cols.append((c, str(df_input.iloc[max(0, fg_row-1), c]).strip(), str(df_input.iloc[fg_row, c]).strip()))
 
-            valid_cols = [(c, str(df_input.iloc[fg_row, c]).strip()) for c in range(fg_col, total_col)]
-
-            # Output Workbooks
-            wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes)) if template_bytes else openpyxl.Workbook()
-            ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
-            wb_missing = openpyxl.load_workbook(io.BytesIO(template_bytes)) if template_bytes else openpyxl.Workbook()
-            ws_missing = wb_missing["Order Data"] if "Order Data" in wb_missing.sheetnames else wb_missing.active
-
-            valid_r_idx, missing_r_idx = 6, 6
-            valid_order_no, missing_order_no = 1, 1
-            valid_items_cnt, missing_items_cnt = 0, 0
-            agency_counts_valid, agency_counts_missing = {}, {}
-            file_input_qty = 0.0
-
+            # 6. Extract Rows & Apply RAM Cached Master DR Lookup
             for r in range(fg_row + 1, df_input.shape[0]):
-                # SUMMARY ROW EXCLUSION
                 row_raw_values = [str(val).strip().upper() for val in df_input.iloc[r, :min(total_col, 15)] if pd.notna(val)]
                 if any(any(kw in cell_str for kw in ["TOTAL", "SUM", "GRAND TOTAL", "GR. TOTAL", "NET TOTAL", "TOTAL QTY"]) for cell_str in row_raw_values):
                     continue
@@ -725,270 +685,123 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
 
                 agency_str = str(agency_raw).replace(".0", "").strip()
                 if not agency_str.isdigit() or not (1 <= len(agency_str) <= 6):
-                    total_skipped += 1
-                    st.session_state.skipped_rows_log.append({
-                        "File Name": short_fname, "Row": r + 1, "Agency": str(agency_raw), "Reason": "Non-numeric agency"
-                    })
                     continue
 
                 agency_val = int(agency_str)
+                farmer = str(df_input.iloc[r, agency_col+1] if agency_col+1 < fg_col else "").strip()
 
+                lookup_key = (resolved_route, str(agency_val))
                 clean_dr = ""
-                if dr_code_col >= 0:
-                    raw_dr = df_input.iloc[r, dr_code_col]
-                    if pd.notna(raw_dr) and "DR" in str(raw_dr).upper():
-                        clean_dr = str(raw_dr).strip()
 
-                if not clean_dr:
-                    cur.execute(
-                        "SELECT dr_code FROM unique_routes_master WHERE route_no=? AND agency_no=?",
-                        (resolved_route, str(agency_val))
-                    )
-                    match = cur.fetchone()
-                    if match:
-                        clean_dr = match[0]
-                    else:
-                        clean_dr = f"NEW_CUST_{agency_val}"
-                        unmapped_records_to_insert.append((short_fname, resolved_route, str(agency_val), clean_dr, batch_ts))
-                        st.session_state.unmapped_current_batch.append({
-                            "File Name": short_fname, "Route": resolved_route, "Agency": agency_val, "Fallback DR": clean_dr
-                        })
-
-                is_valid_dr = clean_dr.upper().startswith("DR")
-                if is_valid_dr:
-                    master_routes_to_insert.append((short_fname, resolved_route, str(agency_val), clean_dr, batch_ts))
-                    agency_counts_valid[agency_val] = agency_counts_valid.get(agency_val, 0) + 1
-                    seq_num = agency_counts_valid[agency_val]
-                    ref_code = f"RT-{resolved_route}-{agency_val}-{today_date}" if seq_num == 1 else f"RT-{resolved_route}-{agency_val}-{today_date}-{seq_num}"
-                    target_ws, curr_r, order_id_to_write = ws_valid, valid_r_idx, valid_order_no
+                if lookup_key in sql_lookup_dict:
+                    clean_dr = sql_lookup_dict[lookup_key]
+                elif lookup_key in master_lookup_dict:
+                    clean_dr = master_lookup_dict[lookup_key]
+                    db_inserts.append((resolved_route, str(agency_val), clean_dr, batch_ts))
                 else:
-                    agency_counts_missing[agency_val] = agency_counts_missing.get(agency_val, 0) + 1
-                    seq_num = agency_counts_missing[agency_val]
-                    ref_code = f"RT-{resolved_route}-{agency_val}-{today_date}-NEW" if seq_num == 1 else f"RT-{resolved_route}-{agency_val}-{today_date}-NEW-{seq_num}"
-                    target_ws, curr_r, order_id_to_write = ws_missing, missing_r_idx, missing_order_no
+                    clean_dr = f"NEW_CUST_{agency_val}"
+                    unmapped_inserts.append((resolved_route, str(agency_val), clean_dr, batch_ts))
 
-                item_seq_id = 10
-                row_items_added = 0
-                for c_idx, fg_val in valid_cols:
-                    q_val = df_input.iloc[r, c_idx]
-                    if pd.notna(q_val) and str(q_val).strip() != "":
-                        q_str = str(q_val).strip()
-                        if q_str.startswith("=") or "SUM(" in q_str.upper():
-                            continue
-                        try:
+                for col_idx, sku_name, fg_code in sku_cols:
+                    q_val = df_input.iloc[r, col_idx]
+                    if pd.notna(q_val):
+                        q_str = str(q_val).replace('.0','').strip()
+                        if q_str.isdigit() and float(q_str) > 0:
                             f_qty = float(q_str)
-                            if f_qty > 0:
-                                current_fg = fg_val if fg_val.startswith("FG") else col_map_dict.get(c_idx, st.session_state.fg_code)
-                                if (agency_val, c_idx) in agency_override_dict:
-                                    current_fg = agency_override_dict[(agency_val, c_idx)]
+                            total_in_qty += f_qty
+                            all_raw_records.append({
+                                'route': resolved_route, 'ag_no': str(agency_val), 'dr_code': clean_dr,
+                                'farmer': farmer, 'sku': sku_name, 'fg_code': fg_code, 'qty': f_qty
+                            })
 
-                                # Order uniqueness check
-                                cur.execute("""
-                                    SELECT id FROM pending_orders 
-                                    WHERE route_no=? AND agency_no=? AND fg_code=? AND status='Pending' AND bags_qty=?
-                                """, (resolved_route, str(agency_val), current_fg, f_qty))
-                                if not cur.fetchone():
-                                    pending_records_to_insert.append((
-                                        short_fname, f"ORD-{agency_val}-{r}", resolved_route, str(agency_val),
-                                        clean_dr, current_fg, f_qty, round(f_qty * 0.05, 2), ref_code, "Pending", batch_ts
-                                    ))
+        if not all_raw_records:
+            st.error("❌ No valid demand records extracted.")
+        else:
+            df_dem = pd.DataFrame(all_raw_records)
+            dedup_df = df_dem.groupby(['route', 'ag_no', 'dr_code', 'farmer', 'sku', 'fg_code'], as_index=False)['qty'].sum()
 
-                                total_in_qty += f_qty
-                                total_gen_qty += f_qty
-                                file_input_qty += f_qty
-                                row_items_added += 1
+            # Multi-Truck Capacity Splitter (Max Capacity per Truck)
+            max_cap = st.session_state.get("max_capacity", 320.0)
+            trucks_dict = {}
+            current_truck = 1
 
-                                target_ws.cell(row=curr_r, column=2, value=order_id_to_write)
-                                target_ws.cell(row=curr_r, column=3, value="OR")
-                                target_ws.cell(row=curr_r, column=4, value="SO20")
-                                target_ws.cell(row=curr_r, column=5, value=10)
-                                target_ws.cell(row=curr_r, column=6, value=20)
-                                target_ws.cell(row=curr_r, column=7, value=clean_dr)
-                                target_ws.cell(row=curr_r, column=8, value=clean_dr)
-                                target_ws.cell(row=curr_r, column=9, value=ref_code)
-                                target_ws.cell(row=curr_r, column=10, value=today_date)
-                                target_ws.cell(row=curr_r, column=11, value=today_date)
-                                target_ws.cell(row=curr_r, column=15, value=item_seq_id)
-                                target_ws.cell(row=curr_r, column=16, value=current_fg)
-                                target_ws.cell(row=curr_r, column=19, value=f_qty)
-                                target_ws.cell(row=curr_r, column=20, value="Bag")
-                                target_ws.cell(row=curr_r, column=22, value=2100)
-                                target_ws.cell(row=curr_r, column=26, value=resolved_route)
-                                target_ws.cell(row=curr_r, column=27, value=agency_val)
-
-                                item_seq_id += 10
-                                curr_r += 1
-                        except ValueError:
-                            pass
-
-                if row_items_added > 0:
-                    if is_valid_dr:
-                        valid_r_idx = curr_r
-                        valid_order_no += 1
-                        valid_items_cnt += row_items_added
-                        total_valid += 1
+            for _, row in dedup_df.iterrows():
+                qty_left = row['qty']
+                while qty_left > 0:
+                    if current_truck not in trucks_dict:
+                        trucks_dict[current_truck] = []
+                    space_left = max_cap - sum(item['qty'] for item in trucks_dict[current_truck])
+                    if qty_left <= space_left:
+                        part = row.to_dict()
+                        part['qty'] = qty_left
+                        trucks_dict[current_truck].append(part)
+                        qty_left = 0
                     else:
-                        missing_r_idx = curr_r
-                        missing_order_no += 1
-                        missing_items_cnt += row_items_added
-                        total_missing += 1
+                        part = row.to_dict()
+                        part['qty'] = space_left
+                        trucks_dict[current_truck].append(part)
+                        qty_left -= space_left
+                        current_truck += 1
 
-            if valid_items_cnt > 0:
-                buf_v = io.BytesIO()
-                wb_valid.save(buf_v)
-                out_name_v = f"{resolved_route}_{today_date}_{time_suffix}_Valid.xlsx"
-                st.session_state.processed_files.append({
-                    "name": f"{short_fname} (Valid DR)", "data": buf_v.getvalue(), "filename": out_name_v, "orders": valid_items_cnt
-                })
-                cur.execute(
-                    "INSERT OR REPLACE INTO output_files_ledger (file_name, file_type, file_data, created_at) VALUES (?, 'Valid DR', ?, ?)",
-                    (out_name_v, buf_v.getvalue(), batch_ts)
-                )
-                traceability_records.append((batch_ts, short_fname, f_bytes, file_input_qty, out_name_v, "Valid DR", 1, batch_ts))
+            cur.executemany("INSERT OR IGNORE INTO unique_routes_master (route_no, agency_no, dr_code, created_at) VALUES (?, ?, ?, ?)", db_inserts)
+            cur.executemany("INSERT OR IGNORE INTO unmapped_missing_dr_ledger (route_no, agency_no, dr_code, created_at) VALUES (?, ?, ?, ?)", unmapped_inserts)
+            
+            for _, r_d in dedup_df.iterrows():
+                cur.execute("""
+                    INSERT INTO pending_orders (source_file, order_no, route_no, agency_no, dr_code, fg_code, bags_qty, weight_mt, order_ref, status, uploaded_at)
+                    VALUES ('Batch_Upload', ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)
+                """, (f"ORD-{r_d['ag_no']}", str(r_d['route']), str(r_d['ag_no']), str(r_d['dr_code']), str(r_d['fg_code']), float(r_d['qty']), round(float(r_d['qty'])*0.05, 2), f"RT-{r_d['route']}-{r_d['ag_no']}", batch_ts))
 
-            if missing_items_cnt > 0:
-                buf_m = io.BytesIO()
-                wb_missing.save(buf_m)
-                out_name_m = f"{resolved_route}_{today_date}_{time_suffix}_Missing_DR.xlsx"
-                st.session_state.processed_files.append({
-                    "name": f"{short_fname} (Missing DR)", "data": buf_m.getvalue(), "filename": out_name_m, "orders": missing_items_cnt
-                })
-                cur.execute(
-                    "INSERT OR REPLACE INTO output_files_ledger (file_name, file_type, file_data, created_at) VALUES (?, 'Missing DR', ?, ?)",
-                    (out_name_m, buf_m.getvalue(), batch_ts)
-                )
-                traceability_records.append((batch_ts, short_fname, f_bytes, file_input_qty, out_name_m, "Missing DR", 1, batch_ts))
+            conn.commit()
+            st.session_state.clean_demand_df = dedup_df
+            st.session_state.trucks_dict = trucks_dict
+            st.session_state.processed_files = True
 
-            cur.execute(
-                """
-                INSERT OR REPLACE INTO uploaded_files_archive (file_name, upload_timestamp, total_records, file_size_kb, batch_status)
-                VALUES (?, ?, ?, ?, 'Processed')
-            """,
-                (short_fname, batch_ts, valid_items_cnt + missing_items_cnt, round(len(f_bytes) / 1024, 2))
-            )
+            st.success(f"✅ Success! Extracted {total_in_qty:,.0f} Clean Bags with Master File DR Auto-Lookup.")
 
-        if pending_records_to_insert:
-            cur.executemany(
-                """
-                INSERT INTO pending_orders (source_file, order_no, route_no, agency_no, dr_code, fg_code, bags_qty, weight_mt, order_ref, status, uploaded_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                pending_records_to_insert
-            )
-
-        if master_routes_to_insert:
-            cur.executemany(
-                "INSERT OR IGNORE INTO unique_routes_master (file_name, route_no, agency_no, dr_code, created_at) VALUES (?, ?, ?, ?, ?)",
-                master_routes_to_insert
-            )
-
-        if unmapped_records_to_insert:
-            cur.executemany(
-                "INSERT OR IGNORE INTO unmapped_missing_dr_ledger (file_name, route_no, agency_no, dr_code, created_at) VALUES (?, ?, ?, ?, ?)",
-                unmapped_records_to_insert
-            )
-
-        if traceability_records:
-            cur.executemany(
-                """
-                INSERT INTO input_output_traceability (batch_timestamp, input_file_name, input_file_blob, total_input_qty, generated_output_file, output_type, version_no, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                traceability_records
-            )
-
-        cur.execute(
-            "INSERT INTO history_logs (timestamp, files_count, total_qty, status, remarks) VALUES (?, ?, ?, 'Success', ?)",
-            (batch_ts, len(uploaded_files), total_in_qty, f"Clean Qty Extracted: {total_in_qty}")
-        )
-
-        conn.commit()
         conn.close()
 
-        st.session_state.kpi_data = {
-            "input_qty": total_in_qty, "gen_qty": total_gen_qty, "valid_count": total_valid,
-            "missing_count": total_missing, "skipped_count": total_skipped
-        }
-
-        if len(st.session_state.processed_files) > 0:
-            st.success(f"🎉 Batch execution completed! Clean Qty: {total_in_qty:,.0f} Bags extracted. Created {len(st.session_state.processed_files)} output workbooks & saved {len(pending_records_to_insert)} pending orders.")
-        else:
-            st.warning("⚠️ Koi valid demand row extract nahi ho saki.")
-
-    # Multi-Channel Export Panel
-    if st.session_state.processed_files:
+    if st.session_state.get("processed_files"):
         st.markdown("---")
-        st.subheader("📥 Multi-Channel Export & Notification Hub")
-        kpi = st.session_state.kpi_data
+        df_clean = st.session_state.clean_demand_df
+        t_dict = st.session_state.trucks_dict
 
-        zip_buf = io.BytesIO()
-        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for item in st.session_state.processed_files:
-                zf.writestr(item["filename"], item["data"])
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Total Clean Demand", f"{df_clean['qty'].sum():,.0f} Bags")
+        m2.metric("Total Unique Orders", len(df_clean))
+        m3.metric("Trucks Planned", len(t_dict))
 
-        c_exp1, c_exp2, c_exp3, c_exp4, c_exp5, c_exp6, c_exp7 = st.columns(7)
-        with c_exp1:
-            st.download_button("📦 Download ZIP", zip_buf.getvalue(), f"Batch_Orders_{get_ist_date_str()}.zip", "application/zip")
-        with c_exp2:
-            try:
-                pdf_rep = FPDF()
-                pdf_rep.add_page()
-                pdf_rep.set_font("Arial", "B", 16)
-                pdf_rep.cell(190, 10, "Sales Orders Execution Invoice", ln=True, align="C")
-                pdf_rep.set_font("Arial", "", 10)
-                pdf_rep.cell(190, 6, f"Generated On (IST): {get_ist_timestamp_full()}", ln=True, align="C")
-                pdf_rep.ln(6)
-                pdf_rep.set_font("Arial", "B", 10)
-                pdf_rep.cell(100, 8, "Metric Description", 1)
-                pdf_rep.cell(90, 8, "Value", 1, ln=True)
-                pdf_rep.set_font("Arial", "", 10)
-                pdf_rep.cell(100, 7, "Total Input Quantity", 1)
-                pdf_rep.cell(90, 7, f"{kpi['input_qty']:,.0f} Bags", 1, ln=True)
-                pdf_rep.cell(100, 7, "Valid Orders Count", 1)
-                pdf_rep.cell(90, 7, str(kpi["valid_count"]), 1, ln=True)
-                pdf_rep.cell(100, 7, "Fallback (NEW_CUST) Count", 1)
-                pdf_rep.cell(90, 7, str(kpi["missing_count"]), 1, ln=True)
-                pdf_rep.cell(100, 7, "Skipped Rows", 1)
-                pdf_rep.cell(90, 7, str(kpi["skipped_count"]), 1, ln=True)
-                st.download_button("📄 PDF Report", bytes(pdf_rep.output()), f"Execution_Invoice_{get_ist_date_str()}.pdf", "application/pdf")
-            except Exception as e:
-                st.error(f"PDF Error: {e}")
-        with c_exp3:
-            txt_summary = f"SALES EXECUTION SUMMARY - {get_ist_timestamp_full()}\nTotal Bags: {kpi['input_qty']}\nValid Orders: {kpi['valid_count']}\nFallback Orders: {kpi['missing_count']}"
-            st.download_button("📄 Summary TXT", txt_summary.encode("utf-8"), f"Summary_{get_ist_date_str()}.txt", "text/plain")
-        with c_exp4:
-            json_dump = json.dumps({"timestamp": get_ist_timestamp_full(), "kpi": kpi}, indent=4)
-            st.download_button("💾 Backup JSON", json_dump.encode("utf-8"), f"Audit_{get_ist_date_str()}.json", "application/json")
-        with c_exp5:
-            components.html("""<button onclick="parent.window.print()" style="width:100%; height:38px; background:#2563eb; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">🖨️ Print View</button>""", height=45)
-        with c_exp6:
-            if st.button("📧 Email Reports"):
-                if st.session_state.email_user and st.session_state.email_pass and st.session_state.recipient:
-                    try:
-                        msg = EmailMessage()
-                        msg["Subject"] = f"🚀 Sales Demand Execution Report - {get_ist_date_str()}"
-                        msg["From"] = st.session_state.email_user
-                        msg["To"] = st.session_state.recipient
-                        msg.set_content(f"Daily Demand Batch processed successfully on {get_ist_timestamp_full()}.\nTotal Bags: {kpi['input_qty']}")
-                        for item in st.session_state.processed_files:
-                            msg.add_attachment(item["data"], maintype="application", subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=item["filename"])
-                        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-                            smtp.login(st.session_state.email_user, st.session_state.email_pass)
-                            smtp.send_message(msg)
-                        st.success("✅ Email dispatched!")
-                    except Exception as e:
-                        st.error(f"Email Failed: {e}")
-                else:
-                    st.warning("⚠️ Enter email credentials in settings!")
-        with c_exp7:
-            wa_text = f"Sales Batch Processed! Total Bags: {kpi['input_qty']} | Valid: {kpi['valid_count']} | Fallbacks: {kpi['missing_count']}"
-            st.markdown(f'<a href="https://wa.me/{st.session_state.whatsapp_num}?text={urllib.parse.quote(wa_text)}" target="_blank"><button style="width:100%; height:38px; background:#25D366; color:white; border:none; border-radius:4px; font-weight:600;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
+        tab1, tab2 = st.tabs(["📋 Master Clean Demand (DR Mapped)", "🚚 Multi-Truck Loading Slips"])
 
-        st.markdown("##### Individual File Downloads:")
-        for idx_f, f_itm in enumerate(st.session_state.processed_files):
-            st.download_button(f"📥 Download {f_itm['name']}", f_itm["data"], f_itm["filename"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_indiv_{idx_f}")
+        with tab1:
+            st.subheader("Master Clean Demand (Zero Duplicate + Master File DR)")
+            st.dataframe(df_clean, use_container_width=True)
 
-# ==============================================================================
+        with tab2:
+            st.subheader("🚚 Multi-Truck Loading Plan & Gate Passes (Max Capacity Enforced)")
+            truck_tabs = st.tabs([f"Truck {i}" for i in t_dict.keys()])
+
+            for i, t_tab in zip(t_dict.keys(), truck_tabs):
+                with t_tab:
+                    truck_data = pd.DataFrame(t_dict[i])
+                    t_total = truck_data['qty'].sum()
+                    st.dataframe(truck_data[['farmer', 'dr_code', 'sku', 'qty']], use_container_width=True)
+
+                    util = (t_total / st.session_state.get("max_capacity", 320.0)) * 100
+                    st.info(f"Capacity Utilized: {util:.1f}% | Total Loaded: {t_total:,.0f} Bags")
+
+                    html_slip = f"""
+                    <div style="background:white; color:#1a365d; padding:20px; border-radius:8px; border:1px solid #cbd5e0;">
+                        <h3 style="margin:0;">PARAS NUTRITION - OFFICIAL GATE PASS (TRUCK {i})</h3>
+                        <p style="font-size:12px; color:#666;">Date: {get_ist_now().strftime('%Y-%m-%d %H:%M')} | Route: {st.session_state.route}</p>
+                        <table style="width:100%; border-collapse:collapse; margin-top:10px;">
+                            <tr style="background:#1a365d; color:white;"><th style="padding:6px; text-align:left;">Agency / Farmer</th><th style="padding:6px; text-align:left;">DR Code</th><th style="padding:6px; text-align:left;">SKU</th><th style="padding:6px; text-align:right;">Bags</th></tr>
+                    """
+                    for _, r in truck_data.iterrows():
+                        html_slip += f"<tr><td style='padding:6px; border-bottom:1px solid #eee;'>{r['farmer']}</td><td style='padding:6px; border-bottom:1px solid #eee;'><b>{r['dr_code']}</b></td><td style='padding:6px; border-bottom:1px solid #eee;'>{r['sku']}</td><td style='padding:6px; border-bottom:1px solid #eee; text-align:right;'>{r['qty']:,.0f}</td></tr>"
+                    html_slip += f"</table><p style='text-align:right; font-weight:bold; margin-top:10px;'>Total Loaded Bags: {t_total:,.0f}</p></div>"
+                    components.html(html_slip, height=350, scrolling=True)
+
 # MODULE 2: ROUTE DISPATCH TRIP PLANNER (SKU-LEVEL PARTIAL DISPATCH & OVERLOAD CONFIRMATION)
 # ==============================================================================
 
