@@ -2136,8 +2136,3 @@ if any(term in str(main_menu).lower() for term in ["universal date", "filter cen
 st.markdown("---")
 with st.expander("🔍 Global Database Filter Hub (Auto-Linked to All Tables)", expanded=False):
     render_advanced_universal_data_hub(is_full_page=False, key_scope="bottom_hub")
-
-
-
-
-Iss code me masterfile se drcode put karne wala fast wala chahiye jo pahle wala code me apne diya tha fast processing wala
