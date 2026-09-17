@@ -109,7 +109,7 @@ for k, v in DEFAULTS.items():
         st.session_state[k] = v
 
 # ==============================================================================
-# SECTION 4: COMPLETE SQLITE DATABASE INITIALIZATION (ALL 15+ TABLES)
+# SECTION 4: COMPLETE SQLITE DATABASE INITIALIZATION (ALL TABLES)
 # ==============================================================================
 
 def get_db_connection():
@@ -133,6 +133,7 @@ def init_all_enterprise_databases():
     cur.execute("CREATE TABLE IF NOT EXISTS unmapped_missing_dr_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, file_name TEXT, route_no TEXT, agency_no TEXT, dr_code TEXT, created_at TEXT, UNIQUE(route_no, agency_no))")
     cur.execute("CREATE TABLE IF NOT EXISTS plant_inventory_stock (id INTEGER PRIMARY KEY AUTOINCREMENT, upload_batch_id TEXT, source_file TEXT, material_code TEXT, material_desc TEXT, pack_size_kg INTEGER DEFAULT 50, unit_weight_mt REAL DEFAULT 0.05, plant_stock_qty REAL DEFAULT 0.0, safety_stock_qty REAL DEFAULT 100.0, stock_date TEXT, created_at TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS output_files_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, file_name TEXT UNIQUE, file_type TEXT, file_data BLOB, created_at TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS input_output_traceability (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_timestamp TEXT, input_file_name TEXT, input_file_blob BLOB, total_input_qty REAL, generated_output_file TEXT, output_type TEXT, version_no INTEGER, created_at TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS history_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, files_count INTEGER, total_qty REAL, status TEXT, remarks TEXT)")
 
     # Seed Fleet & Bays if empty
@@ -161,8 +162,36 @@ def to_excel_download_bytes(df: pd.DataFrame, sheet_name="DataSheet") -> bytes:
         df.to_excel(writer, index=False, sheet_name=sheet_name)
     return output_stream.getvalue()
 
+def build_pdf_loading_slip(trip_data: dict, items_df: pd.DataFrame) -> bytes:
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(190, 8, "ENTERPRISE DISPATCH & LOADING SLIP", ln=True, align="C")
+    pdf.set_font("Arial", "", 9)
+    pdf.cell(190, 5, f"Official Gate Pass | Generated: {get_ist_timestamp_full()}", ln=True, align="C")
+    pdf.ln(4)
+    pdf.set_font("Arial", "B", 9)
+    pdf.cell(95, 6, f"Trip ID: {trip_data.get('trip_id', '')}", border=1)
+    pdf.cell(95, 6, f"Vehicle No: {trip_data.get('vehicle_no', '')}", border=1, ln=True)
+    pdf.ln(4)
+    pdf.set_font("Arial", "B", 9)
+    pdf.cell(15, 6, "Seq", border=1, align="C")
+    pdf.cell(45, 6, "Agency No", border=1, align="C")
+    pdf.cell(45, 6, "DR Code", border=1, align="C")
+    pdf.cell(45, 6, "FG Code", border=1, align="C")
+    pdf.cell(40, 6, "Bags Qty", border=1, ln=True, align="C")
+    pdf.set_font("Arial", "", 8)
+    for _, it in items_df.iterrows():
+        pdf.cell(15, 5, str(it.get("delivery_seq", "")), border=1, align="C")
+        pdf.cell(45, 5, str(it.get("agency_no", "")), border=1, align="C")
+        pdf.cell(45, 5, str(it.get("dr_code", "")), border=1, align="C")
+        pdf.cell(45, 5, str(it.get("fg_code", "")), border=1, align="C")
+        pdf.cell(40, 5, f"{float(it.get('allocated_bags', 0)):,.0f}", border=1, ln=True, align="R")
+    return bytes(pdf.output())
+
 # ==============================================================================
-# SECTION 5: SIDEBAR NAVIGATION (ALL 15+ MODULES RESTORED)
+# SECTION 5: SIDEBAR NAVIGATION (ALL 15+ MODULES)
 # ==============================================================================
 
 with st.sidebar:
@@ -322,7 +351,7 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
             st.session_state.clean_demand_df = dedup_df
             st.session_state.trucks_dict = trucks_dict
             st.session_state.processed_files = True
-            st.success(f"✅ Success! Extracted {total_in_qty:,.0f} Clean Bags and synced Pending Orders.")
+            st.success(f"✅ Success! Extracted {total_in_qty:,.0f} Clean Bags, mapped Master DR Codes, and synced Pending Orders.")
         conn.close()
 
     if st.session_state.get("processed_files"):
@@ -338,16 +367,22 @@ if main_menu == "⚡ Inbound Demand & Sales Order Engine":
                 st.dataframe(pd.DataFrame(trk_items)[['farmer', 'dr_code', 'sku', 'qty']], use_container_width=True)
 
 # ==============================================================================
-# OTHER MODULES (TRIP PLANNER, STOCK, REGISTERS, TRACEABILITY, UNIVERSAL HUB)
+# MODULE 2: ROUTE DISPATCH TRIP PLANNER
 # ==============================================================================
 
 elif main_menu == "🚚 Route Dispatch Trip Planner":
-    st.title("🚚 Route Dispatch Trip Planner")
+    st.title("🚚 Route Dispatch Planning & Vehicle Allocation")
     conn = get_db_connection()
-    df_p = pd.read_sql("SELECT * FROM pending_orders WHERE status='Pending'", conn)
-    if df_p.empty: st.info("ℹ️ No pending orders found.")
-    else: st.dataframe(df_p, use_container_width=True)
+    df_pending = pd.read_sql("SELECT * FROM pending_orders WHERE status='Pending'", conn)
+    if df_pending.empty:
+        st.info("ℹ️ No pending order demand found. Upload demand workbooks in Module 1.")
+    else:
+        st.dataframe(df_pending, use_container_width=True)
     conn.close()
+
+# ==============================================================================
+# MODULE 3: LIVE INVENTORY STOCK & ERP DEMAND MATCHER
+# ==============================================================================
 
 elif main_menu == "📦 Live Inventory Stock & ERP Demand Matcher":
     st.title("📦 Live Plant Stock & Inventory Ledger")
@@ -356,11 +391,27 @@ elif main_menu == "📦 Live Inventory Stock & ERP Demand Matcher":
     st.dataframe(df_stk, use_container_width=True)
     conn.close()
 
+# ==============================================================================
+# MODULE 4: LOADING SLIPS & ACTIVE TRIPS
+# ==============================================================================
+
 elif main_menu == "📋 Loading Slips & Active Trips":
     st.title("📋 Trip Loading Slips & Active Trips")
     conn = get_db_connection()
-    st.dataframe(pd.read_sql("SELECT * FROM trip_loading_slips", conn), use_container_width=True)
+    df_trips = pd.read_sql("SELECT * FROM trip_loading_slips", conn)
+    st.dataframe(df_trips, use_container_width=True)
+    if not df_trips.empty:
+        sel_trip = st.selectbox("Select Trip ID to view slip:", df_trips["trip_id"].tolist())
+        trip_row = df_trips[df_trips["trip_id"] == sel_trip].iloc[0]
+        items_df = pd.read_sql("SELECT * FROM trip_order_items WHERE trip_id=?", conn, params=(sel_trip,))
+        st.dataframe(items_df, use_container_width=True)
+        pdf_bytes = build_pdf_loading_slip(trip_row.to_dict(), items_df)
+        st.download_button("📄 Download PDF Loading Slip", pdf_bytes, f"Loading_Slip_{sel_trip}.pdf", "application/pdf")
     conn.close()
+
+# ==============================================================================
+# MODULE 5: DAILY DISPATCH SALE REGISTER
+# ==============================================================================
 
 elif main_menu == "📖 Daily Dispatch Sale Register":
     st.title("📖 Daily Dispatch Sale Register")
@@ -368,11 +419,19 @@ elif main_menu == "📖 Daily Dispatch Sale Register":
     st.dataframe(pd.read_sql("SELECT * FROM daily_dispatch_register", conn), use_container_width=True)
     conn.close()
 
+# ==============================================================================
+# MODULE 6: PARTIAL / SPLIT DISPATCH DATABASE
+# ==============================================================================
+
 elif main_menu == "🧩 Partial / Split Dispatch Database":
     st.title("🧩 Partial / Split Dispatch Database")
     conn = get_db_connection()
     st.dataframe(pd.read_sql("SELECT * FROM partial_dispatch_ledger", conn), use_container_width=True)
     conn.close()
+
+# ==============================================================================
+# MODULE 7: PENDING ORDERS LEDGER
+# ==============================================================================
 
 elif main_menu == "⏳ Pending Orders Ledger":
     st.title("⏳ Pending Orders Ledger")
@@ -380,19 +439,31 @@ elif main_menu == "⏳ Pending Orders Ledger":
     st.dataframe(pd.read_sql("SELECT * FROM pending_orders", conn), use_container_width=True)
     conn.close()
 
+# ==============================================================================
+# MODULE 8: FILE UPLOAD ARCHIVE
+# ==============================================================================
+
 elif main_menu == "🗄️ File Upload Archive":
-    st.title("🗄️ File Upload Archive")
+    st.title("🗄️ Uploaded Input File Archive")
     conn = get_db_connection()
     st.dataframe(pd.read_sql("SELECT * FROM uploaded_files_archive", conn), use_container_width=True)
     conn.close()
 
+# ==============================================================================
+# MODULE 9: MASTER DB & UNMAPPED LEDGER
+# ==============================================================================
+
 elif main_menu == "📋 Master DB & Unmapped Ledger":
     st.title("📋 Master DB & Unmapped Ledger")
     conn = get_db_connection()
-    t_m1, t_m2 = st.tabs(["Master DB", "Unmapped Ledger"])
-    with t_m1: st.dataframe(pd.read_sql("SELECT * FROM unique_routes_master", conn), use_container_width=True)
-    with t_m2: st.dataframe(pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger", conn), use_container_width=True)
+    t1, t2 = st.tabs(["Master DB", "Unmapped Ledger"])
+    with t1: st.dataframe(pd.read_sql("SELECT * FROM unique_routes_master", conn), use_container_width=True)
+    with t2: st.dataframe(pd.read_sql("SELECT * FROM unmapped_missing_dr_ledger", conn), use_container_width=True)
     conn.close()
+
+# ==============================================================================
+# MODULE 10: FLEET & LOADING BAY MASTER
+# ==============================================================================
 
 elif main_menu == "🚛 Fleet & Loading Bay Master":
     st.title("🚛 Fleet & Loading Bay Master")
@@ -402,11 +473,19 @@ elif main_menu == "🚛 Fleet & Loading Bay Master":
     with f2: st.dataframe(pd.read_sql("SELECT * FROM loading_bays", conn), use_container_width=True)
     conn.close()
 
+# ==============================================================================
+# MODULE 11: TRACEABILITY & AUDIT LEDGERS
+# ==============================================================================
+
 elif main_menu == "🔍 Traceability & Audit Ledgers":
     st.title("🔍 Traceability & Audit Ledgers")
     conn = get_db_connection()
     st.dataframe(pd.read_sql("SELECT * FROM input_output_traceability", conn), use_container_width=True)
     conn.close()
+
+# ==============================================================================
+# MODULE 12: EXECUTIVE KPI & VISUAL ANALYTICS
+# ==============================================================================
 
 elif main_menu == "📊 Executive KPI & Visual Analytics":
     st.title("📊 Executive KPI & Visual Analytics")
@@ -414,6 +493,10 @@ elif main_menu == "📊 Executive KPI & Visual Analytics":
     df_t = pd.read_sql("SELECT * FROM trip_loading_slips", conn)
     st.metric("Total Trips Planned", len(df_t))
     conn.close()
+
+# ==============================================================================
+# MODULE 13: UNIVERSAL DATE & MULTI-FIELD FILTER CENTER
+# ==============================================================================
 
 elif main_menu == "🎯 Universal Date & Multi-Field Filter Center":
     st.title("🎯 Universal Date & Multi-Field Filter Center")
@@ -426,12 +509,20 @@ elif main_menu == "🎯 Universal Date & Multi-Field Filter Center":
         st.dataframe(pd.read_sql(f"SELECT * FROM {sel_t}", conn), use_container_width=True)
     conn.close()
 
+# ==============================================================================
+# MODULE 14: SMART MULTI-TRUCK LOAD OPTIMIZER PRO
+# ==============================================================================
+
 elif main_menu == "⚡ Smart Multi-Truck Load Optimizer Pro":
     st.title("⚡ Smart Multi-Truck Load Optimizer Pro")
     st.markdown("Automated Bin-Packing Algorithm for Route Truck Load Distribution.")
 
+# ==============================================================================
+# MODULE 15: IN-APP DATABASE BUILDER & DYNAMIC LINKER
+# ==============================================================================
+
 elif main_menu == "🗄️ In-App Database Builder & Dynamic Linker":
-    st.title("🗄️ In-App Database Builder & Dynamic Linker")
+    st.title("🗄️ In-App Dynamic Database Builder & Universal CRUD")
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
