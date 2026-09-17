@@ -51,6 +51,13 @@ def get_ist_file_suffix():
 
 DB_NAME = "enterprise_logistics_sales_hub.db"
 
+if getattr(sys, 'frozen', False):
+    application_path = os.path.dirname(sys.executable)
+else:
+    application_path = os.path.dirname(os.path.abspath(__file__))
+
+master_path = os.path.join(application_path, "Business_Partners_Master_Original_Keys_Restored.xlsx")
+
 # ==============================================================================
 # SECTION 2: 8 COMPLETE ENTERPRISE COLOR PALETTES
 # ==============================================================================
