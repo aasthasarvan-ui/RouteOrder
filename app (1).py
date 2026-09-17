@@ -540,7 +540,7 @@ with st.sidebar:
 # (WITH LIGHTNING-FAST RAM CACHED MASTER FILE DR AUTO-LOOKUP & MULTI-TRUCK SPLIT)
 # ==============================================================================
 
-elif main_menu == "⚡ Inbound Demand & Sales Order Engine":
+if main_menu == "⚡ Inbound Demand & Sales Order Engine":
     st.title("⚡ Enterprise Inbound Demand & Sales Order Processing Engine")
     st.markdown("Upload multiple **Demand Workbooks** to execute **Master File DR Auto-Lookup** instantly, eliminate duplicate orders, and generate multi-truck loading schedules.")
 
