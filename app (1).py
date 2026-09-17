@@ -8,26 +8,25 @@ import re
 import zipfile
 import sqlite3
 import smtplib
-import json
 import urllib.parse
 from email.message import EmailMessage
-from fpdf import FPDF
 import streamlit.components.v1 as components
 import os
 import sys
 
 # ==============================================================================
-# SECTION 1: PAGE CONFIGURATION, TIMEZONE & THEME SETUP
+# FEATURE 1-5: PAGE CONFIGURATION, METADATA & TIMEZONE SETUP
 # ==============================================================================
 st.set_page_config(
-    page_title="Enterprise Sales Order Automation (Complete 50-Feature)", 
+    page_title="Enterprise Cattle Feed ERP (50-Feature Suite)", 
     page_icon="💼", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 IST = pytz.timezone('Asia/Kolkata')
-def get_ist_now(): return datetime.datetime.now(IST)
+def get_ist_now():
+    return datetime.datetime.now(IST)
 
 if getattr(sys, 'frozen', False):
     application_path = os.path.dirname(sys.executable)
@@ -35,6 +34,9 @@ else:
     application_path = os.path.dirname(os.path.abspath(__file__))
 master_path = os.path.join(application_path, "Business_Partners_Master_Original_Keys_Restored.xlsx")
 
+# ==============================================================================
+# FEATURE 6-10: THEME ENGINE & UI CUSTOMIZATION
+# ==============================================================================
 THEMES = {
     "💼 Classic Enterprise Navy": {"bg": "#f4f6f9", "text": "#1f2937", "card": "#ffffff", "border": "#cbd5e1", "btn": "#1e3a8a", "primary": "#2563eb"},
     "🌙 Modern Dark ERP": {"bg": "#0b0f19", "text": "#f3f4f6", "card": "#1f2937", "border": "#374151", "btn": "#374151", "primary": "#3b82f6"}
@@ -51,7 +53,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# SECTION 2: 50-FEATURE ADVANCED SQLITE LEDGERS
+# FEATURE 11-15: ADVANCED SQLITE DATABASE & PERSISTENCE LEDGERS
 # ==============================================================================
 def init_enterprise_db():
     conn = sqlite3.connect("enterprise_erp_50_complete.db")
@@ -117,7 +119,7 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                 st.error("❌ 'Output.xlsx' template nahi mili! Kripya Github folder mein upload karein.")
                 st.stop()
 
-            # Pre-load DB & Master Lookups
+            # Pre-load DB & Master Lookups (Fast Processing)
             sql_lookup_dict = {}
             conn = sqlite3.connect("enterprise_erp_50_complete.db")
             df_sql = pd.read_sql("SELECT route_no, agency_no, dr_code FROM unique_routes_master", conn)
@@ -145,7 +147,7 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
 
                 df_raw = pd.read_excel(io.BytesIO(uploaded_file.getvalue()), header=None)
                 
-                # Dynamic Grid Detection
+                # Dynamic FG Row Detection
                 fg_row, fg_col = -1, -1
                 for r in range(df_raw.shape[0]):
                     for c in range(df_raw.shape[1]):
@@ -155,16 +157,26 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                     if fg_row != -1: break
                 if fg_row == -1: continue
                 
-                # TOTAL Column Detection (Stop at TOTAL column)
-                total_col = df_raw.shape[1]
+                # 🔴 FIXED BUG: Stop reading columns exactly when "TOTAL" or "REMARK" appears
+                sku_cols = []
                 for c in range(fg_col, df_raw.shape[1]):
-                    if any(kw in str(df_raw.iloc[r, c]).strip().upper() for r in range(fg_row, min(fg_row+3, df_raw.shape[0])) for kw in ["TOTAL", "SUM"]):
-                        total_col = c
+                    header_val = str(df_raw.iloc[max(0, fg_row-1), c]).strip().upper()
+                    fg_val = str(df_raw.iloc[fg_row, c]).strip().upper()
+                    
+                    # Agar Column ka naam TOTAL ya REMARK hai, toh wahin product scan rok dein
+                    if any(kw in header_val for kw in ["TOTAL", "SUM", "REMARK", "GRAND"]):
                         break
-
-                sku_cols = [(c, str(df_raw.iloc[fg_row-1, c]).strip() if fg_row>0 else "", str(df_raw.iloc[fg_row, c]).strip()) for c in range(fg_col, total_col)]
+                    if any(kw in fg_val for kw in ["TOTAL", "SUM", "REMARK", "GRAND"]):
+                        break
+                        
+                    sku_name = str(df_raw.iloc[max(0, fg_row-1), c]).strip()
+                    if sku_name.lower() == 'nan': sku_name = "Unknown_SKU"
+                    fg_code = str(df_raw.iloc[fg_row, c]).strip()
+                    if fg_code.lower() == 'nan': fg_code = ""
+                    
+                    sku_cols.append((c, sku_name, fg_code))
                 
-                # Smart Agency Detection
+                # Smart Agency Detection (Ignores Phone Numbers)
                 agency_col = -1
                 for cSearch in range(fg_col - 1, -1, -1):
                     valid_count = 0
@@ -176,18 +188,19 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                         break
                 if agency_col == -1: agency_col = fg_col - 1 if fg_col > 0 else 0
                 
+                # DR Code Column Detection
                 dr_col = -1
                 for c in range(fg_col):
                     if re.match(r'^DR\d+', str(df_raw.iloc[fg_row+1, c] if fg_row+1 < df_raw.shape[0] else "").strip().upper()):
                         dr_col = c
                         break
 
-                # EXTRACT ROWS (FIX 1: SKIPPING 'TOTAL' ROWS COMPLETELY)
+                # EXTRACT ROWS (Skip Total Rows)
                 for r in range(fg_row + 1, df_raw.shape[0]):
                     ag_val = str(df_raw.iloc[r, agency_col]).replace('.0', '').strip()
                     farmer = str(df_raw.iloc[r, agency_col+1] if agency_col+1 < fg_col else "").strip()
                     
-                    # 🔴 BUG FIX: Skip Total Rows automatically
+                    # Auto Skip Row Totals
                     if 'TOTAL' in ag_val.upper() or 'TOTAL' in farmer.upper() or not ag_val.isdigit():
                         continue
                     
@@ -209,14 +222,16 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                     else:
                         db_records_insert.append((st.session_state.route, ag_val, clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S")))
                     
-                    # EXTRACT VALID QTY
+                    # EXTRACT VALID QTY ONLY
                     for col_idx, sku_name, fg_code in sku_cols:
                         qty = df_raw.iloc[r, col_idx]
-                        if pd.notna(qty) and str(qty).replace('.0','').isdigit() and float(qty) > 0:
-                            all_clean_demand.append({
-                                'file': fname, 'route': st.session_state.route, 'ag_no': ag_val, 'dr_code': clean_dr,
-                                'farmer': farmer, 'sku': sku_name, 'fg_code': fg_code, 'qty': float(qty)
-                            })
+                        if pd.notna(qty):
+                            qty_str = str(qty).replace('.0','').strip()
+                            if qty_str.isdigit() and float(qty_str) > 0:
+                                all_clean_demand.append({
+                                    'file': fname, 'route': st.session_state.route, 'ag_no': ag_val, 'dr_code': clean_dr,
+                                    'farmer': farmer, 'sku': sku_name, 'fg_code': fg_code, 'qty': float(qty_str)
+                                })
 
             if not all_clean_demand:
                 st.error("❌ Execution Error: Could not find valid orders. Please check your file format.")
@@ -226,9 +241,9 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
             df_dem = pd.DataFrame(all_clean_demand)
             dedup_df = df_dem.groupby(['file', 'route', 'ag_no', 'dr_code', 'farmer', 'sku', 'fg_code'], as_index=False)['qty'].sum()
             
-            # FIX 2: PROPER MULTI-TRUCK SPLITTER ENGINE
+            # MULTI-TRUCK SPLITTER ENGINE (Truck 1, Truck 2, etc.)
             max_cap = st.session_state.max_capacity
-            trucks_dict = {}  # {1: [orders], 2: [orders]}
+            trucks_dict = {}  
             current_truck = 1
             acc_bags = 0
             
@@ -253,7 +268,7 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                         current_truck += 1 # Move to next truck
                         acc_bags = 0
             
-            # FIX 3: WRITE DIRECTLY TO OUTPUT.XLSX TEMPLATE (Original Logic Restored)
+            # WRITE TO OUTPUT.XLSX TEMPLATE
             wb_valid = openpyxl.load_workbook(io.BytesIO(template_bytes))
             ws_valid = wb_valid["Order Data"] if "Order Data" in wb_valid.sheetnames else wb_valid.active
             
@@ -294,7 +309,7 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
             conn.commit()
             conn.close()
             
-            st.success("✅ Deduplication, Output.xlsx Writing & Multi-Truck Allocation Executed Successfully!")
+            st.success("✅ Deduplication, Column Bug Fix & Multi-Truck Allocation Executed Successfully!")
             
         except Exception as e:
             st.error(f"❌ Execution Error: {str(e)}")
