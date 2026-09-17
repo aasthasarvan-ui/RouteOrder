@@ -8,10 +8,8 @@ import re
 import zipfile
 import sqlite3
 import smtplib
-import json
 import urllib.parse
 from email.message import EmailMessage
-from fpdf import FPDF
 import streamlit.components.v1 as components
 import os
 import sys
@@ -65,7 +63,6 @@ def init_enterprise_db():
     cursor.execute("CREATE TABLE IF NOT EXISTS warehouse_inventory_master (id INTEGER PRIMARY KEY AUTOINCREMENT, sku_code TEXT UNIQUE, sku_name TEXT, stock_bags REAL, safety_buffer REAL)")
     cursor.execute("CREATE TABLE IF NOT EXISTS output_files_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, file_name TEXT UNIQUE, file_data BLOB, created_at TEXT)")
     
-    # Seed Inventory Automatically
     cursor.execute("SELECT COUNT(*) FROM warehouse_inventory_master")
     if cursor.fetchone()[0] == 0:
         initial_stock = [("FG500007", "Gold Pellet", 3000.0, 300.0), ("FG500026", "Super Milk Mash", 4000.0, 400.0), ("FG500004", "Calf Starter", 2500.0, 250.0)]
@@ -102,7 +99,7 @@ with st.sidebar:
     st.text_input("WhatsApp Number", key="whatsapp")
 
 # ==============================================================================
-# MAIN WORKFLOW EXECUTION
+# MAIN WORKFLOW EXECUTION (Lightning Fast Optimized Processing)
 # ==============================================================================
 st.title("💼 Enterprise Sales Order Automation Hub (Complete)")
 st.markdown("Automated Deduplication, Hierarchical DR Lookups, Multi-Truck Splitting & Dispatch Hub")
@@ -114,13 +111,38 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
         st.warning("⚠️ Please upload demand files first.")
         st.stop()
 
-    with st.spinner("⚡ Processing Deduplication, DR Mapping, Inventory Checks, and Truck Routing..."):
+    with st.spinner("⚡ Lightning Fast Processing: Deduplicating, DR Mapping & Routing..."):
         try:
             ist_now = get_ist_now()
             today_date = ist_now.strftime("%Y-%m-%d")
             
+            # --- 🔥 MEGA OPTIMIZATION: Load DB and Master File to RAM ONCE! ---
+            # 1. Load SQLite Master Data
+            sql_lookup_dict = {}
+            conn = sqlite3.connect("enterprise_erp_50_complete.db")
+            df_sql = pd.read_sql("SELECT route_no, agency_no, dr_code FROM unique_routes_master", conn)
+            conn.close()
+            for _, row in df_sql.iterrows():
+                sql_lookup_dict[(str(row['route_no']).strip(), str(row['agency_no']).strip())] = str(row['dr_code']).strip()
+
+            # 2. Load Excel Master Data
+            master_lookup_dict = {}
+            if os.path.exists(master_path):
+                try:
+                    xls = pd.ExcelFile(master_path)
+                    for s_name in xls.sheet_names:
+                        if s_name.startswith("Route_"):
+                            df_r = pd.read_excel(xls, sheet_name=s_name, header=2)
+                            df_r.columns = df_r.columns.astype(str).str.strip()
+                            if 'Route' in df_r.columns and 'Agency' in df_r.columns and 'DRCODE' in df_r.columns:
+                                for _, mr in df_r.iterrows():
+                                    rt = str(mr['Route']).replace('.0','').strip()
+                                    ag = str(mr['Agency']).replace('.0','').strip()
+                                    master_lookup_dict[(rt, ag)] = str(mr['DRCODE']).strip()
+                except Exception as e:
+                    st.warning(f"Master file warning: {str(e)}")
+
             all_clean_demand = []
-            file_comparison_rows = []
             db_records_insert = []
             unmapped_insert = []
             
@@ -128,7 +150,7 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                 fname = uploaded_file.name
                 df_raw = pd.read_excel(io.BytesIO(uploaded_file.getvalue()), header=None)
                 
-                # FEATURE 26-28: DYNAMIC FG ROW DETECTION & DATA SANITIZATION
+                # DYNAMIC FG ROW DETECTION
                 fg_row, fg_col = -1, -1
                 for r in range(df_raw.shape[0]):
                     for c in range(df_raw.shape[1]):
@@ -146,9 +168,7 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
 
                 sku_cols = [(c, str(df_raw.iloc[fg_row-1, c]).strip() if fg_row>0 else "", str(df_raw.iloc[fg_row, c]).strip()) for c in range(fg_col, total_col)]
                 
-                # FEATURE 29-32: EXACT HIERARCHICAL DR CODE & AGENCY DETECTION ENGINE
-                
-                # 1. Smart Agency Detection Logic
+                # SMART AGENCY COLUMN DETECTION (Ignores Phone Numbers)
                 agency_col = -1
                 for cSearch in range(fg_col - 1, -1, -1):
                     valid_count = 0
@@ -156,62 +176,46 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                         v = df_raw.iloc[rCheck, cSearch]
                         if pd.notna(v):
                             s_val = str(v).replace('.0', '').strip()
-                            if s_val.isdigit() and 1 <= len(s_val) <= 5:  # Ensuring it's Agency No, not Phone No
+                            if s_val.isdigit() and 1 <= len(s_val) <= 5:  # Safe range for Agency code
                                 valid_count += 1
                     if valid_count >= 3:
                         agency_col = cSearch
                         break
-                if agency_col == -1: agency_col = 1 # Safe Fallback
+                if agency_col == -1: agency_col = fg_col - 1 if fg_col > 0 else 0
                 
-                # 2. Strict DR Code Column Detection
+                # STRICT DR COLUMN DETECTION
                 dr_col = -1
-                for cSearch in range(fg_col - 1, -1, -1):
-                    for rCheck in range(fg_row + 1, min(fg_row + 5, df_raw.shape[0])):
-                        if re.match(r'^DR\d+', str(df_raw.iloc[rCheck, cSearch]).strip().upper()):
-                            dr_col = cSearch
-                            break
-                    if dr_col != -1: break
+                for c in range(fg_col):
+                    if re.match(r'^DR\d+', str(df_raw.iloc[fg_row+1, c] if fg_row+1 < df_raw.shape[0] else "").strip().upper()):
+                        dr_col = c
+                        break
 
-                raw_records = []
+                # EXTRACT ROWS AND APPLY O(1) LOOKUP
                 for r in range(fg_row + 1, df_raw.shape[0]):
                     ag_val = df_raw.iloc[r, agency_col]
                     if pd.isna(ag_val) or str(ag_val).strip() == "": continue
                     ag_str = str(ag_val).replace('.0','').strip()
-                    if not ag_str.isdigit(): continue  # Validates it's an agency number
+                    if not ag_str.isdigit(): continue
                     
                     farmer = str(df_raw.iloc[r, agency_col+1] if agency_col+1 < fg_col else "Unknown").strip()
                     
-                    # --- Exact Hierarchical DR Scan ---
                     clean_dr = ""
                     has_dr = False
                     
-                    # 1. File Scan for DR
+                    # 1. File Column Lookup
                     if dr_col >= 0:
                         s = str(df_raw.iloc[r, dr_col]).strip().upper()
-                        match = re.search(r'\bDR\d+\b', s) or re.search(r'DR\d+', s)
+                        match = re.search(r'\bDR\d+\b', s)
                         if match: clean_dr, has_dr = match.group(0), True
                     
-                    # 2. SQLite DB Scan
-                    if not has_dr:
-                        conn = sqlite3.connect("enterprise_erp_50_complete.db")
-                        cur = conn.cursor()
-                        cur.execute("SELECT dr_code FROM unique_routes_master WHERE route_no=? AND agency_no=? LIMIT 1", (st.session_state.route, ag_str))
-                        res = cur.fetchone()
-                        conn.close()
-                        if res: clean_dr, has_dr = res[0], True
+                    # 2. SQLite Cache Lookup (0 seconds)
+                    lookup_key = (str(st.session_state.route), ag_str)
+                    if not has_dr and lookup_key in sql_lookup_dict:
+                        clean_dr, has_dr = sql_lookup_dict[lookup_key], True
                     
-                    # 3. Master Excel Scan
-                    if not has_dr and os.path.exists(master_path):
-                        try:
-                            xls = pd.ExcelFile(master_path)
-                            for s_name in xls.sheet_names:
-                                if s_name.startswith("Route_"):
-                                    df_r = pd.read_excel(xls, sheet_name=s_name, header=2)
-                                    m_row = df_r[(df_r['Route'].astype(str).str.contains(st.session_state.route)) & (df_r['Agency'].astype(str).str.contains(ag_str))]
-                                    if not m_row.empty:
-                                        clean_dr, has_dr = str(m_row['DRCODE'].values[0]).strip(), True
-                                        break
-                        except: pass
+                    # 3. Master Excel Cache Lookup (0 seconds)
+                    if not has_dr and lookup_key in master_lookup_dict:
+                        clean_dr, has_dr = master_lookup_dict[lookup_key], True
                     
                     # 4. Fallback NEW_CUST
                     if not has_dr:
@@ -220,26 +224,23 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                     else:
                         db_records_insert.append((st.session_state.route, ag_str, clean_dr, ist_now.strftime("%Y-%m-%d %H:%M:%S")))
                     
-                    # FEATURE 33-35: EXTRACT QUANTITIES
+                    # QUANTITY EXTRACTION
                     for col_idx, sku_name, fg_code in sku_cols:
                         qty = df_raw.iloc[r, col_idx]
                         if pd.notna(qty) and str(qty).replace('.0','').isdigit() and float(qty) > 0:
-                            raw_records.append({
+                            all_clean_demand.append({
                                 'file': fname, 'route': st.session_state.route, 'ag_no': ag_str, 'dr_code': clean_dr,
                                 'farmer': farmer, 'sku': sku_name, 'fg_code': fg_code, 'qty': float(qty)
                             })
-                
-                for rec in raw_records:
-                    all_clean_demand.append(rec)
-                    file_comparison_rows.append(rec)
 
-            # --- EMPTY DATA SAFEGUARD ---
+            # SAFEGUARD: NO VALID ORDERS FOUND
             if not all_clean_demand:
-                st.error("❌ Execution Error: Could not find valid orders. Please check if Agency Numbers (1-5 digits) and FG columns exist in the file.")
+                st.error("❌ Execution Error: Could not find any valid numeric quantities linked to an Agency Number. Please verify your demand file.")
                 st.stop()
 
-            # FEATURE 36-39: MULTI-TRUCK CAPACITY SPLITTER & CARRY FORWARD LEDGER
-            dedup_df = pd.DataFrame(all_clean_demand).groupby(['ag_no', 'dr_code', 'farmer', 'sku', 'fg_code'], as_index=False)['qty'].sum()
+            # MULTI-TRUCK CAPACITY SPLITTER & CARRY FORWARD LEDGER
+            df_dem = pd.DataFrame(all_clean_demand)
+            dedup_df = df_dem.groupby(['ag_no', 'dr_code', 'farmer', 'sku', 'fg_code'], as_index=False)['qty'].sum()
             
             max_cap = st.session_state.max_capacity
             acc_bags = 0
@@ -277,12 +278,12 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
             conn.commit()
             conn.close()
 
-            # Store DataFrames in Session for UI Tabs
+            # Store DataFrames in Session
             st.session_state.clean_demand_df = dedup_df
             st.session_state.truck_df = pd.DataFrame(truck_list)
             st.session_state.pending_df = pd.DataFrame(pending_list)
             
-            # FEATURE 40-42: VIRTUAL EXCEL GENERATOR (In-Memory Export)
+            # VIRTUAL EXCEL GENERATOR (In-Memory)
             out_buf = io.BytesIO()
             with pd.ExcelWriter(out_buf, engine='openpyxl') as writer:
                 st.session_state.truck_df.to_excel(writer, sheet_name="Truck_Plan", index=False)
@@ -290,7 +291,7 @@ if st.button("🚀 Execute Full 50-Feature Processing Pipeline", type="primary")
                     st.session_state.pending_df.to_excel(writer, sheet_name="Pending_CarryForward", index=False)
             st.session_state.processed_files = [{"name": "Final_Dispatch_Plan.xlsx", "data": out_buf.getvalue(), "filename": f"Dispatch_{today_date}.xlsx"}]
             
-            st.success("✅ Full 50-Feature Enterprise ERP Pipeline Executed Successfully!")
+            st.success("✅ Full 50-Feature Enterprise ERP Pipeline Executed Lightning Fast!")
             
         except Exception as e:
             st.error(f"❌ Execution Error: {str(e)}")
