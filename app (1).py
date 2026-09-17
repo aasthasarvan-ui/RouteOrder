@@ -1,6 +1,5 @@
 # ==============================================================================
-# ENTERPRISE LOGISTICS, DISPATCH ENGINE & SALES AUTOMATION SUITE
-# ENHANCED DISPATCH PLANNER WITH DYNAMIC IN-APP DATABASE BUILDER & CRUD OPERATIONS
+# SECTION 1: GLOBAL CONFIGURATION, TIMEZONE (IST) & METADATA
 # ==============================================================================
 
 import datetime
@@ -10,6 +9,7 @@ import os
 import re
 import smtplib
 import sqlite3
+import sys
 import urllib.parse
 import zipfile
 from email.message import EmailMessage
@@ -20,10 +20,6 @@ import pandas as pd
 import pytz
 import streamlit as st
 import streamlit.components.v1 as components
-
-# ==============================================================================
-# SECTION 1: GLOBAL CONFIGURATION, TIMEZONE (IST) & METADATA
-# ==============================================================================
 
 st.set_page_config(
     page_title="Enterprise Logistics & Sales Automation Hub",
@@ -58,7 +54,6 @@ else:
 
 master_path = os.path.join(application_path, "Business_Partners_Master_Original_Keys_Restored.xlsx")
 
-# ==============================================================================
 # SECTION 2: 8 COMPLETE ENTERPRISE COLOR PALETTES
 # ==============================================================================
 
